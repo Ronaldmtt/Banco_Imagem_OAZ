@@ -338,7 +338,8 @@ def upload():
         else:
             flash('Formato de arquivo não permitido. Use: PNG, JPG, JPEG ou GIF')
             return redirect(request.url)
-    return render_template('images/upload.html')
+    collections = Collection.query.order_by(Collection.name).all()
+    return render_template('images/upload.html', collections=collections)
 
 
 @app.route('/collections')

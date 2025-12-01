@@ -36,8 +36,9 @@
                 <label class="form-label">Coleção *</label>
                 <select name="collection_id" class="form-control">
                     <option value="">Selecione uma coleção</option>
-                    <option value="1">Primavera 2024</option>
-                    <option value="2">Verão 2024</option>
+                    {% for collection in collections %}
+                    <option value="{{ collection.id }}">{{ collection.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
 

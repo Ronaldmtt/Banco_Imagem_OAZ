@@ -8,14 +8,14 @@
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <h1>{{ image.original_name }}</h1>
         <div style="display: flex; gap: 1rem;">
-            <button class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
+            <a href="{{ url_for('edit_image', id=image.id) }}" class="btn" style="background: var(--accent-blue); color: white;">
+                <i class="fas fa-edit"></i> Editar
+            </a>
+            <a href="{{ url_for('static', filename='uploads/' + image.filename) }}" download class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
                 <i class="fas fa-download"></i> Baixar
-            </button>
-            <button class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
+            </a>
+            <button onclick="copyToClipboard('direct-url')" class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
                 <i class="fas fa-link"></i> Copiar Link
-            </button>
-            <button class="btn btn-primary">
-                <i class="fas fa-folder-plus"></i> Mover para Coleção
             </button>
             <form action="{{ url_for('delete_image', id=image.id) }}" method="POST" style="display: inline;"
                 onsubmit="return confirm('Tem certeza que deseja deletar esta imagem? Esta ação não pode ser desfeita.');">

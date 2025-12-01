@@ -6,9 +6,11 @@ OAZ Smart Image Bank is a Flask-based intelligent image management system design
 ## Current State
 The project has been successfully configured to run in the Replit environment. The application is fully functional with:
 - User authentication system (login/register)
-- Image upload and cataloging
-- AI-powered image analysis using OpenAI GPT-4o Vision
-- Collection management
+- Image upload and cataloging with AI-powered analysis
+- Brand and Collection management
+- Workflow de status (Pendente → Aprovado/Rejeitado)
+- Image editing with metadata management
+- Reports with CSV export
 - Premium dark-mode UI with glassmorphism effects
 - SQLite database with pre-configured admin user
 
@@ -36,8 +38,10 @@ The project has been successfully configured to run in the Replit environment. T
 │   ├── base.html          # Base template
 │   ├── auth/              # Login and registration
 │   ├── dashboard/         # Main dashboard
-│   ├── images/            # Image catalog and upload
+│   ├── images/            # Image catalog, upload, edit, detail
 │   ├── collections/       # Collection management
+│   ├── brands/            # Brand management
+│   ├── reports/           # Reports and exports
 │   ├── analytics/         # Analytics views
 │   ├── integrations/      # Integration settings
 │   └── admin/             # Admin settings
@@ -48,16 +52,21 @@ The project has been successfully configured to run in the Replit environment. T
 ### Database Models
 - **User**: User accounts with authentication
 - **SystemConfig**: System-wide configuration (API keys, etc.)
+- **Brand**: Product brands
 - **Collection**: Image collections/groups
-- **Image**: Image records with AI-extracted metadata
+- **Image**: Image records with AI-extracted metadata, brand_id, photographer, shooting_date, unique_code
 
 ### Key Features
 1. **Smart Upload**: Drag-and-drop interface with automatic AI analysis
 2. **AI Image Analysis**: Extracts product attributes (type, color, material, pattern, style)
 3. **Portuguese Language**: All AI descriptions and UI text in Brazilian Portuguese
-4. **Collection Management**: Organize images into collections
-5. **Advanced Filtering**: Filter by status, collection, and attributes
-6. **SEO-Ready**: AI-generated descriptions and keywords
+4. **Brand Management**: Create, edit, and delete brands
+5. **Collection Management**: Organize images into collections
+6. **Status Workflow**: Approve or reject images (Pendente → Aprovado/Rejeitado)
+7. **Image Editing**: Edit SKU, description, brand, collection, photographer, shooting date
+8. **Advanced Filtering**: Filter by status, collection, brand, and search by SKU/description/tags
+9. **Reports**: Metrics by status, brand, collection with CSV export
+10. **SEO-Ready**: AI-generated descriptions and keywords
 
 ## Configuration
 
@@ -108,6 +117,16 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Supported formats: PNG, JPG, JPEG, GIF
 
 ## Recent Changes
+- **2025-12-01**: Full feature implementation
+  - Added image editing page (/image/{id}/edit)
+  - Created reports page with metrics and statistics
+  - Implemented CSV export for all report types
+  - Added brand management system (CRUD)
+  - Added status workflow (Pendente → Aprovado/Rejeitado)
+  - Implemented advanced filtering (by brand, collection, status, search)
+  - Updated dashboard with real database data
+  - Added new fields to images (brand_id, photographer, shooting_date, unique_code)
+
 - **2025-12-01**: Initial Replit setup
   - Moved project files to root directory
   - Updated Flask configuration for Replit (host 0.0.0.0, port 5000)
@@ -117,7 +136,7 @@ The workflow "Flask App" is configured to run the application automatically. It 
   - Initialized database with admin user
 
 ## User Preferences
-None specified yet.
+- Interface em português brasileiro
 
 ## Notes
 - The application uses Flask's built-in development server

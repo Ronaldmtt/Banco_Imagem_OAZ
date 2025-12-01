@@ -50,6 +50,11 @@
                     <i class="fas fa-chart-pie"></i>
                     <span>Análises</span>
                 </a>
+                <a href="{{ url_for('reports') }}"
+                    class="nav-item {% if request.endpoint == 'reports' %}active{% endif %}">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Relatórios</span>
+                </a>
                 <a href="{{ url_for('integrations') }}"
                     class="nav-item {% if request.endpoint == 'integrations' %}active{% endif %}">
                     <i class="fas fa-network-wired"></i>

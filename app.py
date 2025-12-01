@@ -1,6 +1,8 @@
 import os
+import io
+import csv
 from datetime import datetime
-from flask import Flask, render_template, redirect, url_for, flash, request
+from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -464,6 +466,37 @@ def update_image_status(id, status):
         flash('Status inválido')
     return redirect(url_for('image_detail', id=id))
 
+@app.route('/image/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_image(id):
+    image = Image.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        image.sku = request.form.get('sku')
+        image.description = request.form.get('description')
+        image.photographer = request.form.get('photographer')
+        
+        collection_id = request.form.get('collection_id')
+        image.collection_id = int(collection_id) if collection_id else None
+        
+        brand_id = request.form.get('brand_id')
+        image.brand_id = int(brand_id) if brand_id else None
+        
+        shooting_date = request.form.get('shooting_date')
+        if shooting_date:
+            try:
+                image.shooting_date = datetime.strptime(shooting_date, '%Y-%m-%d')
+            except ValueError:
+                pass
+        
+        db.session.commit()
+        flash('Imagem atualizada com sucesso!')
+        return redirect(url_for('image_detail', id=id))
+    
+    collections = Collection.query.order_by(Collection.name).all()
+    brands = Brand.query.order_by(Brand.name).all()
+    return render_template('images/edit.html', image=image, collections=collections, brands=brands)
+
 @app.route('/brands')
 @login_required
 def brands():
@@ -537,6 +570,151 @@ def settings():
     config = SystemConfig.query.filter_by(key='OPENAI_API_KEY').first()
     current_key = config.value if config else ''
     return render_template('admin/settings.html', current_key=current_key)
+
+@app.route('/reports')
+@login_required
+def reports():
+    total_images = Image.query.count()
+    images_with_sku = Image.query.filter(Image.sku.isnot(None), Image.sku != '').count()
+    images_without_sku = total_images - images_with_sku
+    
+    pending_images = Image.query.filter_by(status='Pendente').count()
+    approved_images = Image.query.filter_by(status='Aprovado').count()
+    rejected_images = Image.query.filter_by(status='Rejeitado').count()
+    
+    images_with_ai = Image.query.filter(Image.ai_item_type.isnot(None)).count()
+    images_without_ai = total_images - images_with_ai
+    
+    brands = Brand.query.all()
+    brands_stats = []
+    for brand in brands:
+        count = Image.query.filter_by(brand_id=brand.id).count()
+        approved = Image.query.filter_by(brand_id=brand.id, status='Aprovado').count()
+        pending = Image.query.filter_by(brand_id=brand.id, status='Pendente').count()
+        brands_stats.append({
+            'name': brand.name,
+            'total': count,
+            'approved': approved,
+            'pending': pending
+        })
+    
+    collections = Collection.query.all()
+    collections_stats = []
+    for collection in collections:
+        count = Image.query.filter_by(collection_id=collection.id).count()
+        collections_stats.append({
+            'name': collection.name,
+            'total': count
+        })
+    
+    recent_uploads = Image.query.order_by(Image.upload_date.desc()).limit(10).all()
+    
+    return render_template('reports/index.html',
+                          total_images=total_images,
+                          images_with_sku=images_with_sku,
+                          images_without_sku=images_without_sku,
+                          pending_images=pending_images,
+                          approved_images=approved_images,
+                          rejected_images=rejected_images,
+                          images_with_ai=images_with_ai,
+                          images_without_ai=images_without_ai,
+                          brands_stats=brands_stats,
+                          collections_stats=collections_stats,
+                          recent_uploads=recent_uploads)
+
+@app.route('/reports/export/<report_type>')
+@login_required
+def export_report(report_type):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    if report_type == 'all':
+        writer.writerow(['ID', 'Código Único', 'SKU', 'Nome Original', 'Marca', 'Coleção', 'Status', 'Tipo IA', 'Cor IA', 'Material IA', 'Fotógrafo', 'Data Upload'])
+        images = Image.query.order_by(Image.upload_date.desc()).all()
+        for img in images:
+            writer.writerow([
+                img.id,
+                img.unique_code or '',
+                img.sku or '',
+                img.original_name,
+                img.brand_ref.name if img.brand_ref else '',
+                img.collection.name if img.collection else '',
+                img.status,
+                img.ai_item_type or '',
+                img.ai_color or '',
+                img.ai_material or '',
+                img.photographer or '',
+                img.upload_date.strftime('%Y-%m-%d %H:%M')
+            ])
+        filename = 'todas_imagens.csv'
+        
+    elif report_type == 'pending':
+        writer.writerow(['ID', 'Código Único', 'SKU', 'Nome Original', 'Marca', 'Coleção', 'Data Upload'])
+        images = Image.query.filter_by(status='Pendente').order_by(Image.upload_date.desc()).all()
+        for img in images:
+            writer.writerow([
+                img.id,
+                img.unique_code or '',
+                img.sku or '',
+                img.original_name,
+                img.brand_ref.name if img.brand_ref else '',
+                img.collection.name if img.collection else '',
+                img.upload_date.strftime('%Y-%m-%d %H:%M')
+            ])
+        filename = 'imagens_pendentes.csv'
+        
+    elif report_type == 'without_sku':
+        writer.writerow(['ID', 'Código Único', 'Nome Original', 'Marca', 'Status', 'Data Upload'])
+        images = Image.query.filter(db.or_(Image.sku.is_(None), Image.sku == '')).order_by(Image.upload_date.desc()).all()
+        for img in images:
+            writer.writerow([
+                img.id,
+                img.unique_code or '',
+                img.original_name,
+                img.brand_ref.name if img.brand_ref else '',
+                img.status,
+                img.upload_date.strftime('%Y-%m-%d %H:%M')
+            ])
+        filename = 'imagens_sem_sku.csv'
+        
+    elif report_type == 'approved':
+        writer.writerow(['ID', 'Código Único', 'SKU', 'Nome Original', 'Marca', 'Coleção', 'Data Upload'])
+        images = Image.query.filter_by(status='Aprovado').order_by(Image.upload_date.desc()).all()
+        for img in images:
+            writer.writerow([
+                img.id,
+                img.unique_code or '',
+                img.sku or '',
+                img.original_name,
+                img.brand_ref.name if img.brand_ref else '',
+                img.collection.name if img.collection else '',
+                img.upload_date.strftime('%Y-%m-%d %H:%M')
+            ])
+        filename = 'imagens_aprovadas.csv'
+    
+    elif report_type == 'without_ai':
+        writer.writerow(['ID', 'Código Único', 'SKU', 'Nome Original', 'Marca', 'Status', 'Data Upload'])
+        images = Image.query.filter(Image.ai_item_type.is_(None)).order_by(Image.upload_date.desc()).all()
+        for img in images:
+            writer.writerow([
+                img.id,
+                img.unique_code or '',
+                img.sku or '',
+                img.original_name,
+                img.brand_ref.name if img.brand_ref else '',
+                img.status,
+                img.upload_date.strftime('%Y-%m-%d %H:%M')
+            ])
+        filename = 'imagens_sem_analise_ia.csv'
+    
+    else:
+        return redirect(url_for('reports'))
+    
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    response.headers['Content-type'] = 'text/csv; charset=utf-8'
+    return response
 
 # Initialize DB
 with app.app_context():

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banco de Imagens OAZ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i class="fas fa-gem"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 700; font-size: 1.1rem;">OAZ</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">Banco de Imagens</div>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="{{ url_for('dashboard') }}"
+                    class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    <i class="fas fa-th-large"></i>
+                    <span>Painel</span>
+                </a>
+                <a href="{{ url_for('catalog') }}"
+                    class="nav-item {% if request.endpoint == 'catalog' %}active{% endif %}">
+                    <i class="far fa-images"></i>
+                    <span>Biblioteca de Imagens</span>
+                </a>
+                <a href="{{ url_for('collections') }}"
+                    class="nav-item {% if request.endpoint == 'collections' %}active{% endif %}">
+                    <i class="far fa-folder"></i>
+                    <span>Coleções</span>
+                </a>
+                <a href="{{ url_for('analytics') }}"
+                    class="nav-item {% if request.endpoint == 'analytics' %}active{% endif %}">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Análises</span>
+                </a>
+                <a href="{{ url_for('integrations') }}"
+                    class="nav-item {% if request.endpoint == 'integrations' %}active{% endif %}">
+                    <i class="fas fa-network-wired"></i>
+                    <span>Integrações</span>
+                </a>
+            </nav>
+
+            <div class="bottom-menu">
+                <a href="#" class="nav-item">
+                    <i class="far fa-question-circle"></i>
+                    <span>Ajuda</span>
+                </a>
+                <a href="{{ url_for('logout') }}" class="nav-item">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Sair</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <div class="search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Buscar por SKU, tag, coleção...">
+                </div>
+
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="far fa-bell"></i></button>
+                    <a href="{{ url_for('settings') }}" class="icon-btn"><i class="fas fa-cog"></i></a>
+                    <div class="user-profile">
+                        <!-- Placeholder for user avatar -->
+                        <div
+                            style="width:100%; height:100%; background:#3b82f6; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">
+                            {{ current_user.username[0].upper() }}
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Scroll Area -->
+            <div class="content-scroll">
+                {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                <div
+                    style="margin-bottom: 1rem; padding: 1rem; background: rgba(31, 111, 235, 0.1); border: 1px solid var(--accent-blue); border-radius: 6px; color: var(--accent-blue);">
+                    {{ messages[0] }}
+                </div>
+                {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+</body>
+
+</html>

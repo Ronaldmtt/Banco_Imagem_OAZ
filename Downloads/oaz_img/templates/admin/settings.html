@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <h1>Configurações</h1>
+    <p style="color: var(--text-secondary);">Configure as definições do sistema e integrações.</p>
+</div>
+
+<div class="stat-card" style="max-width: 600px;">
+    <h3 style="margin-bottom: 1.5rem;">Configuração de IA</h3>
+
+    <form method="POST">
+        <div class="form-group">
+            <label class="form-label">Chave API OpenAI</label>
+            <div style="position: relative;">
+                <input type="password" name="api_key" class="form-control" value="{{ current_key }}"
+                    placeholder="sk-..." required>
+                <i class="fas fa-key"
+                    style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                Esta chave será usada para análise de imagens e marcação automática.
+                <a href="https://platform.openai.com/api-keys" target="_blank"
+                    style="color: var(--accent-blue);">Obtenha uma chave aqui</a>.
+            </p>
+        </div>
+
+        <div
+            style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+            <button type="submit" class="btn btn-primary">
+                Salvar Configuração
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

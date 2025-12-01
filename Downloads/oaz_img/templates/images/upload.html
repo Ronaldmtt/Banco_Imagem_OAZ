@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <h1>Enviar Nova Imagem</h1>
+    <p style="color: var(--text-secondary);">Banco de Imagens / Todas as Imagens / Enviar Nova Imagem</p>
+</div>
+
+<form method="POST" enctype="multipart/form-data"
+    style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; height: calc(100vh - 200px);">
+
+    <!-- Left: Upload Area -->
+    <div>
+        <div class="upload-area" id="drop-zone">
+            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+            <h3>Arraste e Solte Sua Imagem Aqui</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Ou, navegue pelos arquivos do seu computador
+            </p>
+            <input type="file" name="image" id="file-input" style="display: none;" accept="image/*">
+            <button type="button" class="btn"
+                style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);"
+                onclick="document.getElementById('file-input').click()">
+                Procurar Arquivos
+            </button>
+        </div>
+        <div id="preview-container" style="display: none; margin-top: 1rem; text-align: center;">
+            <img id="image-preview"
+                style="max-height: 300px; border-radius: 8px; border: 1px solid var(--border-color);">
+        </div>
+    </div>
+
+    <!-- Right: Metadata Form -->
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <div class="stat-card" style="padding: 1.5rem;">
+            <div class="form-group">
+                <label class="form-label">Coleção *</label>
+                <select name="collection_id" class="form-control">
+                    <option value="">Selecione uma coleção</option>
+                    <option value="1">Primavera 2024</option>
+                    <option value="2">Verão 2024</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Marca *</label>
+                <select name="brand" class="form-control">
+                    <option value="">Selecione uma marca</option>
+                    <option value="OAZ">OAZ</option>
+                    <option value="Partner">Marca Parceira</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">SKU (Opcional)</label>
+                <input type="text" name="sku" class="form-control" placeholder="ex: ABC-12345">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Observações</label>
+                <textarea name="observations" class="form-control" rows="3" placeholder="Adicione notas..."></textarea>
+            </div>
+        </div>
+
+        <!-- AI Suggestions Mockup -->
+        <div class="stat-card"
+            style="padding: 1.5rem; background: rgba(31, 111, 235, 0.05); border-color: rgba(31, 111, 235, 0.2);">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 1rem; color: var(--accent-blue);">
+                <i class="fas fa-magic"></i>
+                <h3 style="font-size: 1rem; margin: 0;">Sugestões com IA</h3>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label" style="font-size: 0.8rem;">Descrição IA</label>
+                <div
+                    style="background: var(--bg-tertiary); padding: 10px; border-radius: 6px; font-size: 0.85rem; color: var(--text-secondary); font-style: italic;">
+                    Envie uma imagem para gerar uma descrição...
+                </div>
+            </div>
+
+            <div>
+                <label class="form-label" style="font-size: 0.8rem;">Tags IA</label>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <span
+                        style="font-size: 0.75rem; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 12px; opacity: 0.5;">tag1</span>
+                    <span
+                        style="font-size: 0.75rem; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 12px; opacity: 0.5;">tag2</span>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+            Enviar e Salvar Imagem
+        </button>
+    </div>
+</form>
+
+<script>
+    const fileInput = document.getElementById('file-input');
+    const previewContainer = document.getElementById('preview-container');
+    const imagePreview = document.getElementById('image-preview');
+    const dropZone = document.getElementById('drop-zone');
+
+    fileInput.addEventListener('change', function (e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                imagePreview.src = e.target.result;
+                previewContainer.style.display = 'block';
+                dropZone.style.display = 'none';
+            }
+            reader.readAsDataURL(file);
+        }
+    });
+</script>
+{% endblock %}

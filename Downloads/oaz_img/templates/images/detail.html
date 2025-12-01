@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 1.5rem;">
+    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+        Coleções / {{ image.collection.name if image.collection else 'Sem Categoria' }} / {{ image.original_name }}
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h1>{{ image.original_name }}</h1>
+        <div style="display: flex; gap: 1rem;">
+            <button class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
+                <i class="fas fa-download"></i> Baixar
+            </button>
+            <button class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
+                <i class="fas fa-link"></i> Copiar Link
+            </button>
+            <button class="btn btn-primary">
+                <i class="fas fa-folder-plus"></i> Mover para Coleção
+            </button>
+            <form action="{{ url_for('delete_image', id=image.id) }}" method="POST" style="display: inline;"
+                onsubmit="return confirm('Tem certeza que deseja deletar esta imagem? Esta ação não pode ser desfeita.');">
+                <button type="submit" class="btn"
+                    style="background: rgba(248, 81, 73, 0.1); color: #f85149; border: 1px solid rgba(248, 81, 73, 0.4);">
+                    <i class="fas fa-trash-alt"></i> Deletar
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+    <!-- Image View -->
+    <div class="stat-card"
+        style="padding: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; background: black; height: 600px;">
+        <img src="{{ url_for('static', filename='uploads/' + image.filename) }}"
+            style="max-width: 100%; max-height: 100%; object-fit: contain;">
+    </div>
+
+    <!-- Metadata Sidebar -->
+    <div class="stat-card">
+        <div style="border-bottom: 1px solid var(--border-color); margin-bottom: 1rem; padding-bottom: 0.5rem;">
+            <div style="display: flex; gap: 1.5rem; font-size: 0.9rem; font-weight: 500;">
+                <span id="tab-metadata" class="tab-button active-tab"
+                    style="cursor: pointer; padding-bottom: 6px; transition: all 0.3s; color: var(--accent-blue); border-bottom: 2px solid var(--accent-blue);"
+                    onclick="switchTab('metadata')">Metadados</span>
+                <span id="tab-ai" class="tab-button"
+                    style="cursor: pointer; padding-bottom: 6px; transition: all 0.3s; color: var(--text-secondary); border-bottom: 2px solid transparent;"
+                    onclick="switchTab('ai')">IA & Tags</span>
+                <span id="tab-links" class="tab-button"
+                    style="cursor: pointer; padding-bottom: 6px; transition: all 0.3s; color: var(--text-secondary); border-bottom: 2px solid transparent;"
+                    onclick="switchTab('links')">Links</span>
+            </div>
+        </div>
+
+
+        <!-- Tab Content: Metadados -->
+        <div id="content-metadata" class="tab-content" style="display: flex; flex-direction: column; gap: 1rem;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary);">Nome da Coleção</span>
+                <span>{{ image.collection.name if image.collection else '-' }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary);">Nome da Marca</span>
+                <span>{{ image.brand or '-' }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary);">SKU</span>
+                <span>{{ image.sku or '-' }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary);">Status</span>
+                <span class="status-badge status-{{ image.status.lower() }}">{{ image.status }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary);">Data de Upload</span>
+                <span>{{ image.upload_date.strftime('%Y-%m-%d') }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary);">Enviado por</span>
+                <span>{{ image.uploader_id }}</span>
+            </div>
+
+            <div style="margin-top: 1rem;">
+                <span style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Observações</span>
+                <div style="background: var(--bg-tertiary); padding: 10px; border-radius: 6px; font-size: 0.9rem;">
+                    {{ image.description or 'Sem observações.' }}
+                </div>
+            </div>
+
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <h4 style="font-size: 0.95rem; margin-bottom: 1rem;">Detalhes Técnicos</h4>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                    <span style="color: var(--text-secondary);">Formato</span>
+                    <span>{{ image.filename.split('.')[-1].upper() }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                    <span style="color: var(--text-secondary);">Nome do Arquivo</span>
+                    <span style="font-size: 0.8rem;">{{ image.filename }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: IA & Tags -->
+        <div id="content-ai" class="tab-content" style="display: none; flex-direction: column; gap: 1rem;">
+            <div>
+                <span style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Tags IA</span>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    {% for tag in image.tag_list %}
+                    <span
+                        style="font-size: 0.8rem; background: var(--bg-tertiary); padding: 4px 10px; border-radius: 12px; color: var(--text-primary);">{{
+                        tag }}</span>
+                    {% else %}
+                    <span style="color: var(--text-secondary); font-size: 0.9rem;">Nenhuma tag gerada.</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                <h4 style="font-size: 0.95rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-magic" style="color: var(--accent-blue);"></i>
+                    Atributos Extraídos pela IA
+                </h4>
+
+                {% if image.ai_item_type or image.ai_color or image.ai_material or image.ai_pattern or image.ai_style %}
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.9rem;">
+                    {% if image.ai_item_type %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Tipo de
+                            Item</span>
+                        <span style="font-weight: 500;">{{ image.ai_item_type }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if image.ai_color %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Cor</span>
+                        <span style="font-weight: 500;">{{ image.ai_color }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if image.ai_material %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Material</span>
+                        <span style="font-weight: 500;">{{ image.ai_material }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if image.ai_pattern %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Padrão</span>
+                        <span style="font-weight: 500;">{{ image.ai_pattern }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if image.ai_style %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Estilo</span>
+                        <span style="font-weight: 500;">{{ image.ai_style }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p style="color: var(--text-secondary); font-size: 0.9rem;">Nenhum atributo IA extraído. Configure a
+                    chave OpenAI em Configurações para análise automática.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Tab Content: Links -->
+        <div id="content-links" class="tab-content" style="display: none; flex-direction: column; gap: 1rem;">
+            <div>
+                <h4 style="font-size: 0.95rem; margin-bottom: 1rem;">Links de Compartilhamento</h4>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label
+                        style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem; font-size: 0.9rem;">URL
+                        Direta da Imagem</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="direct-url" readonly
+                            value="{{ request.url_root }}static/uploads/{{ image.filename }}"
+                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem;">
+                        <button onclick="copyToClipboard('direct-url')" class="btn"
+                            style="background: var(--accent-blue); color: white;">
+                            <i class="fas fa-copy"></i> Copiar
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label
+                        style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem; font-size: 0.9rem;">Link
+                        para esta Página</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="page-url" readonly value="{{ request.url }}"
+                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem;">
+                        <button onclick="copyToClipboard('page-url')" class="btn"
+                            style="background: var(--accent-blue); color: white;">
+                            <i class="fas fa-copy"></i> Copiar
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label
+                        style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem; font-size: 0.9rem;">Código
+                        HTML para Embed</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <textarea id="html-embed" readonly rows="3"
+                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; font-family: monospace; resize: vertical;">&lt;img src="{{ request.url_root }}static/uploads/{{ image.filename }}" alt="{{ image.original_name }}" /&gt;</textarea>
+                        <button onclick="copyToClipboard('html-embed')" class="btn"
+                            style="background: var(--accent-blue); color: white;">
+                            <i class="fas fa-copy"></i> Copiar
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    style="padding: 1rem; background: rgba(31, 111, 235, 0.05); border: 1px solid rgba(31, 111, 235, 0.2); border-radius: 6px;">
+                    <div
+                        style="display: flex; align-items: center; gap: 8px; margin-bottom: 0.5rem; color: var(--accent-blue);">
+                        <i class="fas fa-info-circle"></i>
+                        <strong style="font-size: 0.9rem;">Dica</strong>
+                    </div>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">Você pode compartilhar estes
+                        links com sua equipe ou usar o código HTML para incorporar a imagem em sites externos.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchTab(tabName) {
+        // Hide all tab contents
+        const contents = document.querySelectorAll('.tab-content');
+        contents.forEach(content => {
+            content.style.display = 'none';
+        });
+
+        // Remove active state from all tabs
+        const tabs = document.querySelectorAll('.tab-button');
+        tabs.forEach(tab => {
+            tab.style.color = 'var(--text-secondary)';
+            tab.style.borderBottom = '2px solid transparent';
+        });
+
+        // Show selected tab content
+        const selectedContent = document.getElementById('content-' + tabName);
+        if (selectedContent) {
+            selectedContent.style.display = 'flex';
+        }
+
+        // Activate selected tab
+        const selectedTab = document.getElementById('tab-' + tabName);
+        if (selectedTab) {
+            selectedTab.style.color = 'var(--accent-blue)';
+            selectedTab.style.borderBottom = '2px solid var(--accent-blue)';
+        }
+    }
+
+    function copyToClipboard(elementId) {
+        const element = document.getElementById(elementId);
+        element.select();
+        element.setSelectionRange(0, 99999); // For mobile devices
+
+        navigator.clipboard.writeText(element.value).then(() => {
+            // Show temporary feedback
+            const btn = event.target.closest('button');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Copiado!';
+            btn.style.background = '#2da44e';
+
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.style.background = 'var(--accent-blue)';
+            }, 2000);
+        });
+    }
+</script>
+{% endblock %}

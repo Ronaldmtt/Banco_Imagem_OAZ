@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <div style="margin-bottom: 2rem;">
+        <h1>Nova Coleção</h1>
+        <p style="color: var(--text-secondary);">Crie uma nova coleção para organizar suas imagens.</p>
+    </div>
+
+    <div class="card">
+        <form method="POST" action="{{ url_for('new_collection') }}">
+            <div class="form-group">
+                <label class="form-label">Nome da Coleção</label>
+                <input type="text" name="name" class="form-control" placeholder="Ex: Verão 2025" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Descrição</label>
+                <textarea name="description" class="form-control" rows="4"
+                    placeholder="Descrição da coleção..."></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                <a href="{{ url_for('collections') }}" class="btn"
+                    style="border: 1px solid var(--border-color); color: var(--text-primary);">Cancelar</a>
+                <button type="submit" class="btn btn-primary">Criar Coleção</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

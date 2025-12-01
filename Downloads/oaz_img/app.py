@@ -1,0 +1,442 @@
+import os
+from datetime import datetime
+from flask import Flask, render_template, redirect, url_for, flash, request
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from openai import OpenAI
+from dotenv import load_dotenv
+import json
+import base64
+
+# Load environment variables
+load_dotenv()
+
+# Configuration
+class Config:
+    SECRET_KEY = 'dev-secret-key-oaz-img' # Change in production
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///oaz_img.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    UPLOAD_FOLDER = 'static/uploads'
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+app = Flask(__name__)
+app.config.from_object(Config)
+
+# Ensure upload directory exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
+# Models
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128))
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+        
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+class SystemConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(50), unique=True, nullable=False)
+    value = db.Column(db.Text, nullable=False)
+
+class Collection(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    images = db.relationship('Image', backref='collection', lazy=True)
+
+class Image(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=False)
+    original_name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text) # AI Generated description
+    sku = db.Column(db.String(50))
+    brand = db.Column(db.String(50))
+    status = db.Column(db.String(20), default='Pending') # Pending, Approved, Rejected
+    upload_date = db.Column(db.DateTime, default=datetime.utcnow)
+    collection_id = db.Column(db.Integer, db.ForeignKey('collection.id'))
+    uploader_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    tags = db.Column(db.Text) # Stored as JSON string or comma-separated
+    
+    # AI-extracted attributes
+    ai_item_type = db.Column(db.String(100))  # e.g., "Denim Jacket", "Midi Dress"
+    ai_color = db.Column(db.String(50))        # e.g., "Blue", "Red"
+    ai_material = db.Column(db.String(50))     # e.g., "Denim", "Cotton"
+    ai_pattern = db.Column(db.String(50))      # e.g., "Striped", "Solid"
+    ai_style = db.Column(db.String(50))        # e.g., "Casual", "Formal"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+def get_openai_client():
+    # First try to get from DB
+    config = SystemConfig.query.filter_by(key='OPENAI_API_KEY').first()
+    if config:
+        return OpenAI(api_key=config.value)
+    
+    # Fallback to env var
+    api_key = os.getenv('OPENAI_API_KEY')
+    if api_key:
+        return OpenAI(api_key=api_key)
+    
+    return None
+
+def encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
+def analyze_image_with_ai(image_path):
+    client = get_openai_client()
+    if not client:
+        return "AI Configuration missing. Please configure OpenAI API Key in Settings.", []
+    
+    try:
+        base64_image = encode_image(image_path)
+        
+        prompt = """
+        Analise esta imagem para um banco de imagens de varejo de moda profissional (OAZ).
+        Precisamos de dados estruturados para catalogar este produto efetivamente.
+        
+        Por favor, extraia os seguintes atributos específicos baseados na análise visual.
+        IMPORTANTE: Responda TUDO em PORTUGUÊS DO BRASIL (PT-BR).
+        
+        1. **Tipo de Item**: O tipo específico da peça ou acessório (ex: Vestido Midi, Jaqueta Jeans, Tênis de Corrida).
+        2. **Cor Principal**: A cor dominante (ex: Azul, Vermelho, Preto).
+        3. **Material/Tecido**: Estimativa visual do material (ex: Seda, Jeans, Couro, Algodão).
+        4. **Estampa**: Qualquer padrão visível (ex: Listrado, Floral, Liso, Xadrez).
+        5. **Estilo**: O estilo de moda (ex: Casual, Formal, Streetwear, Vintage).
+        6. **Descrição Visual**: Uma descrição profissional detalhada adequada para SEO e e-commerce.
+        
+        Retorne a resposta neste formato JSON ESTRITO:
+        {
+            "description": "Uma descrição profissional detalhada em português...",
+            "attributes": {
+                "item_type": "...",
+                "color": "...",
+                "material": "...",
+                "pattern": "...",
+                "style": "..."
+            },
+            "seo_keywords": ["palavra-chave1", "palavra-chave2", "palavra-chave3"]
+        }
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            },
+                        },
+                    ],
+                }
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=500,
+        )
+        
+        content = response.choices[0].message.content
+        data = json.loads(content)
+        
+        description = data.get('description', '')
+        attributes = data.get('attributes', {})
+        keywords = data.get('seo_keywords', [])
+        
+        # Flatten attributes into tags
+        tags = []
+        for key, value in attributes.items():
+            if value and value.lower() != 'none' and value.lower() != 'n/a':
+                tags.append(value)
+        
+        # Add SEO keywords to tags
+        tags.extend(keywords)
+        
+        # Remove duplicates and limit
+        unique_tags = list(set(tags))
+        
+        # Return description, tags, and structured attributes
+        return description, unique_tags, attributes
+        
+    except Exception as e:
+        print(f"AI Analysis Error: {e}")
+        return f"Erro ao analisar imagem: {str(e)}", [], {}
+
+# Routes
+@app.route('/')
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        print(f"[DEBUG] Login attempt - Username: {username}, Password length: {len(password) if password else 0}")
+        user = User.query.filter_by(username=username).first()
+        print(f"[DEBUG] User found: {user is not None}")
+        if user:
+            password_check = user.check_password(password)
+            print(f"[DEBUG] Password check result: {password_check}")
+            if password_check:
+                login_user(user)
+                print(f"[DEBUG] User logged in successfully: {user.username}")
+                return redirect(url_for('dashboard'))
+        flash('Usuário ou senha inválidos')
+        print(f"[DEBUG] Login failed")
+    return render_template('auth/login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        if User.query.filter_by(username=username).first():
+            flash('Nome de usuário já existe')
+            return redirect(url_for('register'))
+            
+        user = User(username=username, email=email)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        login_user(user)
+        return redirect(url_for('dashboard'))
+    return render_template('auth/register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    return render_template('dashboard/index.html')
+
+@app.route('/catalog')
+@login_required
+def catalog():
+    # Get filter parameters
+    status_filter = request.args.getlist('status')
+    collection_filter = request.args.get('collection_id')
+    
+    query = Image.query
+    
+    # Apply filters
+    if status_filter:
+        query = query.filter(Image.status.in_(status_filter))
+    
+    if collection_filter and collection_filter != 'all':
+        query = query.filter_by(collection_id=collection_filter)
+        
+    images = query.order_by(Image.upload_date.desc()).all()
+    
+    # Get all collections for the filter dropdown
+    collections = Collection.query.all()
+    
+    # Parse tags if they are stored as JSON string
+    for img in images:
+        if img.tags:
+            try:
+                img.tag_list = json.loads(img.tags)
+            except:
+                img.tag_list = []
+        else:
+            img.tag_list = []
+            
+    return render_template('images/catalog.html', images=images, collections=collections)
+
+
+@app.route('/upload', methods=['GET', 'POST'])
+@login_required
+def upload():
+    if request.method == 'POST':
+        if 'image' not in request.files:
+            flash('Nenhum arquivo enviado')
+            return redirect(request.url)
+        file = request.files['image']
+        if file.filename == '':
+            flash('Nenhum arquivo selecionado')
+            return redirect(request.url)
+        if file and file.filename.split('.')[-1].lower() in app.config['ALLOWED_EXTENSIONS']:
+            filename = secure_filename(file.filename)
+            # Add timestamp to filename to avoid duplicates
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            unique_filename = f"{timestamp}_{filename}"
+            
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(file_path)
+            
+            # Real AI Analysis with better error handling
+            try:
+                ai_description, ai_tags, ai_attributes = analyze_image_with_ai(file_path)
+                
+                # Check if analysis failed (returned error message)
+                if isinstance(ai_description, str) and ai_description.startswith("AI Configuration missing"):
+                    print(f"[WARNING] AI not configured, using defaults")
+                    ai_description = request.form.get('observations') or "Imagem enviada - análise manual necessária"
+                    ai_tags = []
+                    ai_attributes = {}
+                elif isinstance(ai_description, str) and ai_description.startswith("Erro ao analisar"):
+                    print(f"[ERROR] AI analysis failed: {ai_description}")
+                    ai_description = request.form.get('observations') or "Imagem enviada - erro na análise automática"
+                    ai_tags = []
+                    ai_attributes = {}
+            except Exception as e:
+                print(f"[ERROR] Exception during AI analysis: {e}")
+                ai_description = request.form.get('observations') or "Imagem enviada - análise manual necessária"
+                ai_tags = []
+                ai_attributes = {}
+            
+            # Create DB record
+            new_image = Image(
+                filename=unique_filename,
+                original_name=file.filename,
+                collection_id=request.form.get('collection_id') if request.form.get('collection_id') else None,
+                brand=request.form.get('brand'),
+                sku=request.form.get('sku'),
+                description=request.form.get('observations') or ai_description,
+                tags=json.dumps(ai_tags) if ai_tags else json.dumps([]),
+                ai_item_type=ai_attributes.get('item_type') if ai_attributes else None,
+                ai_color=ai_attributes.get('color') if ai_attributes else None,
+                ai_material=ai_attributes.get('material') if ai_attributes else None,
+                ai_pattern=ai_attributes.get('pattern') if ai_attributes else None,
+                ai_style=ai_attributes.get('style') if ai_attributes else None,
+                uploader_id=current_user.id,
+                status='Pendente' # Default status
+            )
+            db.session.add(new_image)
+            db.session.commit()
+            
+            if ai_attributes:
+                flash('Imagem enviada com sucesso. Análise de IA concluída.')
+            else:
+                flash('Imagem enviada com sucesso. Configure a chave OpenAI em Configurações para análise automática.')
+            return redirect(url_for('catalog'))
+        else:
+            flash('Formato de arquivo não permitido. Use: PNG, JPG, JPEG ou GIF')
+            return redirect(request.url)
+    return render_template('images/upload.html')
+
+
+@app.route('/collections')
+@login_required
+def collections():
+    collections = Collection.query.order_by(Collection.created_at.desc()).all()
+    return render_template('collections/list.html', collections=collections)
+
+@app.route('/collections/new', methods=['GET', 'POST'])
+@login_required
+def new_collection():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        description = request.form.get('description')
+        
+        if not name:
+            flash('Nome da coleção é obrigatório')
+            return redirect(url_for('new_collection'))
+            
+        collection = Collection(name=name, description=description)
+        db.session.add(collection)
+        db.session.commit()
+        
+        flash('Coleção criada com sucesso!')
+        return redirect(url_for('collections'))
+        
+    return render_template('collections/new.html')
+
+
+@app.route('/image/<int:id>')
+@login_required
+def image_detail(id):
+    image = Image.query.get_or_404(id)
+    try:
+        image.tag_list = json.loads(image.tags) if image.tags else []
+    except:
+        image.tag_list = []
+    return render_template('images/detail.html', image=image)
+
+@app.route('/image/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_image(id):
+    image = Image.query.get_or_404(id)
+    
+    # Remove file from filesystem
+    try:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        print(f"Error deleting file: {e}")
+        
+    db.session.delete(image)
+    db.session.commit()
+    
+    flash('Image deleted successfully')
+    return redirect(url_for('catalog'))
+
+@app.route('/analytics')
+@login_required
+def analytics():
+    return render_template('analytics/index.html')
+
+@app.route('/integrations')
+@login_required
+def integrations():
+    return render_template('integrations/index.html')
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    if request.method == 'POST':
+        api_key = request.form.get('api_key')
+        
+        config = SystemConfig.query.filter_by(key='OPENAI_API_KEY').first()
+        if config:
+            config.value = api_key
+        else:
+            config = SystemConfig(key='OPENAI_API_KEY', value=api_key)
+            db.session.add(config)
+            
+        db.session.commit()
+        flash('Settings updated successfully')
+        return redirect(url_for('settings'))
+        
+    config = SystemConfig.query.filter_by(key='OPENAI_API_KEY').first()
+    current_key = config.value if config else ''
+    return render_template('admin/settings.html', current_key=current_key)
+
+# Initialize DB
+with app.app_context():
+    db.create_all()
+    # Create a test user if not exists
+    if not User.query.filter_by(username='admin').first():
+        admin = User(username='admin', email='admin@oaz.com')
+        admin.set_password('admin')
+        db.session.add(admin)
+        db.session.commit()
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5001)

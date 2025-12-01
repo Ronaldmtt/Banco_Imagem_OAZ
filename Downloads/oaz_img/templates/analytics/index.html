@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <h1>Análises e Métricas</h1>
+    <p style="color: var(--text-secondary);">Visualize estatísticas detalhadas e insights do seu banco de imagens.</p>
+</div>
+
+<div class="dashboard-stats">
+    <div class="stat-card">
+        <div class="stat-title">Taxa de Crescimento</div>
+        <div class="stat-value">+12.5%</div>
+        <div class="stat-change positive">
+            <i class="fas fa-arrow-up"></i> vs. mês anterior
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-title">Tempo Médio de Aprovação</div>
+        <div class="stat-value">2.3h</div>
+        <div class="stat-change positive">
+            <i class="fas fa-arrow-down"></i> -15% mais rápido
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-title">Uso de Armazenamento</div>
+        <div class="stat-value">68%</div>
+        <div class="stat-change negative">
+            <i class="fas fa-arrow-up"></i> +5% este mês
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-title">Precisão da IA</div>
+        <div class="stat-value">94%</div>
+        <div class="stat-change positive">
+            <i class="fas fa-arrow-up"></i> +3.2%
+        </div>
+    </div>
+</div>
+
+<div class="charts-grid" style="margin-top: 2rem;">
+    <div style="grid-column: 1 / -1;">
+        <div class="chart-card">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 1.5rem;">
+                <div>
+                    <h3>Uploads por Período</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Últimos 30 dias</p>
+                </div>
+                <select class="form-control" style="width: 150px;">
+                    <option>Últimos 7 dias</option>
+                    <option selected>Últimos 30 dias</option>
+                    <option>Últimos 90 dias</option>
+                    <option>Este ano</option>
+                </select>
+            </div>
+            <canvas id="uploadsChart" style="max-height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <div>
+        <div class="chart-card">
+            <h3 style="margin-bottom: 1.5rem;">Distribuição por Status</h3>
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+
+    <div>
+        <div class="chart-card">
+            <h3 style="margin-bottom: 1.5rem;">Top 10 Tags Mais Usadas</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.9rem;">Casual</span>
+                    <div style="flex: 1; margin: 0 1rem; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                        <div style="width: 85%; height: 100%; background: var(--accent-blue);"></div>
+                    </div>
+                    <span style="font-size: 0.9rem; color: var(--text-secondary);">850</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.9rem;">Denim</span>
+                    <div style="flex: 1; margin: 0 1rem; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                        <div style="width: 72%; height: 100%; background: var(--accent-purple);"></div>
+                    </div>
+                    <span style="font-size: 0.9rem; color: var(--text-secondary);">720</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.9rem;">Cotton</span>
+                    <div style="flex: 1; margin: 0 1rem; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                        <div style="width: 65%; height: 100%; background: var(--accent-pink);"></div>
+                    </div>
+                    <span style="font-size: 0.9rem; color: var(--text-secondary);">650</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.9rem;">Blue</span>
+                    <div style="flex: 1; margin: 0 1rem; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                        <div style="width: 58%; height: 100%; background: var(--accent-blue);"></div>
+                    </div>
+                    <span style="font-size: 0.9rem; color: var(--text-secondary);">580</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.9rem;">Formal</span>
+                    <div style="flex: 1; margin: 0 1rem; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                        <div style="width: 45%; height: 100%; background: var(--accent-purple);"></div>
+                    </div>
+                    <span style="font-size: 0.9rem; color: var(--text-secondary);">450</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Uploads Chart
+    const ctxUploads = document.getElementById('uploadsChart').getContext('2d');
+    new Chart(ctxUploads, {
+        type: 'line',
+        data: {
+            labels: ['1', '3', '5', '7', '9', '11', '13', '15', '17', '19', '21', '23', '25', '27', '29', '30'],
+            datasets: [{
+                label: 'Uploads',
+                data: [45, 52, 38, 65, 59, 80, 81, 56, 55, 40, 68, 72, 85, 90, 78, 95],
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#9ca3af' }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#9ca3af' }
+                }
+            }
+        }
+    });
+
+    // Status Chart
+    const ctxStatus = document.getElementById('statusChart').getContext('2d');
+    new Chart(ctxStatus, {
+        type: 'doughnut',
+        data: {
+            labels: ['Aprovado', 'Pendente', 'Rejeitado'],
+            datasets: [{
+                data: [65, 25, 10],
+                backgroundColor: ['#3fb950', '#d29922', '#f85149'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#9ca3af' } }
+            }
+        }
+    });
+</script>
+{% endblock %}

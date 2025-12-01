@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1>Coleções Ativas</h1>
+        <p style="color: var(--text-secondary);">Gerencie e catalogue todas as coleções de imagens ativas.</p>
+    </div>
+    <a href="{{ url_for('new_collection') }}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Nova Coleção
+    </a>
+</div>
+
+<div style="margin-bottom: 2rem; display: flex; gap: 1rem;">
+    <div class="search-bar" style="flex: 1; width: auto;">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Buscar por nome da coleção...">
+    </div>
+    <select class="form-control" style="width: 150px;">
+        <option>Marca</option>
+    </select>
+    <select class="form-control" style="width: 150px;">
+        <option>Temporada</option>
+    </select>
+</div>
+
+{% if collections %}
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+    {% for collection in collections %}
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+            <div>
+                <h3 style="margin-bottom: 0.25rem;">{{ collection.name }}</h3>
+                <span style="color: var(--accent-blue); font-size: 0.8rem;">OAZ Ativo</span>
+            </div>
+            <span
+                style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">FW24</span>
+        </div>
+
+        <div
+            style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1.5rem; text-align: center;">
+            <div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: var(--text-secondary);">1200</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Planejado</div>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: #3fb950;">850</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Fotografado</div>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: #d29922;">250</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Pendente</div>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: #f85149;">100</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Rejeitado</div>
+            </div>
+        </div>
+
+        <div
+            style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <span>Julho - Set 2024</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; background: #333; border-radius: 50%;"></div>
+                <span>Anna Smith</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        <i class="fas fa-search-minus"></i>
+    </div>
+    <h3>Nenhuma Coleção Encontrada</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Nenhuma coleção corresponde à sua busca atual.</p>
+    <a href="{{ url_for('new_collection') }}" class="btn btn-primary">Criar Nova Coleção</a>
+</div>
+{% endif %}
+{% endblock %}

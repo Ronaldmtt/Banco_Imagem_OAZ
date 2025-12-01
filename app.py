@@ -126,11 +126,32 @@ def analyze_image_with_ai(image_path):
         Por favor, extraia os seguintes atributos específicos baseados na análise visual.
         IMPORTANTE: Responda TUDO em PORTUGUÊS DO BRASIL (PT-BR).
         
-        1. **Tipo de Item**: O tipo específico da peça ou acessório (ex: Vestido Midi, Jaqueta Jeans, Tênis de Corrida).
-        2. **Cor Principal**: A cor dominante (ex: Azul, Vermelho, Preto).
-        3. **Material/Tecido**: Estimativa visual do material (ex: Seda, Jeans, Couro, Algodão).
-        4. **Estampa**: Qualquer padrão visível (ex: Listrado, Floral, Liso, Xadrez).
-        5. **Estilo**: O estilo de moda (ex: Casual, Formal, Streetwear, Vintage).
+        1. **Tipo de Item**: O tipo específico da peça ou acessório (ex: Vestido Midi, Jaqueta Jeans, Tênis de Corrida, Camisa Social, Blusa, Calça).
+        
+        2. **Cor Principal**: A cor dominante (ex: Azul Marinho, Vermelho, Preto, Branco, Bege, Rosa).
+        
+        3. **Material/Tecido**: ANALISE COM CUIDADO o material baseado na textura, caimento, brilho e aparência visual.
+           Considere estas opções comuns em moda:
+           - Fibras naturais: Algodão, Linho, Seda, Lã
+           - Fibras sintéticas: Poliéster, Poliamida (Nylon), Elastano (Lycra), Acrílico
+           - Fibras artificiais: Viscose, Modal, Lyocell (Tencel), Acetato
+           - Misturas comuns: Algodão/Poliéster, Viscose/Elastano, Linho/Viscose, Algodão/Elastano
+           - Tecidos específicos: Jeans (Denim), Couro, Camurça, Tweed, Crepe, Cetim, Chiffon, Tricô, Moletom
+           
+           DICAS VISUAIS:
+           - Linho: textura rústica, amassa facilmente, aparência natural
+           - Seda: brilho suave, caimento fluido, toque delicado
+           - Viscose: caimento fluido, brilho leve, aparência fresca
+           - Poliéster: brilho mais artificial, não amassa, estruturado
+           - Algodão: textura opaca, sem brilho, aparência básica
+           - Crepe: textura granulada, opaco, caimento pesado
+           
+           Se não conseguir determinar com precisão, indique a estimativa mais provável.
+        
+        4. **Estampa/Padrão**: Qualquer padrão visível (ex: Liso, Listrado, Floral, Xadrez, Geométrico, Animal Print, Abstrato, Tie-Dye).
+        
+        5. **Estilo**: O estilo de moda (ex: Casual, Formal/Social, Streetwear, Vintage, Esportivo, Romântico, Minimalista, Boho).
+        
         6. **Descrição Visual**: Uma descrição profissional detalhada adequada para SEO e e-commerce.
         
         Retorne a resposta neste formato JSON ESTRITO:

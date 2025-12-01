@@ -9,107 +9,99 @@
 <div class="dashboard-stats">
     <div class="stat-card">
         <div class="stat-title">Total de Imagens</div>
-        <div class="stat-value">1,234,567</div>
-        <div class="stat-change positive">
-            <i class="fas fa-arrow-up"></i> +1.2%
+        <div class="stat-value">{{ total_images }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+            no sistema
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-title">Novas Imagens (7d)</div>
-        <div class="stat-value">8,910</div>
-        <div class="stat-change positive">
-            <i class="fas fa-arrow-up"></i> +5.0%
+        <div class="stat-title">Pendentes</div>
+        <div class="stat-value" style="color: #d29922;">{{ pending_images }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+            aguardando revisão
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-title">Cobertura de Coleções</div>
-        <div class="stat-value">92%</div>
-        <div class="stat-change negative">
-            <i class="fas fa-arrow-down"></i> -0.5%
+        <div class="stat-title">Aprovadas</div>
+        <div class="stat-value" style="color: #3fb950;">{{ approved_images }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+            prontas para uso
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-title">Taxa de Aprovação IA</div>
-        <div class="stat-value">85%</div>
-        <div class="stat-change positive">
-            <i class="fas fa-arrow-up"></i> +2.1%
+        <div class="stat-title">Rejeitadas</div>
+        <div class="stat-value" style="color: #f85149;">{{ rejected_images }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+            precisam atenção
         </div>
     </div>
 </div>
 
 <div class="charts-grid">
-    <!-- Left Column -->
     <div style="display: flex; flex-direction: column; gap: 1.5rem;">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
             <div class="chart-card">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
-                    <h3>Cobertura por Coleção</h3>
-                    <i class="fas fa-ellipsis-h" style="color: var(--text-secondary);"></i>
+                    <h3>Resumo</h3>
                 </div>
-                <canvas id="coverageChart"></canvas>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <i class="far fa-folder" style="font-size: 1.5rem; color: var(--accent-blue);"></i>
+                            <span>Coleções</span>
+                        </div>
+                        <strong style="font-size: 1.25rem;">{{ total_collections }}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <i class="fas fa-tag" style="font-size: 1.5rem; color: var(--accent-blue);"></i>
+                            <span>Marcas</span>
+                        </div>
+                        <strong style="font-size: 1.25rem;">{{ total_brands }}</strong>
+                    </div>
+                </div>
             </div>
             <div class="chart-card">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
-                    <h3>Tendência de Upload</h3>
-                    <i class="fas fa-ellipsis-h" style="color: var(--text-secondary);"></i>
+                    <h3>Distribuição por Status</h3>
                 </div>
-                <canvas id="trendChart"></canvas>
+                <canvas id="statusChart"></canvas>
             </div>
         </div>
     </div>
 
-    <!-- Right Column (Sidebar widgets) -->
     <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-        <!-- Pending Tasks -->
         <div class="stat-card" style="padding: 1rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1rem;">Tarefas Pendentes de Curadoria</h3>
-                <span
-                    style="background: #d29922; color: black; padding: 2px 6px; border-radius: 10px; font-size: 0.75rem; font-weight: bold;">3</span>
+                <h3 style="font-size: 1rem;">Imagens Recentes</h3>
+                <a href="{{ url_for('catalog') }}" style="font-size: 0.85rem;">Ver todas</a>
             </div>
 
-            <div
-                style="display: flex; gap: 10px; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
-                <div style="width: 40px; height: 40px; background: #333; border-radius: 4px;"></div>
-                <div>
-                    <div style="font-weight: 600; font-size: 0.9rem;">SKU: RSH-001</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Precisa revisão de metadados</div>
+            {% if recent_images %}
+                {% for image in recent_images %}
+                <div style="display: flex; gap: 10px; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                    <div style="width: 40px; height: 40px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                        <img src="{{ url_for('static', filename='uploads/' + image.filename) }}" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; font-size: 0.9rem;">{{ image.sku or image.original_name[:20] }}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                            <span class="status-badge status-{{ image.status.lower() }}" style="font-size: 0.7rem;">{{ image.status }}</span>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('image_detail', id=image.id) }}" style="color: var(--accent-blue); font-size: 0.85rem;">
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
                 </div>
-            </div>
-            <div
-                style="display: flex; gap: 10px; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
-                <div style="width: 40px; height: 40px; background: #333; border-radius: 4px;"></div>
-                <div>
-                    <div style="font-weight: 600; font-size: 0.9rem;">SKU: WTCH-SLV-03</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Aguardando aprovação</div>
-                </div>
-            </div>
+                {% endfor %}
+            {% else %}
+                <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Nenhuma imagem ainda.</p>
+            {% endif %}
 
-            <div style="text-align: center;">
-                <a href="#" style="font-size: 0.9rem;">Ver Todas as Tarefas</a>
-            </div>
-        </div>
-
-        <!-- Integration Jobs -->
-        <div class="stat-card" style="padding: 1rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1rem;">Jobs de Integração</h3>
-                <span
-                    style="background: #f85149; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">1
-                    Falhou</span>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; margin-bottom: 0.8rem; font-size: 0.9rem;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-check-circle" style="color: #3fb950;"></i> Sincronização Shopify
-                </div>
-                <span style="color: var(--text-secondary);">2 min atrás</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 0.8rem; font-size: 0.9rem;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-times-circle" style="color: #f85149;"></i> Sincronização Magento
-                </div>
-                <span style="color: var(--text-secondary);">15 min atrás</span>
+            <div style="text-align: center; margin-top: 1rem;">
+                <a href="{{ url_for('upload') }}" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                    <i class="fas fa-cloud-upload-alt"></i> Enviar Nova Imagem
+                </a>
             </div>
         </div>
     </div>
@@ -117,15 +109,14 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Coverage Chart
-    const ctxCoverage = document.getElementById('coverageChart').getContext('2d');
-    new Chart(ctxCoverage, {
+    const ctxStatus = document.getElementById('statusChart').getContext('2d');
+    new Chart(ctxStatus, {
         type: 'doughnut',
         data: {
-            labels: ['Vestuário', 'Calçados', 'Acessórios'],
+            labels: ['Pendente', 'Aprovado', 'Rejeitado'],
             datasets: [{
-                data: [60, 25, 15],
-                backgroundColor: ['#8b5cf6', '#3b82f6', '#ec4899'],
+                data: [{{ pending_images }}, {{ approved_images }}, {{ rejected_images }}],
+                backgroundColor: ['#d29922', '#3fb950', '#f85149'],
                 borderWidth: 0
             }]
         },
@@ -133,28 +124,6 @@
             plugins: {
                 legend: { position: 'bottom', labels: { color: '#9ca3af' } }
             }
-        }
-    });
-
-    // Trend Chart
-    const ctxTrend = document.getElementById('trendChart').getContext('2d');
-    new Chart(ctxTrend, {
-        type: 'line',
-        data: {
-            labels: ['1', '5', '10', '15', '20', '25', '30'],
-            datasets: [{
-                label: 'Uploads',
-                data: [12, 19, 3, 5, 2, 3, 15],
-                borderColor: '#3b82f6',
-                tension: 0.4
-            }]
-        },
-        options: {
-            scales: {
-                y: { display: false },
-                x: { display: false }
-            },
-            plugins: { legend: { display: false } }
         }
     });
 </script>

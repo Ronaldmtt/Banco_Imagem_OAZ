@@ -24,13 +24,16 @@
             <h3 style="font-size: 1rem; margin-bottom: 1rem;">Filtros</h3>
 
             <div style="margin-bottom: 1rem;">
-                <label
-                    style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Coleção</label>
+                <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Buscar</label>
+                <input type="text" name="q" class="form-control" placeholder="SKU, descrição, tags..." value="{{ search_query or '' }}">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Coleção</label>
                 <select name="collection_id" class="form-control">
                     <option value="all">Todas as Coleções</option>
                     {% for collection in collections %}
-                    <option value="{{ collection.id }}" {% if request.args.get('collection_id')==collection.id|string
-                        %}selected{% endif %}>
+                    <option value="{{ collection.id }}" {% if request.args.get('collection_id')==collection.id|string %}selected{% endif %}>
                         {{ collection.name }}
                     </option>
                     {% endfor %}
@@ -38,28 +41,34 @@
             </div>
 
             <div style="margin-bottom: 1rem;">
-                <label
-                    style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Status</label>
+                <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Marca</label>
+                <select name="brand_id" class="form-control">
+                    <option value="all">Todas as Marcas</option>
+                    {% for brand in brands %}
+                    <option value="{{ brand.id }}" {% if request.args.get('brand_id')==brand.id|string %}selected{% endif %}>
+                        {{ brand.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Status</label>
                 <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem;">
-                        <input type="checkbox" name="status" value="Aprovado" {% if 'Aprovado' in
-                            request.args.getlist('status') %}checked{% endif %}> Aprovado
+                        <input type="checkbox" name="status" value="Aprovado" {% if 'Aprovado' in request.args.getlist('status') %}checked{% endif %}> Aprovado
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem;">
-                        <input type="checkbox" name="status" value="Pendente" {% if 'Pendente' in
-                            request.args.getlist('status') %}checked{% endif %}> Pendente
+                        <input type="checkbox" name="status" value="Pendente" {% if 'Pendente' in request.args.getlist('status') %}checked{% endif %}> Pendente
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem;">
-                        <input type="checkbox" name="status" value="Rejeitado" {% if 'Rejeitado' in
-                            request.args.getlist('status') %}checked{% endif %}> Rejeitado
+                        <input type="checkbox" name="status" value="Rejeitado" {% if 'Rejeitado' in request.args.getlist('status') %}checked{% endif %}> Rejeitado
                     </label>
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">Aplicar
-                Filtros</button>
-            <a href="{{ url_for('catalog') }}" class="btn"
-                style="width: 100%; justify-content: center; margin-top: 0.5rem; border: 1px solid var(--border-color); color: var(--text-primary);">Limpar</a>
+            <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">Aplicar Filtros</button>
+            <a href="{{ url_for('catalog') }}" class="btn" style="width: 100%; justify-content: center; margin-top: 0.5rem; border: 1px solid var(--border-color); color: var(--text-primary);">Limpar</a>
         </form>
     </div>
 
@@ -88,7 +97,7 @@
                 </div>
                 <div class="image-info">
                     <div class="image-title">{{ image.sku or 'Sem SKU' }}</div>
-                    <div class="image-meta">{{ image.brand or 'Sem Marca' }}</div>
+                    <div class="image-meta">{{ image.brand_ref.name if image.brand_ref else 'Sem Marca' }}</div>
                     <div class="status-badge status-{{ image.status.lower() }}">
                         {{ image.status }}
                     </div>

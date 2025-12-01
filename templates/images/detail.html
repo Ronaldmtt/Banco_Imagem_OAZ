@@ -61,15 +61,27 @@
             </div>
             <div style="display: flex; justify-content: space-between;">
                 <span style="color: var(--text-secondary);">Nome da Marca</span>
-                <span>{{ image.brand or '-' }}</span>
+                <span>{{ image.brand_ref.name if image.brand_ref else '-' }}</span>
             </div>
             <div style="display: flex; justify-content: space-between;">
                 <span style="color: var(--text-secondary);">SKU</span>
                 <span>{{ image.sku or '-' }}</span>
             </div>
-            <div style="display: flex; justify-content: space-between;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="color: var(--text-secondary);">Status</span>
                 <span class="status-badge status-{{ image.status.lower() }}">{{ image.status }}</span>
+            </div>
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                <form action="{{ url_for('update_image_status', id=image.id, status='Aprovado') }}" method="POST" style="flex: 1;">
+                    <button type="submit" class="btn" style="width: 100%; background: rgba(63, 185, 80, 0.1); color: #3fb950; border: 1px solid rgba(63, 185, 80, 0.3); font-size: 0.8rem;">
+                        <i class="fas fa-check"></i> Aprovar
+                    </button>
+                </form>
+                <form action="{{ url_for('update_image_status', id=image.id, status='Rejeitado') }}" method="POST" style="flex: 1;">
+                    <button type="submit" class="btn" style="width: 100%; background: rgba(248, 81, 73, 0.1); color: #f85149; border: 1px solid rgba(248, 81, 73, 0.3); font-size: 0.8rem;">
+                        <i class="fas fa-times"></i> Rejeitar
+                    </button>
+                </form>
             </div>
             <div style="display: flex; justify-content: space-between;">
                 <span style="color: var(--text-secondary);">Data de Upload</span>

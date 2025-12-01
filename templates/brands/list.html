@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1>Marcas</h1>
+        <p style="color: var(--text-secondary);">Gerencie as marcas cadastradas no sistema.</p>
+    </div>
+    <a href="{{ url_for('new_brand') }}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Nova Marca
+    </a>
+</div>
+
+{% if brands %}
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+    {% for brand in brands %}
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+            <div>
+                <h3 style="margin-bottom: 0.25rem;">{{ brand.name }}</h3>
+                <span style="color: var(--accent-blue); font-size: 0.8rem;">
+                    {{ brand.images | length }} imagens
+                </span>
+            </div>
+        </div>
+
+        {% if brand.description %}
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+            {{ brand.description }}
+        </p>
+        {% endif %}
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <span>Criado em {{ brand.created_at.strftime('%d/%m/%Y') }}</span>
+            <a href="{{ url_for('catalog') }}?brand_id={{ brand.id }}" style="color: var(--accent-blue);">
+                Ver imagens <i class="fas fa-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        <i class="fas fa-tag"></i>
+    </div>
+    <h3>Nenhuma Marca Cadastrada</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Crie sua primeira marca para organizar as imagens.</p>
+    <a href="{{ url_for('new_brand') }}" class="btn btn-primary">Criar Nova Marca</a>
+</div>
+{% endif %}
+{% endblock %}

@@ -49,10 +49,19 @@ class SystemConfig(db.Model):
     key = db.Column(db.String(50), unique=True, nullable=False)
     value = db.Column(db.Text, nullable=False)
 
+class Brand(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    images = db.relationship('Image', backref='brand_ref', lazy=True)
+
 class Collection(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
+    season = db.Column(db.String(50))
+    year = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     images = db.relationship('Image', backref='collection', lazy=True)
 
@@ -60,21 +69,24 @@ class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     original_name = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text) # AI Generated description
+    description = db.Column(db.Text)
     sku = db.Column(db.String(50))
-    brand = db.Column(db.String(50))
-    status = db.Column(db.String(20), default='Pending') # Pending, Approved, Rejected
+    brand_id = db.Column(db.Integer, db.ForeignKey('brand.id'))
+    status = db.Column(db.String(20), default='Pendente')
     upload_date = db.Column(db.DateTime, default=datetime.utcnow)
+    shooting_date = db.Column(db.Date)
+    photographer = db.Column(db.String(100))
+    unique_code = db.Column(db.String(50), unique=True)
     collection_id = db.Column(db.Integer, db.ForeignKey('collection.id'))
     uploader_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    tags = db.Column(db.Text) # Stored as JSON string or comma-separated
+    tags = db.Column(db.Text)
     
     # AI-extracted attributes
-    ai_item_type = db.Column(db.String(100))  # e.g., "Denim Jacket", "Midi Dress"
-    ai_color = db.Column(db.String(50))        # e.g., "Blue", "Red"
-    ai_material = db.Column(db.String(50))     # e.g., "Denim", "Cotton"
-    ai_pattern = db.Column(db.String(50))      # e.g., "Striped", "Solid"
-    ai_style = db.Column(db.String(50))        # e.g., "Casual", "Formal"
+    ai_item_type = db.Column(db.String(100))
+    ai_color = db.Column(db.String(50))
+    ai_material = db.Column(db.String(50))
+    ai_pattern = db.Column(db.String(50))
+    ai_style = db.Column(db.String(50))
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -233,7 +245,22 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    return render_template('dashboard/index.html')
+    total_images = Image.query.count()
+    pending_images = Image.query.filter_by(status='Pendente').count()
+    approved_images = Image.query.filter_by(status='Aprovado').count()
+    rejected_images = Image.query.filter_by(status='Rejeitado').count()
+    total_collections = Collection.query.count()
+    total_brands = Brand.query.count()
+    recent_images = Image.query.order_by(Image.upload_date.desc()).limit(5).all()
+    
+    return render_template('dashboard/index.html',
+                          total_images=total_images,
+                          pending_images=pending_images,
+                          approved_images=approved_images,
+                          rejected_images=rejected_images,
+                          total_collections=total_collections,
+                          total_brands=total_brands,
+                          recent_images=recent_images)
 
 @app.route('/catalog')
 @login_required
@@ -241,6 +268,8 @@ def catalog():
     # Get filter parameters
     status_filter = request.args.getlist('status')
     collection_filter = request.args.get('collection_id')
+    brand_filter = request.args.get('brand_id')
+    search_query = request.args.get('q', '').strip()
     
     query = Image.query
     
@@ -250,11 +279,28 @@ def catalog():
     
     if collection_filter and collection_filter != 'all':
         query = query.filter_by(collection_id=collection_filter)
+    
+    if brand_filter and brand_filter != 'all':
+        query = query.filter_by(brand_id=brand_filter)
+    
+    # Apply search if provided
+    if search_query:
+        search_term = f"%{search_query}%"
+        query = query.filter(
+            db.or_(
+                Image.sku.ilike(search_term),
+                Image.description.ilike(search_term),
+                Image.original_name.ilike(search_term),
+                Image.ai_item_type.ilike(search_term),
+                Image.tags.ilike(search_term)
+            )
+        )
         
     images = query.order_by(Image.upload_date.desc()).all()
     
-    # Get all collections for the filter dropdown
+    # Get all collections and brands for the filter dropdown
     collections = Collection.query.all()
+    brands = Brand.query.order_by(Brand.name).all()
     
     # Parse tags if they are stored as JSON string
     for img in images:
@@ -266,7 +312,7 @@ def catalog():
         else:
             img.tag_list = []
             
-    return render_template('images/catalog.html', images=images, collections=collections)
+    return render_template('images/catalog.html', images=images, collections=collections, brands=brands, search_query=search_query)
 
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -310,13 +356,19 @@ def upload():
                 ai_tags = []
                 ai_attributes = {}
             
+            # Generate unique code
+            import uuid
+            unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"
+            
             # Create DB record
+            brand_id = request.form.get('brand_id')
             new_image = Image(
                 filename=unique_filename,
                 original_name=file.filename,
                 collection_id=request.form.get('collection_id') if request.form.get('collection_id') else None,
-                brand=request.form.get('brand'),
+                brand_id=int(brand_id) if brand_id else None,
                 sku=request.form.get('sku'),
+                photographer=request.form.get('photographer'),
                 description=request.form.get('observations') or ai_description,
                 tags=json.dumps(ai_tags) if ai_tags else json.dumps([]),
                 ai_item_type=ai_attributes.get('item_type') if ai_attributes else None,
@@ -325,7 +377,8 @@ def upload():
                 ai_pattern=ai_attributes.get('pattern') if ai_attributes else None,
                 ai_style=ai_attributes.get('style') if ai_attributes else None,
                 uploader_id=current_user.id,
-                status='Pendente' # Default status
+                unique_code=unique_code,
+                status='Pendente'
             )
             db.session.add(new_image)
             db.session.commit()
@@ -339,7 +392,8 @@ def upload():
             flash('Formato de arquivo não permitido. Use: PNG, JPG, JPEG ou GIF')
             return redirect(request.url)
     collections = Collection.query.order_by(Collection.name).all()
-    return render_template('images/upload.html', collections=collections)
+    brands = Brand.query.order_by(Brand.name).all()
+    return render_template('images/upload.html', collections=collections, brands=brands)
 
 
 @app.route('/collections')
@@ -384,7 +438,6 @@ def image_detail(id):
 def delete_image(id):
     image = Image.query.get_or_404(id)
     
-    # Remove file from filesystem
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
         if os.path.exists(file_path):
@@ -395,13 +448,69 @@ def delete_image(id):
     db.session.delete(image)
     db.session.commit()
     
-    flash('Image deleted successfully')
+    flash('Imagem deletada com sucesso')
     return redirect(url_for('catalog'))
+
+@app.route('/image/<int:id>/status/<status>', methods=['POST'])
+@login_required
+def update_image_status(id, status):
+    image = Image.query.get_or_404(id)
+    valid_statuses = ['Pendente', 'Aprovado', 'Rejeitado']
+    if status in valid_statuses:
+        image.status = status
+        db.session.commit()
+        flash(f'Status atualizado para {status}')
+    else:
+        flash('Status inválido')
+    return redirect(url_for('image_detail', id=id))
+
+@app.route('/brands')
+@login_required
+def brands():
+    brands = Brand.query.order_by(Brand.name).all()
+    return render_template('brands/list.html', brands=brands)
+
+@app.route('/brands/new', methods=['GET', 'POST'])
+@login_required
+def new_brand():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        description = request.form.get('description')
+        
+        if not name:
+            flash('Nome da marca é obrigatório')
+            return redirect(url_for('new_brand'))
+        
+        if Brand.query.filter_by(name=name).first():
+            flash('Marca já existe')
+            return redirect(url_for('new_brand'))
+            
+        brand = Brand(name=name, description=description)
+        db.session.add(brand)
+        db.session.commit()
+        
+        flash('Marca criada com sucesso!')
+        return redirect(url_for('brands'))
+        
+    return render_template('brands/new.html')
 
 @app.route('/analytics')
 @login_required
 def analytics():
-    return render_template('analytics/index.html')
+    total_images = Image.query.count()
+    pending_images = Image.query.filter_by(status='Pendente').count()
+    approved_images = Image.query.filter_by(status='Aprovado').count()
+    rejected_images = Image.query.filter_by(status='Rejeitado').count()
+    total_collections = Collection.query.count()
+    total_brands = Brand.query.count()
+    
+    return render_template('analytics/index.html', 
+                          total_images=total_images,
+                          pending_images=pending_images,
+                          approved_images=approved_images,
+                          rejected_images=rejected_images,
+                          total_collections=total_collections,
+                          total_brands=total_brands)
 
 @app.route('/integrations')
 @login_required

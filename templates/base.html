@@ -40,6 +40,11 @@
                     <i class="far fa-folder"></i>
                     <span>Coleções</span>
                 </a>
+                <a href="{{ url_for('brands') }}"
+                    class="nav-item {% if request.endpoint == 'brands' %}active{% endif %}">
+                    <i class="fas fa-tag"></i>
+                    <span>Marcas</span>
+                </a>
                 <a href="{{ url_for('analytics') }}"
                     class="nav-item {% if request.endpoint == 'analytics' %}active{% endif %}">
                     <i class="fas fa-chart-pie"></i>

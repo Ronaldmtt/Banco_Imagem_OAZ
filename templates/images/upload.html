@@ -44,16 +44,22 @@
 
             <div class="form-group">
                 <label class="form-label">Marca *</label>
-                <select name="brand" class="form-control">
+                <select name="brand_id" class="form-control">
                     <option value="">Selecione uma marca</option>
-                    <option value="OAZ">OAZ</option>
-                    <option value="Partner">Marca Parceira</option>
+                    {% for brand in brands %}
+                    <option value="{{ brand.id }}">{{ brand.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
             <div class="form-group">
                 <label class="form-label">SKU (Opcional)</label>
                 <input type="text" name="sku" class="form-control" placeholder="ex: ABC-12345">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Fotógrafo (Opcional)</label>
+                <input type="text" name="photographer" class="form-control" placeholder="Nome do fotógrafo">
             </div>
 
             <div class="form-group">

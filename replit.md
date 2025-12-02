@@ -127,6 +127,16 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Supported formats: PNG, JPG, JPEG, GIF
 
 ## Recent Changes
+- **2025-12-02**: Excel Import Enhancement for Carteira de Compras
+  - New `normalizar_carteira_dataframe()` function with robust column normalization
+  - Case-insensitive, accent-insensitive, whitespace-tolerant column matching
+  - Support for importing ALL sheets at once from Excel files
+  - Column auto-mapping: REFERÊNCIA E COR → SKU, NOME → descrição, GRUPO → categoria, etc.
+  - Clear error messages when SKU column not found
+  - Enhanced template with "Import all sheets" checkbox
+  - Detailed instructions on expected Excel format
+  - New fields: subcategoria, colecao_nome, estilista, shooting, observacoes, origem, okr, aba_origem
+
 - **2025-12-02**: Full Product Management & Audit System
   - New Produto model for product catalog (SKU, description, color, category, technical attributes)
   - ImagemProduto model for many-to-many image-product relationships

@@ -287,12 +287,12 @@ function hideError() {
     document.getElementById('errorMessage').style.display = 'none';
 }
 
-document.getElementById('importForm').addEventListener('submit', function(e) {
+document.getElementById('importForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
     hideError();
     
     const fileInput = document.getElementById('fileInput');
     if (!fileInput.files || fileInput.files.length === 0) {
-        e.preventDefault();
         showError('Por favor, selecione um arquivo Excel (.xlsx) ou CSV para importar.');
         return false;
     }
@@ -301,7 +301,28 @@ document.getElementById('importForm').addEventListener('submit', function(e) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importando... Aguarde';
     
-    return true;
+    try {
+        const formData = new FormData(this);
+        
+        const response = await fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            redirect: 'follow'
+        });
+        
+        if (response.redirected) {
+            window.location.href = response.url;
+        } else if (response.ok) {
+            window.location.href = '/carteira';
+        } else {
+            throw new Error('Erro no servidor');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-file-import"></i> Importar Carteira';
+        showError('Erro ao importar arquivo. Tente novamente.');
+    }
 });
 </script>
 {% endblock %}

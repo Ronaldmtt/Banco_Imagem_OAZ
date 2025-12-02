@@ -1839,22 +1839,25 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
     if not sku or not sku.strip():
         return None
     
-    # Buscar apenas produtos ATIVOS (não deletados)
-    produto = Produto.query.filter_by(sku=sku, ativo=True).first()
+    # Primeiro buscar QUALQUER produto com esse SKU (ativo ou inativo)
+    produto = Produto.query.filter_by(sku=sku).first()
     
     if produto:
+        # Se existe mas estava inativo, reativar
+        if not produto.ativo:
+            produto.ativo = True
+            contadores['produtos_criados'] += 1  # Conta como "criado" pois foi reativado
+        
         # Atualizar marca e coleção se ainda não tiver
-        atualizado = False
         if marca_id and not produto.marca_id:
             produto.marca_id = marca_id
-            atualizado = True
         if colecao_id and not produto.colecao_id:
             produto.colecao_id = colecao_id
-            atualizado = True
-        if atualizado:
-            db.session.flush()
+        
+        db.session.flush()
         return produto.id
     
+    # Produto não existe, criar novo
     descricao = str(dados_linha.get('descricao', ''))[:255] if pd.notna(dados_linha.get('descricao', '')) else sku
     cor = str(dados_linha.get('cor', ''))[:50] if pd.notna(dados_linha.get('cor', '')) else None
     categoria = str(dados_linha.get('categoria', ''))[:100] if pd.notna(dados_linha.get('categoria', '')) else None

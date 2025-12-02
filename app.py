@@ -1780,8 +1780,8 @@ def obter_ou_criar_colecao(nome_colecao, contadores):
     nova_colecao = Collection(
         name=nome_colecao.strip().title(),
         description=f'Coleção criada automaticamente via importação de carteira',
-        ano=ano,
-        estacao=estacao
+        year=ano,
+        season=estacao
     )
     db.session.add(nova_colecao)
     db.session.flush()

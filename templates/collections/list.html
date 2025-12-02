@@ -6,10 +6,56 @@
         <h1>Coleções</h1>
         <p style="color: var(--text-secondary);">Gerencie e catalogue todas as coleções de imagens.</p>
     </div>
-    <a href="{{ url_for('new_collection') }}" class="btn btn-primary">
-        <i class="fas fa-plus"></i> Nova Coleção
-    </a>
+    <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('new_collection') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Nova Coleção
+        </a>
+        {% if collections %}
+        <button type="button" onclick="confirmarDeletarTodas()" class="btn" style="background: rgba(248, 81, 73, 0.1); border: 1px solid #f85149; color: #f85149;">
+            <i class="fas fa-trash-alt"></i> Deletar Todas
+        </button>
+        {% endif %}
+    </div>
 </div>
+
+<!-- Modal Deletar Todas Coleções -->
+<div id="modalDeletarTodas" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="stat-card" style="max-width: 450px; margin: auto; text-align: center;">
+        <div style="font-size: 3rem; color: #f85149; margin-bottom: 1rem;">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <h3 style="margin-bottom: 1rem;">Deletar Todas as Coleções?</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+            Esta ação irá remover <strong style="color: #f85149;">{{ collections|length }} coleções</strong> do sistema.
+            <br><br>
+            <strong>Esta ação não pode ser desfeita!</strong>
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+            <button type="button" onclick="fecharModalColecoes()" class="btn" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                <i class="fas fa-times"></i> Cancelar
+            </button>
+            <form action="{{ url_for('delete_all_collections') }}" method="POST" style="display: inline;">
+                <button type="submit" class="btn" style="background: #f85149; color: white; border: none;">
+                    <i class="fas fa-trash-alt"></i> Sim, Deletar Todas
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmarDeletarTodas() {
+    document.getElementById('modalDeletarTodas').style.display = 'flex';
+}
+
+function fecharModalColecoes() {
+    document.getElementById('modalDeletarTodas').style.display = 'none';
+}
+
+document.getElementById('modalDeletarTodas').addEventListener('click', function(e) {
+    if (e.target === this) fecharModalColecoes();
+});
+</script>
 
 <div style="margin-bottom: 2rem; display: flex; gap: 1rem;">
     <form method="GET" action="{{ url_for('collections') }}" style="display: flex; gap: 1rem; flex: 1;">
@@ -72,10 +118,15 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1rem;">
             <span>Criado em {{ collection.created_at.strftime('%d/%m/%Y') }}</span>
-            <div style="display: flex; gap: 1rem;">
+            <div style="display: flex; gap: 1rem; align-items: center;">
                 <a href="{{ url_for('edit_collection', id=collection.id) }}" style="color: var(--text-secondary);">
                     <i class="fas fa-edit"></i> Editar
                 </a>
+                <form action="{{ url_for('delete_collection', id=collection.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir esta coleção?');">
+                    <button type="submit" style="background: none; border: none; color: #f85149; cursor: pointer; font-size: 0.85rem; padding: 0;">
+                        <i class="fas fa-trash"></i> Excluir
+                    </button>
+                </form>
                 <a href="{{ url_for('catalog') }}?collection_id={{ collection.id }}" style="color: var(--accent-blue);">
                     Ver imagens <i class="fas fa-arrow-right"></i>
                 </a>

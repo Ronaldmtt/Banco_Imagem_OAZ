@@ -887,6 +887,16 @@ def delete_collection(id):
     flash('Coleção removida com sucesso!')
     return redirect(url_for('collections'))
 
+@app.route('/collections/delete-all', methods=['POST'])
+@login_required
+def delete_all_collections():
+    """Deleta todas as coleções"""
+    count = Collection.query.count()
+    Collection.query.delete()
+    db.session.commit()
+    flash(f'{count} coleções removidas com sucesso!', 'success')
+    return redirect(url_for('collections'))
+
 @app.route('/collections/new', methods=['GET', 'POST'])
 @login_required
 def new_collection():

@@ -55,6 +55,7 @@ The project has been successfully configured to run in the Replit environment. T
 - **Brand**: Product brands
 - **Collection**: Image collections/groups
 - **Image**: Image records with AI-extracted metadata, brand_id, photographer, shooting_date, unique_code
+- **ImageItem**: Individual pieces detected in an image (supports multiple pieces per photo)
 
 ### Key Features
 1. **Smart Upload**: Drag-and-drop interface with automatic AI analysis
@@ -117,6 +118,15 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Supported formats: PNG, JPG, JPEG, GIF
 
 ## Recent Changes
+- **2025-12-02**: Multi-Piece Detection Feature
+  - New ImageItem model for storing individual pieces detected in images
+  - AI prompt updated to detect and analyze multiple pieces per image (up to 4)
+  - Position reference for each piece (Peça Superior, Peça Inferior, Peça Única, Acessório, Calçado)
+  - Separate metadata, tags, and descriptions for each detected piece
+  - Updated detail page UI to display multiple pieces with cards
+  - Re-analyze button updates all pieces with new detection
+  - Backward compatible with existing single-piece images
+
 - **2025-12-02**: AI Analysis Major Upgrade
   - Comprehensive material identification (30+ fabric types with visual characteristics)
   - Added transparent fabrics: Tule, Organza, Chiffon, Voal, Renda

@@ -83,12 +83,35 @@ class Image(db.Model):
     uploader_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     tags = db.Column(db.Text)
     
-    # AI-extracted attributes
+    # AI-extracted attributes (legacy - mantido para retrocompatibilidade)
     ai_item_type = db.Column(db.String(100))
     ai_color = db.Column(db.String(50))
-    ai_material = db.Column(db.String(50))
+    ai_material = db.Column(db.String(100))
     ai_pattern = db.Column(db.String(50))
     ai_style = db.Column(db.String(50))
+    
+    # Relationship with individual items detected in image
+    items = db.relationship('ImageItem', backref='image', lazy=True, cascade='all, delete-orphan')
+
+class ImageItem(db.Model):
+    """Representa uma peça individual detectada em uma imagem"""
+    id = db.Column(db.Integer, primary_key=True)
+    image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    item_order = db.Column(db.Integer, default=1)  # Ordem da peça na imagem
+    
+    # Descrição específica desta peça
+    description = db.Column(db.Text)
+    tags = db.Column(db.Text)  # JSON array
+    
+    # Atributos IA específicos desta peça
+    ai_item_type = db.Column(db.String(100))
+    ai_color = db.Column(db.String(50))
+    ai_material = db.Column(db.String(100))
+    ai_pattern = db.Column(db.String(50))
+    ai_style = db.Column(db.String(50))
+    
+    # Referência visual (ex: "peça superior", "peça inferior", "acessório")
+    position_ref = db.Column(db.String(50))
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -362,18 +385,60 @@ def analyze_image_with_ai(image_path):
         do joelho, fechamento por zíper invisível nas costas, forro completo."
         
         ═══════════════════════════════════════════════════════════════════
+        7. DETECÇÃO DE MÚLTIPLAS PEÇAS:
+        ═══════════════════════════════════════════════════════════════════
         
-        FORMATO DE RESPOSTA (JSON estrito):
+        IMPORTANTE: Analise a imagem e identifique TODAS as peças de roupa visíveis.
+        
+        - Se houver APENAS UMA peça: retorne um array "items" com 1 item
+        - Se houver MÚLTIPLAS peças (ex: blusa + calça, vestido + bolsa): retorne cada uma separadamente
+        - Máximo de 4 peças por imagem
+        
+        Para cada peça, identifique sua POSIÇÃO na imagem:
+        - "Peça Superior" (blusas, camisas, tops, jaquetas)
+        - "Peça Inferior" (calças, saias, shorts)
+        - "Peça Única" (vestidos, macacões)
+        - "Acessório" (bolsas, cintos, chapéus)
+        - "Calçado" (sapatos, tênis, sandálias)
+        
+        ═══════════════════════════════════════════════════════════════════
+        
+        FORMATO DE RESPOSTA (JSON estrito com MÚLTIPLAS PEÇAS):
         {
-            "description": "Descrição ultra-detalhada conforme instruções acima...",
-            "attributes": {
-                "item_type": "Tipo + Modelagem + Comprimento",
-                "color": "Cor com nuance específica",
-                "material": "Material identificado com precisão",
-                "pattern": "Estampa ou Liso",
-                "style": "Estilo específico (não use apenas 'casual')"
-            },
-            "seo_keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+            "item_count": 1,
+            "items": [
+                {
+                    "position_ref": "Peça Superior/Inferior/Única/Acessório/Calçado",
+                    "description": "Descrição ultra-detalhada desta peça...",
+                    "attributes": {
+                        "item_type": "Tipo + Modelagem + Comprimento",
+                        "color": "Cor com nuance específica",
+                        "material": "Material identificado com precisão",
+                        "pattern": "Estampa ou Liso",
+                        "style": "Estilo específico"
+                    },
+                    "seo_keywords": ["keyword1", "keyword2", "keyword3"]
+                }
+            ]
+        }
+        
+        Se houver 2 peças (ex: blusa e calça):
+        {
+            "item_count": 2,
+            "items": [
+                {
+                    "position_ref": "Peça Superior",
+                    "description": "Descrição da blusa...",
+                    "attributes": {...},
+                    "seo_keywords": [...]
+                },
+                {
+                    "position_ref": "Peça Inferior",
+                    "description": "Descrição da calça...",
+                    "attributes": {...},
+                    "seo_keywords": [...]
+                }
+            ]
         }
         
         REGRAS PARA KEYWORDS:
@@ -404,10 +469,6 @@ def analyze_image_with_ai(image_path):
         content = response.choices[0].message.content
         data = json.loads(content)
         
-        description = data.get('description', '')
-        attributes = data.get('attributes', {})
-        keywords = data.get('seo_keywords', [])
-        
         # Tags genéricas a serem filtradas (não agregam valor)
         generic_tags = [
             'casual', 'moda casual', 'roupa feminina', 'roupa masculina',
@@ -415,28 +476,55 @@ def analyze_image_with_ai(image_path):
             'fashion', 'moda', 'look', 'outfit', 'estilo casual'
         ]
         
-        # Flatten attributes into tags
-        tags = []
-        for key, value in attributes.items():
-            if value and value.lower() != 'none' and value.lower() != 'n/a':
-                # Filtrar tags genéricas dos atributos
-                if value.lower() not in generic_tags:
-                    tags.append(value)
+        def filter_tags(attributes, keywords):
+            """Filtra e gera tags a partir de atributos e keywords"""
+            tags = []
+            for key, value in attributes.items():
+                if value and value.lower() != 'none' and value.lower() != 'n/a':
+                    if value.lower() not in generic_tags:
+                        tags.append(value)
+            for keyword in keywords:
+                if keyword.lower() not in generic_tags:
+                    tags.append(keyword)
+            return list(set(tags))
         
-        # Add SEO keywords to tags (filtering generic ones)
-        for keyword in keywords:
-            if keyword.lower() not in generic_tags:
-                tags.extend([keyword])
+        # Novo formato com múltiplas peças
+        if 'items' in data and isinstance(data['items'], list):
+            items_data = []
+            for idx, item in enumerate(data['items']):
+                item_attributes = item.get('attributes', {})
+                item_keywords = item.get('seo_keywords', [])
+                item_tags = filter_tags(item_attributes, item_keywords)
+                
+                items_data.append({
+                    'order': idx + 1,
+                    'position_ref': item.get('position_ref', f'Peça {idx + 1}'),
+                    'description': item.get('description', ''),
+                    'tags': item_tags,
+                    'attributes': item_attributes
+                })
+            
+            # Retorna lista de itens
+            return items_data
         
-        # Remove duplicates and limit
-        unique_tags = list(set(tags))
+        # Fallback: formato antigo (uma peça só)
+        description = data.get('description', '')
+        attributes = data.get('attributes', {})
+        keywords = data.get('seo_keywords', [])
+        tags = filter_tags(attributes, keywords)
         
-        # Return description, tags, and structured attributes
-        return description, unique_tags, attributes
+        # Retorna como lista com um item para compatibilidade
+        return [{
+            'order': 1,
+            'position_ref': 'Peça Única',
+            'description': description,
+            'tags': tags,
+            'attributes': attributes
+        }]
         
     except Exception as e:
         print(f"AI Analysis Error: {e}")
-        return f"Erro ao analisar imagem: {str(e)}", [], {}
+        return f"Erro ao analisar imagem: {str(e)}"
 
 # Routes
 @app.route('/')
@@ -583,29 +671,30 @@ def upload():
             file.save(file_path)
             
             # Real AI Analysis with better error handling
+            ai_items = []
             try:
-                ai_description, ai_tags, ai_attributes = analyze_image_with_ai(file_path)
+                ai_result = analyze_image_with_ai(file_path)
                 
-                # Check if analysis failed (returned error message)
-                if isinstance(ai_description, str) and ai_description.startswith("AI Configuration missing"):
-                    print(f"[WARNING] AI not configured, using defaults")
-                    ai_description = request.form.get('observations') or "Imagem enviada - análise manual necessária"
-                    ai_tags = []
-                    ai_attributes = {}
-                elif isinstance(ai_description, str) and ai_description.startswith("Erro ao analisar"):
-                    print(f"[ERROR] AI analysis failed: {ai_description}")
-                    ai_description = request.form.get('observations') or "Imagem enviada - erro na análise automática"
-                    ai_tags = []
-                    ai_attributes = {}
+                # Check if analysis failed (returned error message string)
+                if isinstance(ai_result, str):
+                    if ai_result.startswith("AI Configuration missing"):
+                        print(f"[WARNING] AI not configured, using defaults")
+                    else:
+                        print(f"[ERROR] AI analysis failed: {ai_result}")
+                    ai_items = []
+                else:
+                    ai_items = ai_result  # Lista de itens detectados
             except Exception as e:
                 print(f"[ERROR] Exception during AI analysis: {e}")
-                ai_description = request.form.get('observations') or "Imagem enviada - análise manual necessária"
-                ai_tags = []
-                ai_attributes = {}
+                ai_items = []
             
             # Generate unique code
             import uuid
             unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"
+            
+            # Prepare legacy fields from first item (for backward compatibility)
+            first_item = ai_items[0] if ai_items else {}
+            first_attrs = first_item.get('attributes', {}) if first_item else {}
             
             # Create DB record
             brand_id = request.form.get('brand_id')
@@ -616,21 +705,43 @@ def upload():
                 brand_id=int(brand_id) if brand_id else None,
                 sku=request.form.get('sku'),
                 photographer=request.form.get('photographer'),
-                description=request.form.get('observations') or ai_description,
-                tags=json.dumps(ai_tags) if ai_tags else json.dumps([]),
-                ai_item_type=ai_attributes.get('item_type') if ai_attributes else None,
-                ai_color=ai_attributes.get('color') if ai_attributes else None,
-                ai_material=ai_attributes.get('material') if ai_attributes else None,
-                ai_pattern=ai_attributes.get('pattern') if ai_attributes else None,
-                ai_style=ai_attributes.get('style') if ai_attributes else None,
+                description=request.form.get('observations') or first_item.get('description', ''),
+                tags=json.dumps(first_item.get('tags', [])) if first_item else json.dumps([]),
+                ai_item_type=first_attrs.get('item_type'),
+                ai_color=first_attrs.get('color'),
+                ai_material=first_attrs.get('material'),
+                ai_pattern=first_attrs.get('pattern'),
+                ai_style=first_attrs.get('style'),
                 uploader_id=current_user.id,
                 unique_code=unique_code,
                 status='Pendente'
             )
             db.session.add(new_image)
+            db.session.flush()  # Get the image ID
+            
+            # Create ImageItem records for each detected piece
+            for item_data in ai_items:
+                attrs = item_data.get('attributes', {})
+                new_item = ImageItem(
+                    image_id=new_image.id,
+                    item_order=item_data.get('order', 1),
+                    position_ref=item_data.get('position_ref', 'Peça Única'),
+                    description=item_data.get('description', ''),
+                    tags=json.dumps(item_data.get('tags', [])),
+                    ai_item_type=attrs.get('item_type'),
+                    ai_color=attrs.get('color'),
+                    ai_material=attrs.get('material'),
+                    ai_pattern=attrs.get('pattern'),
+                    ai_style=attrs.get('style')
+                )
+                db.session.add(new_item)
+            
             db.session.commit()
             
-            if ai_attributes:
+            item_count = len(ai_items)
+            if item_count > 1:
+                flash(f'Imagem enviada com sucesso. {item_count} peças detectadas e analisadas.')
+            elif item_count == 1:
                 flash('Imagem enviada com sucesso. Análise de IA concluída.')
             else:
                 flash('Imagem enviada com sucesso. Configure a chave OpenAI em Configurações para análise automática.')
@@ -723,25 +834,56 @@ def reanalyze_image(id):
         return redirect(url_for('image_detail', id=id))
     
     try:
-        ai_description, ai_tags, ai_attributes = analyze_image_with_ai(file_path)
+        ai_result = analyze_image_with_ai(file_path)
         
-        if isinstance(ai_description, str) and ai_description.startswith("AI Configuration missing"):
-            flash('Chave OpenAI não configurada. Acesse Configurações para adicionar.')
-            return redirect(url_for('image_detail', id=id))
-        elif isinstance(ai_description, str) and ai_description.startswith("Erro ao analisar"):
-            flash(f'Erro na análise: {ai_description}')
+        # Check if analysis failed (returned error message string)
+        if isinstance(ai_result, str):
+            if ai_result.startswith("AI Configuration missing"):
+                flash('Chave OpenAI não configurada. Acesse Configurações para adicionar.')
+            else:
+                flash(f'Erro na análise: {ai_result}')
             return redirect(url_for('image_detail', id=id))
         
-        image.description = ai_description
-        image.tags = json.dumps(ai_tags) if ai_tags else json.dumps([])
-        image.ai_item_type = ai_attributes.get('item_type') if ai_attributes else None
-        image.ai_color = ai_attributes.get('color') if ai_attributes else None
-        image.ai_material = ai_attributes.get('material') if ai_attributes else None
-        image.ai_pattern = ai_attributes.get('pattern') if ai_attributes else None
-        image.ai_style = ai_attributes.get('style') if ai_attributes else None
+        ai_items = ai_result  # Lista de itens detectados
+        
+        # Update legacy fields from first item (for backward compatibility)
+        first_item = ai_items[0] if ai_items else {}
+        first_attrs = first_item.get('attributes', {}) if first_item else {}
+        
+        image.description = first_item.get('description', '')
+        image.tags = json.dumps(first_item.get('tags', [])) if first_item else json.dumps([])
+        image.ai_item_type = first_attrs.get('item_type')
+        image.ai_color = first_attrs.get('color')
+        image.ai_material = first_attrs.get('material')
+        image.ai_pattern = first_attrs.get('pattern')
+        image.ai_style = first_attrs.get('style')
+        
+        # Remove existing items and create new ones
+        ImageItem.query.filter_by(image_id=image.id).delete()
+        
+        for item_data in ai_items:
+            attrs = item_data.get('attributes', {})
+            new_item = ImageItem(
+                image_id=image.id,
+                item_order=item_data.get('order', 1),
+                position_ref=item_data.get('position_ref', 'Peça Única'),
+                description=item_data.get('description', ''),
+                tags=json.dumps(item_data.get('tags', [])),
+                ai_item_type=attrs.get('item_type'),
+                ai_color=attrs.get('color'),
+                ai_material=attrs.get('material'),
+                ai_pattern=attrs.get('pattern'),
+                ai_style=attrs.get('style')
+            )
+            db.session.add(new_item)
         
         db.session.commit()
-        flash('Imagem re-analisada com sucesso! Atributos atualizados.')
+        
+        item_count = len(ai_items)
+        if item_count > 1:
+            flash(f'Re-análise concluída! {item_count} peças detectadas e analisadas.')
+        else:
+            flash('Imagem re-analisada com sucesso! Atributos atualizados.')
         
     except Exception as e:
         print(f"[ERROR] Re-analysis failed: {e}")

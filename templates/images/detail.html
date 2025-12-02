@@ -114,64 +114,132 @@
 
         <!-- Tab Content: IA & Tags -->
         <div id="content-ai" class="tab-content" style="display: none; flex-direction: column; gap: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <h4 style="font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin: 0;">
+                    <i class="fas fa-magic" style="color: var(--accent-blue);"></i>
+                    Análise de IA
+                </h4>
+                <form action="{{ url_for('reanalyze_image', id=image.id) }}" method="POST" style="margin: 0;">
+                    <button type="submit" class="btn" style="background: rgba(130, 80, 223, 0.1); color: #a371f7; border: 1px solid rgba(130, 80, 223, 0.3); font-size: 0.75rem; padding: 4px 10px;"
+                        onclick="this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i> Analisando...'; this.disabled=true; this.form.submit();">
+                        <i class="fas fa-sync-alt"></i> Re-analisar
+                    </button>
+                </form>
+            </div>
+            
+            {% if image.items and image.items|length > 0 %}
+            <div style="background: rgba(130, 80, 223, 0.1); border: 1px solid rgba(130, 80, 223, 0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 0.5rem;">
+                <span style="color: #a371f7; font-size: 0.85rem;">
+                    <i class="fas fa-layer-group"></i> {{ image.items|length }} peça(s) detectada(s) nesta imagem
+                </span>
+            </div>
+            
+            {% for item in image.items|sort(attribute='item_order') %}
+            <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border-left: 3px solid var(--accent-blue);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <span style="font-weight: 600; color: var(--accent-blue); font-size: 0.9rem;">
+                        <i class="fas fa-tshirt"></i> {{ item.position_ref or 'Peça ' ~ item.item_order }}
+                    </span>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);">#{{ item.item_order }}</span>
+                </div>
+                
+                {% set item_tags = item.tags|safe|tojson|safe if item.tags else '[]' %}
+                {% set item_tag_list = item.tags|safe|trim|first == '[' and (item.tags|safe|fromjson) or [] %}
+                {% if item.tags %}
+                <div style="margin-bottom: 0.75rem;">
+                    <span style="color: var(--text-secondary); display: block; font-size: 0.75rem; margin-bottom: 0.3rem;">Tags</span>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                        {% for tag in item.tags|safe|trim|replace('[','')| replace(']','')| replace('"','')|split(',') %}
+                        {% if tag|trim %}
+                        <span style="font-size: 0.7rem; background: var(--bg-secondary); padding: 2px 8px; border-radius: 10px; color: var(--text-primary);">{{ tag|trim }}</span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem;">
+                    {% if item.ai_item_type %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.7rem;">Tipo</span>
+                        <span style="font-weight: 500;">{{ item.ai_item_type }}</span>
+                    </div>
+                    {% endif %}
+                    {% if item.ai_color %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.7rem;">Cor</span>
+                        <span style="font-weight: 500;">{{ item.ai_color }}</span>
+                    </div>
+                    {% endif %}
+                    {% if item.ai_material %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.7rem;">Material</span>
+                        <span style="font-weight: 500;">{{ item.ai_material }}</span>
+                    </div>
+                    {% endif %}
+                    {% if item.ai_pattern %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.7rem;">Padrão</span>
+                        <span style="font-weight: 500;">{{ item.ai_pattern }}</span>
+                    </div>
+                    {% endif %}
+                    {% if item.ai_style %}
+                    <div>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.7rem;">Estilo</span>
+                        <span style="font-weight: 500;">{{ item.ai_style }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                {% if item.description %}
+                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                    <span style="color: var(--text-secondary); display: block; font-size: 0.7rem; margin-bottom: 0.3rem;">Descrição</span>
+                    <p style="font-size: 0.8rem; color: var(--text-primary); margin: 0; line-height: 1.4;">{{ item.description }}</p>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            
+            {% else %}
             <div>
                 <span style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Tags IA</span>
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                     {% for tag in image.tag_list %}
-                    <span
-                        style="font-size: 0.8rem; background: var(--bg-tertiary); padding: 4px 10px; border-radius: 12px; color: var(--text-primary);">{{
-                        tag }}</span>
+                    <span style="font-size: 0.8rem; background: var(--bg-tertiary); padding: 4px 10px; border-radius: 12px; color: var(--text-primary);">{{ tag }}</span>
                     {% else %}
                     <span style="color: var(--text-secondary); font-size: 0.9rem;">Nenhuma tag gerada.</span>
                     {% endfor %}
                 </div>
             </div>
 
-            <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h4 style="font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin: 0;">
-                        <i class="fas fa-magic" style="color: var(--accent-blue);"></i>
-                        Atributos Extraídos pela IA
-                    </h4>
-                    <form action="{{ url_for('reanalyze_image', id=image.id) }}" method="POST" style="margin: 0;">
-                        <button type="submit" class="btn" style="background: rgba(130, 80, 223, 0.1); color: #a371f7; border: 1px solid rgba(130, 80, 223, 0.3); font-size: 0.75rem; padding: 4px 10px;"
-                            onclick="this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i> Analisando...'; this.disabled=true; this.form.submit();">
-                            <i class="fas fa-sync-alt"></i> Re-analisar
-                        </button>
-                    </form>
-                </div>
-
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem;">Atributos Extraídos</h4>
                 {% if image.ai_item_type or image.ai_color or image.ai_material or image.ai_pattern or image.ai_style %}
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.9rem;">
                     {% if image.ai_item_type %}
                     <div>
-                        <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Tipo de
-                            Item</span>
+                        <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Tipo de Item</span>
                         <span style="font-weight: 500;">{{ image.ai_item_type }}</span>
                     </div>
                     {% endif %}
-
                     {% if image.ai_color %}
                     <div>
                         <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Cor</span>
                         <span style="font-weight: 500;">{{ image.ai_color }}</span>
                     </div>
                     {% endif %}
-
                     {% if image.ai_material %}
                     <div>
                         <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Material</span>
                         <span style="font-weight: 500;">{{ image.ai_material }}</span>
                     </div>
                     {% endif %}
-
                     {% if image.ai_pattern %}
                     <div>
                         <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Padrão</span>
                         <span style="font-weight: 500;">{{ image.ai_pattern }}</span>
                     </div>
                     {% endif %}
-
                     {% if image.ai_style %}
                     <div>
                         <span style="color: var(--text-secondary); display: block; font-size: 0.8rem;">Estilo</span>
@@ -180,10 +248,10 @@
                     {% endif %}
                 </div>
                 {% else %}
-                <p style="color: var(--text-secondary); font-size: 0.9rem;">Nenhum atributo IA extraído. Configure a
-                    chave OpenAI em Configurações para análise automática.</p>
+                <p style="color: var(--text-secondary); font-size: 0.9rem;">Nenhum atributo IA extraído. Configure a chave OpenAI em Configurações para análise automática.</p>
                 {% endif %}
             </div>
+            {% endif %}
         </div>
 
         <!-- Tab Content: Links -->

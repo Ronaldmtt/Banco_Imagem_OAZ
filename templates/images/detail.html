@@ -143,8 +143,6 @@
                     <span style="font-size: 0.75rem; color: var(--text-secondary);">#{{ item.item_order }}</span>
                 </div>
                 
-                {% set item_tags = item.tags|safe|tojson|safe if item.tags else '[]' %}
-                {% set item_tag_list = item.tags|safe|trim|first == '[' and (item.tags|safe|fromjson) or [] %}
                 {% if item.tags %}
                 <div style="margin-bottom: 0.75rem;">
                     <span style="color: var(--text-secondary); display: block; font-size: 0.75rem; margin-bottom: 0.3rem;">Tags</span>

@@ -168,28 +168,41 @@ def analyze_image_with_ai(image_path):
         
         ▼▼▼ TECIDOS TRANSPARENTES E DELICADOS (PRIORIDADE MÁXIMA) ▼▼▼
         
-        ★★★ DIFERENÇA CRÍTICA: TULE vs RENDA ★★★
+        ★★★ ANÁLISE DE MATERIAIS EM CAMADAS (MUITO IMPORTANTE!) ★★★
         
-        TULE (malha transparente SEM desenhos):
-        - Visual: Grade/rede UNIFORME transparente com furinhos regulares (hexagonais)
-        - CARACTERÍSTICA PRINCIPAL: NÃO TEM DESENHOS - é apenas a malha vazada uniforme
-        - Textura: Simples, regular, simétrica em toda superfície
-        - Estrutura: Pode ser rígido ou macio, mas sempre uniforme
-        - Uso: Saias volumosas, detalhes, véus, sobreposições
-        - IDENTIFICAR: Olhe contra a luz - verá grade uniforme SEM padrões decorativos
+        Muitas peças têm MÚLTIPLOS materiais sobrepostos. Analise em DUAS ETAPAS:
         
-        RENDA (tecido COM desenhos decorativos):
-        - Visual: TEM desenhos/padrões (flores, arabescos, folhagens, geométricos)
-        - CARACTERÍSTICA PRINCIPAL: SEMPRE tem motivos decorativos formados pelos fios
-        - Textura: Complexa, variada, com áreas cheias e vazadas
-        - Estrutura: Pode ser sobre base de tule OU independente (guipir)
-        - Uso: Blusas elegantes, vestidos, detalhes ornamentais
-        - IDENTIFICAR: Se há desenhos/padrões decorativos, é RENDA (mesmo sobre base de tule)
+        ETAPA 1 - IDENTIFIQUE A BASE (tecido que cobre o corpo):
+        - Se há uma TELA/MALHA TRANSPARENTE cobrindo grande área = BASE é TULE
+        - Sinais visuais: diferença no tom da pele entre áreas cobertas (mais escuras/acinzentadas) 
+          e áreas descobertas (mãos, pescoço, rosto têm tom de pele natural)
+        - Se a pele aparece "velada" ou com tom diferente = há uma camada de TULE por baixo
         
-        ⚠️ REGRA DE OURO:
-        - Malha uniforme SEM desenhos = TULE
-        - Qualquer padrão/desenho decorativo = RENDA
-        - Desenhos bordados sobre base de tule = RENDA BORDADA (não tule!)
+        ETAPA 2 - IDENTIFIQUE APLICAÇÕES/DETALHES (sobre a base):
+        - Bordados, desenhos florais, arabescos = APLICAÇÃO de RENDA
+        - Pedrarias, paetês = aplicações decorativas
+        
+        ★ REGRA DE NOMENCLATURA:
+        - Base de tule + desenhos de renda = "Tule com renda aplicada" (NÃO apenas "Renda"!)
+        - Base de tule + bordados = "Tule bordado"
+        - Apenas malha transparente uniforme = "Tule"
+        - Renda sem base transparente (autossustentada) = "Renda guipir"
+        - Renda delicada com desenhos florais = "Renda chantilly"
+        
+        ⚠️ DICA VISUAL CRÍTICA:
+        Se você observa que o TOM DA PELE é diferente entre:
+        - Mãos/pescoço/rosto (tom natural, sem cobertura)
+        - Braços/torso/pernas (tom mais escuro/velado)
+        Isso indica que há uma CAMADA DE TULE como base, mesmo que tenha desenhos por cima!
+        Neste caso, identifique como "Tule com renda" ou "Tule com detalhes de renda"
+        
+        TULE (base transparente):
+        - Grade/rede transparente cobrindo grandes áreas do corpo
+        - Cria efeito "véu" na pele - altera o tom visual
+        
+        RENDA (aplicação decorativa):
+        - Desenhos ornamentais (flores, arabescos)
+        - Geralmente aplicada SOBRE uma base (tule ou forro)
         
         ORGANZA:
         - Visual: Transparente, RÍGIDO, brilho acetinado

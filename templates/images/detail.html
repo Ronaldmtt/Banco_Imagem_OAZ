@@ -128,10 +128,18 @@
             </div>
 
             <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
-                <h4 style="font-size: 0.95rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-magic" style="color: var(--accent-blue);"></i>
-                    Atributos Extraídos pela IA
-                </h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h4 style="font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin: 0;">
+                        <i class="fas fa-magic" style="color: var(--accent-blue);"></i>
+                        Atributos Extraídos pela IA
+                    </h4>
+                    <form action="{{ url_for('reanalyze_image', id=image.id) }}" method="POST" style="margin: 0;">
+                        <button type="submit" class="btn" style="background: rgba(130, 80, 223, 0.1); color: #a371f7; border: 1px solid rgba(130, 80, 223, 0.3); font-size: 0.75rem; padding: 4px 10px;"
+                            onclick="this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i> Analisando...'; this.disabled=true; this.form.submit();">
+                            <i class="fas fa-sync-alt"></i> Re-analisar
+                        </button>
+                    </form>
+                </div>
 
                 {% if image.ai_item_type or image.ai_color or image.ai_material or image.ai_pattern or image.ai_style %}
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.9rem;">

@@ -168,33 +168,42 @@ def analyze_image_with_ai(image_path):
         
         ▼▼▼ TECIDOS TRANSPARENTES E DELICADOS (PRIORIDADE MÁXIMA) ▼▼▼
         
-        TULE:
-        - Visual: Rede/malha TRANSPARENTE com furinhos visíveis
-        - Estrutura: Leve mas FIRME, mantém volume
+        ★★★ DIFERENÇA CRÍTICA: TULE vs RENDA ★★★
+        
+        TULE (malha transparente SEM desenhos):
+        - Visual: Grade/rede UNIFORME transparente com furinhos regulares (hexagonais)
+        - CARACTERÍSTICA PRINCIPAL: NÃO TEM DESENHOS - é apenas a malha vazada uniforme
+        - Textura: Simples, regular, simétrica em toda superfície
+        - Estrutura: Pode ser rígido ou macio, mas sempre uniforme
         - Uso: Saias volumosas, detalhes, véus, sobreposições
-        - NÃO confundir com: Viscose (opaca), Chiffon (mais fluido)
+        - IDENTIFICAR: Olhe contra a luz - verá grade uniforme SEM padrões decorativos
+        
+        RENDA (tecido COM desenhos decorativos):
+        - Visual: TEM desenhos/padrões (flores, arabescos, folhagens, geométricos)
+        - CARACTERÍSTICA PRINCIPAL: SEMPRE tem motivos decorativos formados pelos fios
+        - Textura: Complexa, variada, com áreas cheias e vazadas
+        - Estrutura: Pode ser sobre base de tule OU independente (guipir)
+        - Uso: Blusas elegantes, vestidos, detalhes ornamentais
+        - IDENTIFICAR: Se há desenhos/padrões decorativos, é RENDA (mesmo sobre base de tule)
+        
+        ⚠️ REGRA DE OURO:
+        - Malha uniforme SEM desenhos = TULE
+        - Qualquer padrão/desenho decorativo = RENDA
+        - Desenhos bordados sobre base de tule = RENDA BORDADA (não tule!)
         
         ORGANZA:
         - Visual: Transparente, RÍGIDO, brilho acetinado
-        - Estrutura: Armado, não flui, mantém forma
+        - Estrutura: Armado, mantém forma, não é vazado como tule
         - Uso: Saias estruturadas, vestidos de festa
-        - NÃO confundir com: Tule (tem furos), Chiffon (fluido)
         
         CHIFFON:
         - Visual: Transparente, MUITO FLUIDO e esvoaçante
         - Estrutura: Leve, sem estrutura, cai naturalmente
-        - Uso: Vestidos românticos, blusas leves, lenços
-        - NÃO confundir com: Organza (rígido), Voal (menos fluido)
+        - Uso: Vestidos leves, blusas, lenços
         
         VOAL:
         - Visual: Semi-transparente, intermediário
         - Estrutura: Entre organza e chiffon
-        - Uso: Sobreposições, cortinas, detalhes
-        
-        RENDA:
-        - Visual: Padrões VAZADOS ornamentais, desenhos florais
-        - Estrutura: Pode ser rígida ou flexível
-        - Uso: Detalhes, blusas, vestidos românticos
         
         ▼▼▼ FIBRAS NATURAIS (SEM BRILHO) ▼▼▼
         
@@ -300,17 +309,23 @@ def analyze_image_with_ai(image_path):
         Abstrato, Tie-Dye, Étnico, Tropical, Paisley, Camuflado
         
         ═══════════════════════════════════════════════════════════════════
-        5. ESTILO (seja específico, evite "casual"):
+        5. ESTILO (seja específico e baseado no USO da peça):
         ═══════════════════════════════════════════════════════════════════
-        - Festa/Gala: peças elegantes para eventos
-        - Social/Trabalho: alfaiataria, peças formais
-        - Streetwear/Urbano: estilo de rua, despojado
-        - Romântico: rendas, babados, tons suaves
-        - Minimalista: linhas limpas, cores neutras
-        - Boho/Bohemian: fluido, étnico, franjas
-        - Esportivo/Athleisure: confortável, funcional
-        - Praia/Resort: leve, estampas tropicais
-        - Vintage/Retrô: inspiração décadas passadas
+        Analise o CONTEXTO DE USO da peça, não apenas sua aparência:
+        
+        - Festa/Gala: vestidos elegantes, peças brilhantes para eventos noturnos
+        - Social/Trabalho: alfaiataria, camisas, peças formais para escritório
+        - Dia a Dia/Urbano: peças práticas para uso cotidiano
+        - Streetwear: estilo de rua, oversized, tênis, bonés
+        - Minimalista: linhas limpas, cores neutras, sem ornamentos
+        - Boho/Bohemian: fluido, étnico, franjas, estampas naturais
+        - Esportivo/Athleisure: confortável, funcional, para exercícios ou lazer
+        - Praia/Resort: leve, estampas tropicais, tecidos frescos
+        - Vintage/Retrô: inspiração em décadas passadas
+        - Balada/Noite: peças ousadas, recortes, transparências
+        
+        ⚠️ EVITE estilos genéricos. Use o contexto de USO real da peça.
+        ⚠️ NÃO classifique como "Romântico" apenas por ter renda/tule - analise o contexto.
         
         ═══════════════════════════════════════════════════════════════════
         6. DESCRIÇÃO DETALHADA (CRÍTICO para verificação de SKU):
@@ -681,6 +696,44 @@ def update_image_status(id, status):
         flash(f'Status atualizado para {status}')
     else:
         flash('Status inválido')
+    return redirect(url_for('image_detail', id=id))
+
+@app.route('/image/<int:id>/reanalyze', methods=['POST'])
+@login_required
+def reanalyze_image(id):
+    image = Image.query.get_or_404(id)
+    
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
+    
+    if not os.path.exists(file_path):
+        flash('Arquivo de imagem não encontrado')
+        return redirect(url_for('image_detail', id=id))
+    
+    try:
+        ai_description, ai_tags, ai_attributes = analyze_image_with_ai(file_path)
+        
+        if isinstance(ai_description, str) and ai_description.startswith("AI Configuration missing"):
+            flash('Chave OpenAI não configurada. Acesse Configurações para adicionar.')
+            return redirect(url_for('image_detail', id=id))
+        elif isinstance(ai_description, str) and ai_description.startswith("Erro ao analisar"):
+            flash(f'Erro na análise: {ai_description}')
+            return redirect(url_for('image_detail', id=id))
+        
+        image.description = ai_description
+        image.tags = json.dumps(ai_tags) if ai_tags else json.dumps([])
+        image.ai_item_type = ai_attributes.get('item_type') if ai_attributes else None
+        image.ai_color = ai_attributes.get('color') if ai_attributes else None
+        image.ai_material = ai_attributes.get('material') if ai_attributes else None
+        image.ai_pattern = ai_attributes.get('pattern') if ai_attributes else None
+        image.ai_style = ai_attributes.get('style') if ai_attributes else None
+        
+        db.session.commit()
+        flash('Imagem re-analisada com sucesso! Atributos atualizados.')
+        
+    except Exception as e:
+        print(f"[ERROR] Re-analysis failed: {e}")
+        flash(f'Erro ao re-analisar: {str(e)}')
+    
     return redirect(url_for('image_detail', id=id))
 
 @app.route('/image/<int:id>/edit', methods=['GET', 'POST'])

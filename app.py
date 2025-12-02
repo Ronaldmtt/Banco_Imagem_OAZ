@@ -1831,7 +1831,7 @@ def obter_ou_criar_marca(nome_marca, contadores):
     contadores['marcas_criadas'] += 1
     return nova_marca.id
 
-def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_id=None):
+def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_id=None, cache_produtos=None):
     """Busca ou cria um produto pelo SKU. Retorna o ID do produto."""
     import pandas as pd
     import json
@@ -1839,14 +1839,20 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
     if not sku or not sku.strip():
         return None
     
-    # Primeiro buscar QUALQUER produto com esse SKU (ativo ou inativo)
+    sku = sku.strip()
+    
+    # Verificar cache local primeiro (evita duplicatas na mesma importação)
+    if cache_produtos is not None and sku in cache_produtos:
+        return cache_produtos[sku]
+    
+    # Buscar QUALQUER produto com esse SKU (ativo ou inativo)
     produto = Produto.query.filter_by(sku=sku).first()
     
     if produto:
         # Se existe mas estava inativo, reativar
         if not produto.ativo:
             produto.ativo = True
-            contadores['produtos_criados'] += 1  # Conta como "criado" pois foi reativado
+            contadores['produtos_criados'] += 1
         
         # Atualizar marca e coleção se ainda não tiver
         if marca_id and not produto.marca_id:
@@ -1855,6 +1861,11 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
             produto.colecao_id = colecao_id
         
         db.session.flush()
+        
+        # Adicionar ao cache
+        if cache_produtos is not None:
+            cache_produtos[sku] = produto.id
+        
         return produto.id
     
     # Produto não existe, criar novo
@@ -1881,9 +1892,14 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
     db.session.add(novo_produto)
     db.session.flush()
     contadores['produtos_criados'] += 1
+    
+    # Adicionar ao cache
+    if cache_produtos is not None:
+        cache_produtos[sku] = novo_produto.id
+    
     return novo_produto.id
 
-def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None):
+def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None):
     """
     Processa linhas do DataFrame e insere/atualiza na CarteiraCompras.
     Auto-cria Coleções, Marcas e Produtos quando dados válidos são encontrados.
@@ -1893,6 +1909,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None):
         lote_id: ID do lote de importação
         aba_origem: Nome da aba de origem
         contadores: Dicionário para rastrear entidades criadas
+        cache_produtos: Cache de produtos já criados nesta importação
     
     Returns:
         (count, skus_invalidos): Quantidade de itens criados e linhas ignoradas
@@ -1905,6 +1922,9 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None):
             'marcas_criadas': 0,
             'produtos_criados': 0
         }
+    
+    if cache_produtos is None:
+        cache_produtos = {}
     
     count = 0
     skus_invalidos = 0
@@ -1923,7 +1943,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None):
         
         colecao_id = obter_ou_criar_colecao(nome_colecao, contadores) if nome_colecao else None
         marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else None
-        produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id)
+        produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id, cache_produtos=cache_produtos)
         
         existing = CarteiraCompras.query.filter_by(sku=sku).first()
         if existing:
@@ -2016,6 +2036,9 @@ def importar_carteira():
                 'produtos_criados': 0
             }
             
+            # Cache para evitar duplicatas de produtos na mesma importação
+            cache_produtos = {}
+            
             if filename.endswith('.csv'):
                 try:
                     content = file.read().decode('utf-8')
@@ -2030,7 +2053,7 @@ def importar_carteira():
                     flash('Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".', 'error')
                     return redirect(request.url)
                 
-                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores)
+                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores, cache_produtos)
                 total_count = count
                 total_invalidos = invalidos
                 abas_processadas.append('CSV')
@@ -2050,7 +2073,7 @@ def importar_carteira():
                         if not sku_encontrado:
                             continue
                         
-                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores)
+                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores, cache_produtos)
                         total_count += count
                         total_invalidos += invalidos
                         if count > 0:
@@ -2072,7 +2095,7 @@ def importar_carteira():
                         flash(f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".', 'error')
                         return redirect(request.url)
                     
-                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores)
+                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos)
                     total_count = count
                     total_invalidos = invalidos
                     abas_processadas.append(aba_selecionada)

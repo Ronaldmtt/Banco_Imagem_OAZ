@@ -152,7 +152,9 @@ def migrate():
         ('observacoes', 'TEXT'),
         ('origem', 'VARCHAR(50)'),
         ('okr', 'VARCHAR(20)'),
-        ('aba_origem', 'VARCHAR(50)')
+        ('aba_origem', 'VARCHAR(50)'),
+        ('colecao_id', 'INTEGER'),
+        ('marca_id', 'INTEGER')
     ]
     
     for column_name, column_type in carteira_columns:

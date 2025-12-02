@@ -183,13 +183,19 @@ class CarteiraCompras(db.Model):
     okr = db.Column(db.String(20))  # Status de aprovação
     produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'))  # Link com produto se existir
     
+    # Relacionamentos com entidades auto-criadas
+    colecao_id = db.Column(db.Integer, db.ForeignKey('collection.id'))  # Coleção associada
+    marca_id = db.Column(db.Integer, db.ForeignKey('brand.id'))  # Marca associada
+    
     # Metadados de importação
     data_importacao = db.Column(db.DateTime, default=datetime.utcnow)
     lote_importacao = db.Column(db.String(50))  # Identificador do lote de importação
     aba_origem = db.Column(db.String(50))  # Aba do Excel de origem
     
-    # Relacionamento
+    # Relacionamentos
     produto = db.relationship('Produto', backref='itens_carteira')
+    colecao = db.relationship('Collection', backref='itens_carteira')
+    marca = db.relationship('Brand', backref='itens_carteira')
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -1606,6 +1612,7 @@ def normalizar_carteira_dataframe(df):
     mapeamento_categoria = ['grupo', 'categoria', 'departamento', 'tipo']
     mapeamento_subcategoria = ['subgrupo', 'subcategoria', 'sub categoria', 'subtipo']
     mapeamento_colecao = ['entrada', 'colecao', 'coleção', 'temporada']
+    mapeamento_marca = ['marca', 'brand', 'grife', 'fabricante']
     mapeamento_estilista = ['estilista', 'designer', 'criador']
     mapeamento_shooting = ['quando', 'shooting', 'data shooting', 'foto quando']
     mapeamento_observacoes = ['obs', 'observacoes', 'observações', 'notas', 'comentarios']
@@ -1630,6 +1637,7 @@ def normalizar_carteira_dataframe(df):
     col_categoria = encontrar_coluna(mapeamento_categoria)
     col_subcategoria = encontrar_coluna(mapeamento_subcategoria)
     col_colecao = encontrar_coluna(mapeamento_colecao)
+    col_marca = encontrar_coluna(mapeamento_marca)
     col_estilista = encontrar_coluna(mapeamento_estilista)
     col_shooting = encontrar_coluna(mapeamento_shooting)
     col_observacoes = encontrar_coluna(mapeamento_observacoes)
@@ -1650,6 +1658,8 @@ def normalizar_carteira_dataframe(df):
         novo_mapeamento[col_subcategoria] = 'subcategoria'
     if col_colecao:
         novo_mapeamento[col_colecao] = 'colecao_nome'
+    if col_marca:
+        novo_mapeamento[col_marca] = 'marca_nome'
     if col_estilista:
         novo_mapeamento[col_estilista] = 'estilista'
     if col_shooting:
@@ -1671,9 +1681,137 @@ def normalizar_carteira_dataframe(df):
     
     return df_normalizado, sku_encontrado
 
-def processar_linhas_carteira(df, lote_id, aba_origem):
-    """Processa linhas do DataFrame e insere/atualiza na CarteiraCompras"""
+def extrair_ano_estacao(nome_colecao):
+    """Extrai ano e estação do nome da coleção (ex: 'INVERNO 2026' → ano=2026, estacao='Inverno')"""
+    import re
+    if not nome_colecao:
+        return None, None
+    
+    nome_upper = nome_colecao.upper().strip()
+    
+    match_ano = re.search(r'\b(20\d{2})\b', nome_upper)
+    ano = int(match_ano.group(1)) if match_ano else None
+    
+    estacao = None
+    if 'INVERNO' in nome_upper:
+        estacao = 'Inverno'
+    elif 'VERAO' in nome_upper or 'VERÃO' in nome_upper:
+        estacao = 'Verão'
+    elif 'PRIMAVERA' in nome_upper:
+        estacao = 'Primavera'
+    elif 'OUTONO' in nome_upper:
+        estacao = 'Outono'
+    elif 'ALTO VERAO' in nome_upper or 'ALTO VERÃO' in nome_upper:
+        estacao = 'Alto Verão'
+    elif 'CRUISE' in nome_upper or 'RESORT' in nome_upper:
+        estacao = 'Resort'
+    
+    return ano, estacao
+
+def obter_ou_criar_colecao(nome_colecao, contadores):
+    """Busca ou cria uma coleção pelo nome. Retorna o ID da coleção."""
+    if not nome_colecao or not nome_colecao.strip():
+        return None
+    
+    nome_normalizado = nome_colecao.strip().upper()
+    
+    colecao = Collection.query.filter(
+        db.func.upper(Collection.name) == nome_normalizado
+    ).first()
+    
+    if colecao:
+        return colecao.id
+    
+    ano, estacao = extrair_ano_estacao(nome_colecao)
+    
+    nova_colecao = Collection(
+        name=nome_colecao.strip().title(),
+        description=f'Coleção criada automaticamente via importação de carteira',
+        ano=ano,
+        estacao=estacao
+    )
+    db.session.add(nova_colecao)
+    db.session.flush()
+    contadores['colecoes_criadas'] += 1
+    return nova_colecao.id
+
+def obter_ou_criar_marca(nome_marca, contadores):
+    """Busca ou cria uma marca pelo nome. Retorna o ID da marca."""
+    if not nome_marca or not nome_marca.strip():
+        return None
+    
+    nome_normalizado = nome_marca.strip().upper()
+    
+    marca = Brand.query.filter(
+        db.func.upper(Brand.name) == nome_normalizado
+    ).first()
+    
+    if marca:
+        return marca.id
+    
+    nova_marca = Brand(
+        name=nome_marca.strip().title(),
+        description=f'Marca criada automaticamente via importação de carteira'
+    )
+    db.session.add(nova_marca)
+    db.session.flush()
+    contadores['marcas_criadas'] += 1
+    return nova_marca.id
+
+def obter_ou_criar_produto(sku, dados_linha, contadores):
+    """Busca ou cria um produto pelo SKU. Retorna o ID do produto."""
     import pandas as pd
+    
+    if not sku or not sku.strip():
+        return None
+    
+    produto = Produto.query.filter_by(sku=sku).first()
+    
+    if produto:
+        return produto.id
+    
+    descricao = str(dados_linha.get('descricao', ''))[:255] if pd.notna(dados_linha.get('descricao', '')) else None
+    cor = str(dados_linha.get('cor', ''))[:100] if pd.notna(dados_linha.get('cor', '')) else None
+    categoria = str(dados_linha.get('categoria', ''))[:100] if pd.notna(dados_linha.get('categoria', '')) else None
+    subcategoria = str(dados_linha.get('subcategoria', ''))[:100] if pd.notna(dados_linha.get('subcategoria', '')) else None
+    
+    novo_produto = Produto(
+        sku=sku,
+        descricao=descricao,
+        cor=cor,
+        categoria=categoria,
+        subcategoria=subcategoria,
+        origem='Importação Carteira',
+        tem_foto=False
+    )
+    db.session.add(novo_produto)
+    db.session.flush()
+    contadores['produtos_criados'] += 1
+    return novo_produto.id
+
+def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None):
+    """
+    Processa linhas do DataFrame e insere/atualiza na CarteiraCompras.
+    Auto-cria Coleções, Marcas e Produtos quando dados válidos são encontrados.
+    
+    Args:
+        df: DataFrame normalizado
+        lote_id: ID do lote de importação
+        aba_origem: Nome da aba de origem
+        contadores: Dicionário para rastrear entidades criadas
+    
+    Returns:
+        (count, skus_invalidos): Quantidade de itens criados e linhas ignoradas
+    """
+    import pandas as pd
+    
+    if contadores is None:
+        contadores = {
+            'colecoes_criadas': 0,
+            'marcas_criadas': 0,
+            'produtos_criados': 0
+        }
+    
     count = 0
     skus_invalidos = 0
     
@@ -1686,10 +1824,23 @@ def processar_linhas_carteira(df, lote_id, aba_origem):
         
         sku = sku.rstrip('.00').rstrip('.0').strip()
         
+        nome_colecao = str(row.get('colecao_nome', '')).strip() if pd.notna(row.get('colecao_nome', '')) else None
+        nome_marca = str(row.get('marca_nome', '')).strip() if pd.notna(row.get('marca_nome', '')) else None
+        
+        colecao_id = obter_ou_criar_colecao(nome_colecao, contadores) if nome_colecao else None
+        marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else None
+        produto_id = obter_ou_criar_produto(sku, row, contadores)
+        
         existing = CarteiraCompras.query.filter_by(sku=sku).first()
         if existing:
             existing.lote_importacao = lote_id
             existing.aba_origem = aba_origem
+            if colecao_id:
+                existing.colecao_id = colecao_id
+            if marca_id:
+                existing.marca_id = marca_id
+            if produto_id:
+                existing.produto_id = produto_id
         else:
             status_foto_original = str(row.get('status_foto_original', '')).upper() if pd.notna(row.get('status_foto_original', '')) else ''
             if 'SIM' in status_foto_original or 'YES' in status_foto_original or 'S' == status_foto_original:
@@ -1710,7 +1861,9 @@ def processar_linhas_carteira(df, lote_id, aba_origem):
                 cor=str(row.get('cor', ''))[:100] if pd.notna(row.get('cor', '')) else None,
                 categoria=str(row.get('categoria', ''))[:100] if pd.notna(row.get('categoria', '')) else None,
                 subcategoria=str(row.get('subcategoria', ''))[:100] if pd.notna(row.get('subcategoria', '')) else None,
-                colecao_nome=str(row.get('colecao_nome', ''))[:100] if pd.notna(row.get('colecao_nome', '')) else None,
+                colecao_nome=nome_colecao[:100] if nome_colecao else None,
+                colecao_id=colecao_id,
+                marca_id=marca_id,
                 estilista=str(row.get('estilista', ''))[:255] if pd.notna(row.get('estilista', '')) else None,
                 shooting=str(row.get('shooting', ''))[:100] if pd.notna(row.get('shooting', '')) else None,
                 observacoes=str(row.get('observacoes', '')) if pd.notna(row.get('observacoes', '')) else None,
@@ -1719,13 +1872,13 @@ def processar_linhas_carteira(df, lote_id, aba_origem):
                 quantidade=qtd,
                 status_foto=status_foto,
                 lote_importacao=lote_id,
-                aba_origem=aba_origem
+                aba_origem=aba_origem,
+                produto_id=produto_id
             )
             
-            produto = Produto.query.filter_by(sku=sku).first()
-            if produto:
-                item.produto_id = produto.id
-                if produto.tem_foto:
+            if produto_id:
+                produto = Produto.query.get(produto_id)
+                if produto and produto.tem_foto:
                     item.status_foto = 'Com Foto'
             
             db.session.add(item)
@@ -1763,6 +1916,12 @@ def importar_carteira():
             total_invalidos = 0
             abas_processadas = []
             
+            contadores = {
+                'colecoes_criadas': 0,
+                'marcas_criadas': 0,
+                'produtos_criados': 0
+            }
+            
             if filename.endswith('.csv'):
                 try:
                     content = file.read().decode('utf-8')
@@ -1777,7 +1936,7 @@ def importar_carteira():
                     flash('Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".', 'error')
                     return redirect(request.url)
                 
-                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV')
+                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores)
                 total_count = count
                 total_invalidos = invalidos
                 abas_processadas.append('CSV')
@@ -1797,7 +1956,7 @@ def importar_carteira():
                         if not sku_encontrado:
                             continue
                         
-                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name)
+                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores)
                         total_count += count
                         total_invalidos += invalidos
                         if count > 0:
@@ -1819,7 +1978,7 @@ def importar_carteira():
                         flash(f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".', 'error')
                         return redirect(request.url)
                     
-                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada)
+                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores)
                     total_count = count
                     total_invalidos = invalidos
                     abas_processadas.append(aba_selecionada)
@@ -1830,6 +1989,17 @@ def importar_carteira():
                 flash(f'Importação concluída! {total_count} novos itens de {len(abas_processadas)} abas adicionados. Abas: {", ".join(abas_processadas)}. Lote: {lote_id}', 'success')
             else:
                 flash(f'Importação concluída! {total_count} novos itens da aba "{abas_processadas[0]}" adicionados. Lote: {lote_id}', 'success')
+            
+            entidades_criadas = []
+            if contadores['colecoes_criadas'] > 0:
+                entidades_criadas.append(f"{contadores['colecoes_criadas']} coleção(ões)")
+            if contadores['marcas_criadas'] > 0:
+                entidades_criadas.append(f"{contadores['marcas_criadas']} marca(s)")
+            if contadores['produtos_criados'] > 0:
+                entidades_criadas.append(f"{contadores['produtos_criados']} produto(s)")
+            
+            if entidades_criadas:
+                flash(f'Criados automaticamente: {", ".join(entidades_criadas)}', 'info')
             
             if total_invalidos > 0:
                 flash(f'{total_invalidos} linhas ignoradas (SKU vazio ou inválido).', 'warning')

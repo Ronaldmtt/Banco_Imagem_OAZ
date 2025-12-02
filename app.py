@@ -789,6 +789,14 @@ def image_detail(id):
         image.tag_list = json.loads(image.tags) if image.tags else []
     except:
         image.tag_list = []
+    
+    # Process tags for each item
+    for item in image.items:
+        try:
+            item.tag_list = json.loads(item.tags) if item.tags else []
+        except:
+            item.tag_list = []
+    
     return render_template('images/detail.html', image=image)
 
 @app.route('/image/<int:id>/delete', methods=['POST'])

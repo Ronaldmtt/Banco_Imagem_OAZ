@@ -143,14 +143,12 @@
                     <span style="font-size: 0.75rem; color: var(--text-secondary);">#{{ item.item_order }}</span>
                 </div>
                 
-                {% if item.tags %}
+                {% if item.tag_list %}
                 <div style="margin-bottom: 0.75rem;">
                     <span style="color: var(--text-secondary); display: block; font-size: 0.75rem; margin-bottom: 0.3rem;">Tags</span>
                     <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                        {% for tag in item.tags|safe|trim|replace('[','')| replace(']','')| replace('"','')|split(',') %}
-                        {% if tag|trim %}
-                        <span style="font-size: 0.7rem; background: var(--bg-secondary); padding: 2px 8px; border-radius: 10px; color: var(--text-primary);">{{ tag|trim }}</span>
-                        {% endif %}
+                        {% for tag in item.tag_list %}
+                        <span style="font-size: 0.7rem; background: var(--bg-secondary); padding: 2px 8px; border-radius: 10px; color: var(--text-primary);">{{ tag }}</span>
                         {% endfor %}
                     </div>
                 </div>

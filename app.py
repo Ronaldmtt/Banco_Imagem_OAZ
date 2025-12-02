@@ -1457,6 +1457,16 @@ def delete_produto(id):
     flash('Produto removido com sucesso')
     return redirect(url_for('produtos'))
 
+@app.route('/produtos/delete-all', methods=['POST'])
+@login_required
+def delete_all_produtos():
+    """Deleta todos os produtos (soft delete)"""
+    count = Produto.query.filter_by(ativo=True).count()
+    Produto.query.filter_by(ativo=True).update({'ativo': False})
+    db.session.commit()
+    flash(f'{count} produtos removidos com sucesso!', 'success')
+    return redirect(url_for('produtos'))
+
 @app.route('/produtos/export')
 @login_required
 def export_produtos_csv():

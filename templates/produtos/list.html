@@ -13,8 +13,52 @@
         <a href="{{ url_for('export_produtos_csv') }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
             <i class="fas fa-file-export"></i> Exportar CSV
         </a>
+        {% if total_produtos > 0 %}
+        <button type="button" onclick="confirmarDeletarTodos()" class="btn" style="background: rgba(248, 81, 73, 0.1); border: 1px solid #f85149; color: #f85149;">
+            <i class="fas fa-trash-alt"></i> Deletar Todos
+        </button>
+        {% endif %}
     </div>
 </div>
+
+<!-- Modal Deletar Todos -->
+<div id="modalDeletarTodos" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="stat-card" style="max-width: 450px; margin: auto; text-align: center;">
+        <div style="font-size: 3rem; color: #f85149; margin-bottom: 1rem;">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <h3 style="margin-bottom: 1rem;">Deletar Todos os Produtos?</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+            Esta ação irá remover <strong style="color: #f85149;">{{ total_produtos }} produtos</strong> do sistema.
+            <br><br>
+            <strong>Esta ação não pode ser desfeita!</strong>
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+            <button type="button" onclick="fecharModal()" class="btn" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                <i class="fas fa-times"></i> Cancelar
+            </button>
+            <form action="{{ url_for('delete_all_produtos') }}" method="POST" style="display: inline;">
+                <button type="submit" class="btn" style="background: #f85149; color: white; border: none;">
+                    <i class="fas fa-trash-alt"></i> Sim, Deletar Todos
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmarDeletarTodos() {
+    document.getElementById('modalDeletarTodos').style.display = 'flex';
+}
+
+function fecharModal() {
+    document.getElementById('modalDeletarTodos').style.display = 'none';
+}
+
+document.getElementById('modalDeletarTodos').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+});
+</script>
 
 <div class="dashboard-stats" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 2rem;">
     <div class="stat-card">

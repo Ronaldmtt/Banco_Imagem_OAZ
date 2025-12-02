@@ -56,6 +56,10 @@ The project has been successfully configured to run in the Replit environment. T
 - **Collection**: Image collections/groups
 - **Image**: Image records with AI-extracted metadata, brand_id, photographer, shooting_date, unique_code
 - **ImageItem**: Individual pieces detected in an image (supports multiple pieces per photo)
+- **Produto**: Product catalog with SKU, description, color, category, technical attributes
+- **ImagemProduto**: Many-to-many relationship between images and products
+- **HistoricoSKU**: SKU change history with versioning and user tracking
+- **CarteiraCompras**: Shopping cart/purchase order import from CSV with photo status tracking
 
 ### Key Features
 1. **Smart Upload**: Drag-and-drop interface with automatic AI analysis
@@ -68,6 +72,11 @@ The project has been successfully configured to run in the Replit environment. T
 8. **Advanced Filtering**: Filter by status, collection, brand, and search by SKU/description/tags
 9. **Reports**: Metrics by status, brand, collection with CSV export
 10. **SEO-Ready**: AI-generated descriptions and keywords
+11. **Product Catalog (Produtos)**: Full CRUD for products with SKU, description, color, category, technical attributes
+12. **Image-Product Association**: Link multiple images to products and vice-versa
+13. **SKU History Tracking**: Version control for SKU changes with user audit trail
+14. **Shopping Cart Import (Carteira de Compras)**: Periodic CSV import with automatic photo status matching
+15. **Audit Reports**: Cross-reference products vs images vs shopping cart, divergence detection
 
 ## Configuration
 
@@ -118,6 +127,18 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Supported formats: PNG, JPG, JPEG, GIF
 
 ## Recent Changes
+- **2025-12-02**: Full Product Management & Audit System
+  - New Produto model for product catalog (SKU, description, color, category, technical attributes)
+  - ImagemProduto model for many-to-many image-product relationships
+  - HistoricoSKU model for SKU change versioning with user tracking
+  - CarteiraCompras model for shopping cart CSV import with photo status tracking
+  - Full CRUD routes for products (/produtos, /produtos/new, /produtos/{id}/edit)
+  - Shopping cart management (/carteira, /carteira/importar)
+  - Audit dashboard (/auditoria) with SKU history, divergences, pending SKUs reports
+  - CSV export for all audit reports
+  - Updated sidebar with 3 new sections: Produtos, Carteira de Compras, Auditoria
+  - Database migration with 5 new tables and 8 indexes
+
 - **2025-12-02**: Multi-Piece Detection Feature
   - New ImageItem model for storing individual pieces detected in images
   - AI prompt updated to detect and analyze multiple pieces per image (up to 4)

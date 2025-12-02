@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <a href="{{ url_for('auditoria') }}" style="color: var(--text-secondary); font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <i class="fas fa-arrow-left"></i> Voltar para Auditoria
+        </a>
+        <h1 style="margin-top: 1rem;">Histórico de Alterações de SKU</h1>
+        <p style="color: var(--text-secondary);">Registro completo de todas as alterações de SKU no sistema.</p>
+    </div>
+    <a href="{{ url_for('exportar_auditoria', tipo='historico_sku') }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+        <i class="fas fa-file-export"></i> Exportar CSV
+    </a>
+</div>
+
+{% if historico %}
+<div class="stat-card" style="padding: 0; overflow: hidden;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU Antigo</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU Novo</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Data da Alteração</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Motivo</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Usuário</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in historico %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 1rem;">
+                    <span style="font-family: monospace; background: rgba(248, 81, 73, 0.1); color: #f85149; padding: 4px 8px; border-radius: 4px;">
+                        {{ item.sku_antigo }}
+                    </span>
+                </td>
+                <td style="padding: 1rem;">
+                    <span style="font-family: monospace; background: rgba(63, 185, 80, 0.1); color: #3fb950; padding: 4px 8px; border-radius: 4px;">
+                        {{ item.sku_novo }}
+                    </span>
+                </td>
+                <td style="padding: 1rem; color: var(--text-secondary);">
+                    <i class="far fa-calendar-alt" style="margin-right: 0.5rem;"></i>
+                    {{ item.data_alteracao.strftime('%d/%m/%Y às %H:%M') }}
+                </td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ item.motivo or '-' }}</td>
+                <td style="padding: 1rem;">
+                    {% if item.usuario %}
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-blue); display: flex; align-items: center; justify-content: center; color: white; font-size: 0.75rem; font-weight: 600;">
+                            {{ item.usuario.username[0].upper() }}
+                        </div>
+                        <span>{{ item.usuario.username }}</span>
+                    </div>
+                    {% else %}
+                    <span style="color: var(--text-secondary);">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        <i class="fas fa-history"></i>
+    </div>
+    <h3>Nenhum Histórico Encontrado</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Não há registro de alterações de SKU no sistema.</p>
+</div>
+{% endif %}
+{% endblock %}

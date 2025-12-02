@@ -113,6 +113,75 @@ class ImageItem(db.Model):
     # Referência visual (ex: "peça superior", "peça inferior", "acessório")
     position_ref = db.Column(db.String(50))
 
+class Produto(db.Model):
+    """Modelo de Produto com SKU e atributos técnicos"""
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), unique=True, nullable=False)
+    descricao = db.Column(db.String(255), nullable=False)
+    cor = db.Column(db.String(50))
+    categoria = db.Column(db.String(100))
+    atributos_tecnicos = db.Column(db.Text)  # JSON com atributos extras
+    
+    # Relacionamentos
+    marca_id = db.Column(db.Integer, db.ForeignKey('brand.id'))
+    colecao_id = db.Column(db.Integer, db.ForeignKey('collection.id'))
+    
+    # Metadados
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Flags
+    tem_foto = db.Column(db.Boolean, default=False)
+    ativo = db.Column(db.Boolean, default=True)
+    
+    # Relationships
+    marca = db.relationship('Brand', backref='produtos')
+    colecao = db.relationship('Collection', backref='produtos')
+    imagens = db.relationship('ImagemProduto', backref='produto', lazy=True, cascade='all, delete-orphan')
+    historico_skus = db.relationship('HistoricoSKU', backref='produto', lazy=True)
+
+class ImagemProduto(db.Model):
+    """Associação entre Imagem e Produto (uma imagem pode ter vários produtos)"""
+    id = db.Column(db.Integer, primary_key=True)
+    imagem_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relacionamentos
+    imagem = db.relationship('Image', backref='produtos_associados')
+
+class HistoricoSKU(db.Model):
+    """Histórico de alterações de SKU para rastreabilidade"""
+    id = db.Column(db.Integer, primary_key=True)
+    produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'), nullable=False)
+    sku_antigo = db.Column(db.String(50), nullable=False)
+    sku_novo = db.Column(db.String(50), nullable=False)
+    data_alteracao = db.Column(db.DateTime, default=datetime.utcnow)
+    motivo = db.Column(db.String(255))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    
+    usuario = db.relationship('User', backref='alteracoes_sku')
+
+class CarteiraCompras(db.Model):
+    """Carteira de compras importada para comparação com itens fotografados"""
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), nullable=False)
+    descricao = db.Column(db.String(255))
+    cor = db.Column(db.String(50))
+    categoria = db.Column(db.String(100))
+    quantidade = db.Column(db.Integer, default=1)
+    
+    # Status
+    status_foto = db.Column(db.String(20), default='Pendente')  # Pendente, Com Foto, Sem Foto
+    produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'))  # Link com produto se existir
+    
+    # Metadados de importação
+    data_importacao = db.Column(db.DateTime, default=datetime.utcnow)
+    lote_importacao = db.Column(db.String(50))  # Identificador do lote de importação
+    
+    # Relacionamento
+    produto = db.relationship('Produto', backref='itens_carteira')
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -1142,6 +1211,530 @@ def export_report(report_type):
     
     else:
         return redirect(url_for('reports'))
+    
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    response.headers['Content-type'] = 'text/csv; charset=utf-8'
+    return response
+
+# ==================== PRODUTOS ====================
+
+@app.route('/produtos')
+@login_required
+def produtos():
+    search = request.args.get('search', '')
+    marca_id = request.args.get('marca_id', '')
+    colecao_id = request.args.get('colecao_id', '')
+    status_foto = request.args.get('status_foto', '')
+    
+    query = Produto.query.filter_by(ativo=True)
+    
+    if search:
+        search_term = f'%{search}%'
+        query = query.filter(db.or_(
+            Produto.sku.ilike(search_term),
+            Produto.descricao.ilike(search_term),
+            Produto.cor.ilike(search_term)
+        ))
+    
+    if marca_id:
+        query = query.filter_by(marca_id=int(marca_id))
+    
+    if colecao_id:
+        query = query.filter_by(colecao_id=int(colecao_id))
+    
+    if status_foto == 'com_foto':
+        query = query.filter_by(tem_foto=True)
+    elif status_foto == 'sem_foto':
+        query = query.filter_by(tem_foto=False)
+    
+    produtos_list = query.order_by(Produto.created_at.desc()).all()
+    marcas = Brand.query.order_by(Brand.name).all()
+    colecoes = Collection.query.order_by(Collection.name).all()
+    
+    return render_template('produtos/list.html', 
+                          produtos=produtos_list, 
+                          marcas=marcas, 
+                          colecoes=colecoes,
+                          search=search)
+
+@app.route('/produtos/new', methods=['GET', 'POST'])
+@login_required
+def new_produto():
+    if request.method == 'POST':
+        sku = request.form.get('sku', '').strip()
+        descricao = request.form.get('descricao', '').strip()
+        cor = request.form.get('cor', '').strip()
+        categoria = request.form.get('categoria', '').strip()
+        atributos = request.form.get('atributos_tecnicos', '').strip()
+        marca_id = request.form.get('marca_id')
+        colecao_id = request.form.get('colecao_id')
+        
+        if not sku or not descricao:
+            flash('SKU e Descrição são obrigatórios')
+            return redirect(url_for('new_produto'))
+        
+        if Produto.query.filter_by(sku=sku).first():
+            flash('SKU já cadastrado')
+            return redirect(url_for('new_produto'))
+        
+        produto = Produto(
+            sku=sku,
+            descricao=descricao,
+            cor=cor,
+            categoria=categoria,
+            atributos_tecnicos=atributos,
+            marca_id=int(marca_id) if marca_id else None,
+            colecao_id=int(colecao_id) if colecao_id else None
+        )
+        db.session.add(produto)
+        db.session.commit()
+        
+        flash('Produto cadastrado com sucesso!')
+        return redirect(url_for('produtos'))
+    
+    marcas = Brand.query.order_by(Brand.name).all()
+    colecoes = Collection.query.order_by(Collection.name).all()
+    return render_template('produtos/new.html', marcas=marcas, colecoes=colecoes)
+
+@app.route('/produtos/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_produto(id):
+    produto = Produto.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        sku_novo = request.form.get('sku', '').strip()
+        sku_antigo = produto.sku
+        motivo = request.form.get('motivo_alteracao', '').strip()
+        
+        # Se SKU mudou, registrar no histórico
+        if sku_novo != sku_antigo:
+            if not motivo:
+                flash('Informe o motivo da alteração do SKU')
+                return redirect(url_for('edit_produto', id=id))
+            
+            existing = Produto.query.filter_by(sku=sku_novo).first()
+            if existing and existing.id != produto.id:
+                flash('SKU já existe em outro produto')
+                return redirect(url_for('edit_produto', id=id))
+            
+            # Registrar histórico
+            historico = HistoricoSKU(
+                produto_id=produto.id,
+                sku_antigo=sku_antigo,
+                sku_novo=sku_novo,
+                motivo=motivo,
+                usuario_id=current_user.id
+            )
+            db.session.add(historico)
+            produto.sku = sku_novo
+            
+            # Atualizar SKU na carteira de compras se existir
+            carteira_item = CarteiraCompras.query.filter_by(sku=sku_antigo).first()
+            if carteira_item:
+                carteira_item.sku = sku_novo
+        
+        produto.descricao = request.form.get('descricao', '').strip()
+        produto.cor = request.form.get('cor', '').strip()
+        produto.categoria = request.form.get('categoria', '').strip()
+        produto.atributos_tecnicos = request.form.get('atributos_tecnicos', '').strip()
+        
+        marca_id = request.form.get('marca_id')
+        produto.marca_id = int(marca_id) if marca_id else None
+        
+        colecao_id = request.form.get('colecao_id')
+        produto.colecao_id = int(colecao_id) if colecao_id else None
+        
+        db.session.commit()
+        flash('Produto atualizado com sucesso!')
+        return redirect(url_for('produtos'))
+    
+    marcas = Brand.query.order_by(Brand.name).all()
+    colecoes = Collection.query.order_by(Collection.name).all()
+    
+    # Imagens associadas ao produto
+    imagens_associadas = Image.query.join(ImagemProduto).filter(ImagemProduto.produto_id == produto.id).all()
+    
+    # Imagens disponíveis para associar (não associadas ainda)
+    imagens_associadas_ids = [img.id for img in imagens_associadas]
+    imagens_disponiveis = Image.query.filter(~Image.id.in_(imagens_associadas_ids) if imagens_associadas_ids else True).order_by(Image.upload_date.desc()).limit(50).all()
+    
+    # Histórico de alterações de SKU
+    historico_sku = HistoricoSKU.query.filter_by(produto_id=produto.id).order_by(HistoricoSKU.data_alteracao.desc()).all()
+    
+    return render_template('produtos/edit.html', 
+                          produto=produto, 
+                          marcas=marcas, 
+                          colecoes=colecoes,
+                          imagens_associadas=imagens_associadas,
+                          imagens_disponiveis=imagens_disponiveis,
+                          historico_sku=historico_sku)
+
+@app.route('/produtos/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_produto(id):
+    produto = Produto.query.get_or_404(id)
+    produto.ativo = False  # Soft delete
+    db.session.commit()
+    flash('Produto removido com sucesso')
+    return redirect(url_for('produtos'))
+
+@app.route('/produtos/<int:id>/associar-imagem', methods=['POST'])
+@login_required
+def associar_imagem_produto(id):
+    produto = Produto.query.get_or_404(id)
+    imagem_id = request.form.get('imagem_id')
+    
+    if not imagem_id:
+        flash('Selecione uma imagem')
+        return redirect(url_for('edit_produto', id=id))
+    
+    # Verificar se já existe associação
+    existing = ImagemProduto.query.filter_by(
+        imagem_id=int(imagem_id), 
+        produto_id=produto.id
+    ).first()
+    
+    if existing:
+        flash('Imagem já está associada a este produto')
+        return redirect(url_for('edit_produto', id=id))
+    
+    associacao = ImagemProduto(
+        imagem_id=int(imagem_id),
+        produto_id=produto.id
+    )
+    db.session.add(associacao)
+    produto.tem_foto = True
+    
+    # Atualizar status na carteira se existir
+    carteira_item = CarteiraCompras.query.filter_by(sku=produto.sku).first()
+    if carteira_item:
+        carteira_item.status_foto = 'Com Foto'
+        carteira_item.produto_id = produto.id
+    
+    db.session.commit()
+    
+    flash('Imagem associada com sucesso!')
+    return redirect(url_for('edit_produto', id=id))
+
+@app.route('/produtos/<int:id>/desassociar-imagem/<int:imagem_id>', methods=['POST'])
+@login_required
+def desassociar_imagem_produto(id, imagem_id):
+    produto = Produto.query.get_or_404(id)
+    
+    # Remover associação
+    associacao = ImagemProduto.query.filter_by(
+        imagem_id=imagem_id, 
+        produto_id=produto.id
+    ).first()
+    
+    if associacao:
+        db.session.delete(associacao)
+        
+        # Verificar se ainda tem fotos associadas
+        remaining = ImagemProduto.query.filter_by(produto_id=produto.id).count()
+        if remaining == 0:
+            produto.tem_foto = False
+            # Atualizar status na carteira
+            carteira_item = CarteiraCompras.query.filter_by(sku=produto.sku).first()
+            if carteira_item:
+                carteira_item.status_foto = 'Sem Foto'
+        
+        db.session.commit()
+        flash('Imagem desassociada com sucesso!')
+    else:
+        flash('Associação não encontrada')
+    
+    return redirect(url_for('edit_produto', id=id))
+
+# ==================== CARTEIRA DE COMPRAS ====================
+
+@app.route('/carteira')
+@login_required
+def carteira():
+    status = request.args.get('status', '')
+    search = request.args.get('search', '')
+    
+    query = CarteiraCompras.query
+    
+    if status:
+        query = query.filter_by(status_foto=status)
+    
+    if search:
+        search_term = f'%{search}%'
+        query = query.filter(db.or_(
+            CarteiraCompras.sku.ilike(search_term),
+            CarteiraCompras.descricao.ilike(search_term)
+        ))
+    
+    itens = query.order_by(CarteiraCompras.data_importacao.desc()).all()
+    
+    # Estatísticas
+    total = CarteiraCompras.query.count()
+    com_foto = CarteiraCompras.query.filter_by(status_foto='Com Foto').count()
+    sem_foto = CarteiraCompras.query.filter_by(status_foto='Sem Foto').count()
+    pendente = CarteiraCompras.query.filter_by(status_foto='Pendente').count()
+    
+    return render_template('carteira/list.html', 
+                          itens=itens,
+                          total=total,
+                          com_foto=com_foto,
+                          sem_foto=sem_foto,
+                          pendente=pendente,
+                          search=search)
+
+@app.route('/carteira/importar', methods=['GET', 'POST'])
+@login_required
+def importar_carteira():
+    if request.method == 'POST':
+        if 'arquivo' not in request.files:
+            flash('Nenhum arquivo enviado')
+            return redirect(request.url)
+        
+        file = request.files['arquivo']
+        if file.filename == '':
+            flash('Nenhum arquivo selecionado')
+            return redirect(request.url)
+        
+        if not file.filename.endswith('.csv'):
+            flash('Apenas arquivos CSV são permitidos')
+            return redirect(request.url)
+        
+        try:
+            # Gerar ID do lote
+            import uuid
+            lote_id = f"LOTE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
+            
+            # Ler CSV
+            content = file.read().decode('utf-8')
+            reader = csv.DictReader(io.StringIO(content))
+            
+            count = 0
+            for row in reader:
+                sku = row.get('sku', row.get('SKU', '')).strip()
+                if not sku:
+                    continue
+                
+                # Verificar se já existe na carteira
+                existing = CarteiraCompras.query.filter_by(sku=sku).first()
+                if existing:
+                    # Atualizar quantidade
+                    existing.quantidade = existing.quantidade + int(row.get('quantidade', row.get('QUANTIDADE', 1)) or 1)
+                    existing.lote_importacao = lote_id
+                else:
+                    # Criar novo
+                    item = CarteiraCompras(
+                        sku=sku,
+                        descricao=row.get('descricao', row.get('DESCRICAO', '')),
+                        cor=row.get('cor', row.get('COR', '')),
+                        categoria=row.get('categoria', row.get('CATEGORIA', '')),
+                        quantidade=int(row.get('quantidade', row.get('QUANTIDADE', 1)) or 1),
+                        lote_importacao=lote_id
+                    )
+                    
+                    # Verificar se já tem foto
+                    produto = Produto.query.filter_by(sku=sku).first()
+                    if produto and produto.tem_foto:
+                        item.status_foto = 'Com Foto'
+                        item.produto_id = produto.id
+                    else:
+                        item.status_foto = 'Pendente'
+                    
+                    db.session.add(item)
+                    count += 1
+            
+            db.session.commit()
+            flash(f'Importação concluída! {count} novos itens adicionados. Lote: {lote_id}')
+            
+            # Executar cruzamento automático
+            atualizar_status_carteira()
+            
+            return redirect(url_for('carteira'))
+            
+        except Exception as e:
+            flash(f'Erro ao importar: {str(e)}')
+            return redirect(request.url)
+    
+    return render_template('carteira/importar.html')
+
+@app.route('/carteira/cruzar')
+@login_required
+def cruzar_carteira():
+    """Executa cruzamento entre carteira e produtos/imagens"""
+    count = atualizar_status_carteira()
+    flash(f'Cruzamento concluído! {count} itens atualizados.')
+    return redirect(url_for('carteira'))
+
+def atualizar_status_carteira():
+    """Atualiza status de fotos na carteira com base em produtos e imagens"""
+    count = 0
+    itens = CarteiraCompras.query.all()
+    
+    for item in itens:
+        # Buscar produto pelo SKU
+        produto = Produto.query.filter_by(sku=item.sku).first()
+        
+        if produto:
+            item.produto_id = produto.id
+            if produto.tem_foto:
+                item.status_foto = 'Com Foto'
+            else:
+                item.status_foto = 'Sem Foto'
+            count += 1
+        else:
+            # Buscar imagem diretamente pelo SKU
+            imagem = Image.query.filter_by(sku=item.sku).first()
+            if imagem:
+                item.status_foto = 'Com Foto'
+                count += 1
+            else:
+                item.status_foto = 'Sem Foto'
+    
+    db.session.commit()
+    return count
+
+@app.route('/carteira/export')
+@login_required
+def export_carteira():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['SKU', 'Descrição', 'Cor', 'Categoria', 'Quantidade', 'Status Foto', 'Data Importação', 'Lote'])
+    
+    itens = CarteiraCompras.query.order_by(CarteiraCompras.data_importacao.desc()).all()
+    for item in itens:
+        writer.writerow([
+            item.sku,
+            item.descricao or '',
+            item.cor or '',
+            item.categoria or '',
+            item.quantidade,
+            item.status_foto,
+            item.data_importacao.strftime('%Y-%m-%d %H:%M') if item.data_importacao else '',
+            item.lote_importacao or ''
+        ])
+    
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers['Content-Disposition'] = 'attachment; filename=carteira_compras.csv'
+    response.headers['Content-type'] = 'text/csv; charset=utf-8'
+    return response
+
+# ==================== RELATÓRIOS DE AUDITORIA ====================
+
+@app.route('/auditoria')
+@login_required
+def auditoria():
+    # SKUs com foto vs sem foto
+    produtos_com_foto = Produto.query.filter_by(tem_foto=True, ativo=True).count()
+    produtos_sem_foto = Produto.query.filter_by(tem_foto=False, ativo=True).count()
+    total_produtos = Produto.query.filter_by(ativo=True).count()
+    
+    # Carteira
+    carteira_total = CarteiraCompras.query.count()
+    carteira_com_foto = CarteiraCompras.query.filter_by(status_foto='Com Foto').count()
+    carteira_sem_foto = CarteiraCompras.query.filter_by(status_foto='Sem Foto').count()
+    carteira_pendente = CarteiraCompras.query.filter_by(status_foto='Pendente').count()
+    
+    # Histórico de alterações de SKU
+    alteracoes_sku = HistoricoSKU.query.order_by(HistoricoSKU.data_alteracao.desc()).limit(20).all()
+    total_alteracoes = HistoricoSKU.query.count()
+    
+    # Divergências: SKUs na carteira que mudaram
+    divergencias = []
+    for hist in HistoricoSKU.query.all():
+        carteira_item = CarteiraCompras.query.filter_by(sku=hist.sku_antigo).first()
+        if carteira_item:
+            divergencias.append({
+                'sku_antigo': hist.sku_antigo,
+                'sku_novo': hist.sku_novo,
+                'data': hist.data_alteracao,
+                'produto_id': hist.produto_id,
+                'carteira_id': carteira_item.id
+            })
+    
+    # Lista de SKUs pendentes (sem foto)
+    skus_pendentes = Produto.query.filter_by(tem_foto=False, ativo=True).order_by(Produto.sku).limit(50).all()
+    
+    return render_template('auditoria/index.html',
+                          produtos_com_foto=produtos_com_foto,
+                          produtos_sem_foto=produtos_sem_foto,
+                          total_produtos=total_produtos,
+                          carteira_total=carteira_total,
+                          carteira_com_foto=carteira_com_foto,
+                          carteira_sem_foto=carteira_sem_foto,
+                          carteira_pendente=carteira_pendente,
+                          alteracoes_sku=alteracoes_sku,
+                          total_alteracoes=total_alteracoes,
+                          divergencias=divergencias,
+                          skus_pendentes=skus_pendentes)
+
+@app.route('/auditoria/historico-sku')
+@login_required
+def historico_sku():
+    historico = HistoricoSKU.query.order_by(HistoricoSKU.data_alteracao.desc()).all()
+    return render_template('auditoria/historico_sku.html', historico=historico)
+
+@app.route('/auditoria/skus-pendentes')
+@login_required
+def skus_pendentes():
+    produtos = Produto.query.filter_by(tem_foto=False, ativo=True).order_by(Produto.sku).all()
+    return render_template('auditoria/skus_pendentes.html', produtos=produtos)
+
+@app.route('/auditoria/export/<tipo>')
+@login_required
+def export_auditoria(tipo):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    if tipo == 'skus_com_foto':
+        writer.writerow(['SKU', 'Descrição', 'Cor', 'Categoria', 'Marca', 'Coleção'])
+        produtos = Produto.query.filter_by(tem_foto=True, ativo=True).all()
+        for p in produtos:
+            writer.writerow([
+                p.sku, p.descricao, p.cor or '', p.categoria or '',
+                p.marca.name if p.marca else '',
+                p.colecao.name if p.colecao else ''
+            ])
+        filename = 'skus_com_foto.csv'
+    
+    elif tipo == 'skus_sem_foto':
+        writer.writerow(['SKU', 'Descrição', 'Cor', 'Categoria', 'Marca', 'Coleção'])
+        produtos = Produto.query.filter_by(tem_foto=False, ativo=True).all()
+        for p in produtos:
+            writer.writerow([
+                p.sku, p.descricao, p.cor or '', p.categoria or '',
+                p.marca.name if p.marca else '',
+                p.colecao.name if p.colecao else ''
+            ])
+        filename = 'skus_sem_foto.csv'
+    
+    elif tipo == 'historico_sku':
+        writer.writerow(['SKU Antigo', 'SKU Novo', 'Data Alteração', 'Motivo', 'Usuário'])
+        historico = HistoricoSKU.query.order_by(HistoricoSKU.data_alteracao.desc()).all()
+        for h in historico:
+            writer.writerow([
+                h.sku_antigo, h.sku_novo,
+                h.data_alteracao.strftime('%Y-%m-%d %H:%M'),
+                h.motivo or '',
+                h.usuario.username if h.usuario else ''
+            ])
+        filename = 'historico_alteracoes_sku.csv'
+    
+    elif tipo == 'divergencias':
+        writer.writerow(['SKU Antigo (Carteira)', 'SKU Novo (Produto)', 'Data Alteração', 'Status'])
+        for hist in HistoricoSKU.query.all():
+            carteira_item = CarteiraCompras.query.filter_by(sku=hist.sku_antigo).first()
+            if carteira_item:
+                writer.writerow([
+                    hist.sku_antigo, hist.sku_novo,
+                    hist.data_alteracao.strftime('%Y-%m-%d %H:%M'),
+                    'Divergência Detectada'
+                ])
+        filename = 'divergencias_sku.csv'
+    
+    else:
+        return redirect(url_for('auditoria'))
     
     output.seek(0)
     response = make_response(output.getvalue())

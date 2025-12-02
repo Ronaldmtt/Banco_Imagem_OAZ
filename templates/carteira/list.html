@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1>Carteira de Produtos</h1>
+        <p style="color: var(--text-secondary);">Gerencie a carteira de produtos importada.</p>
+    </div>
+    <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('importar_carteira') }}" class="btn btn-primary">
+            <i class="fas fa-file-import"></i> Importar CSV
+        </a>
+        <a href="{{ url_for('executar_cruzamento') }}" class="btn" style="background: rgba(63, 185, 80, 0.2); border: 1px solid #3fb950; color: #3fb950;">
+            <i class="fas fa-sync-alt"></i> Executar Cruzamento
+        </a>
+        <a href="{{ url_for('exportar_carteira_csv') }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+            <i class="fas fa-file-export"></i> Exportar CSV
+        </a>
+    </div>
+</div>
+
+<div class="dashboard-stats" style="margin-bottom: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Total na Carteira</p>
+                <h2 style="font-size: 2rem; font-weight: 600;">{{ total_carteira }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(31, 111, 235, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-wallet" style="color: var(--accent-blue); font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Com Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #3fb950;">{{ com_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(63, 185, 80, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-check-circle" style="color: #3fb950; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Sem Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #f85149;">{{ sem_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(248, 81, 73, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-times-circle" style="color: #f85149; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Pendente</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #d29922;">{{ pendente }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(210, 153, 34, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-clock" style="color: #d29922; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stat-card" style="margin-bottom: 2rem;">
+    <form action="{{ url_for('carteira') }}" method="GET" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 250px;">
+            <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Buscar</label>
+            <div style="position: relative;">
+                <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                <input type="text" name="q" class="form-control" style="padding-left: 40px;" placeholder="SKU, descrição..." value="{{ search_query or '' }}">
+            </div>
+        </div>
+
+        <div style="min-width: 180px;">
+            <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Status</label>
+            <select name="status" class="form-control">
+                <option value="">Todos os Status</option>
+                <option value="com_foto" {% if request.args.get('status') == 'com_foto' %}selected{% endif %}>Com Foto</option>
+                <option value="sem_foto" {% if request.args.get('status') == 'sem_foto' %}selected{% endif %}>Sem Foto</option>
+                <option value="pendente" {% if request.args.get('status') == 'pendente' %}selected{% endif %}>Pendente</option>
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-filter"></i> Filtrar
+            </button>
+            <a href="{{ url_for('carteira') }}" class="btn" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                <i class="fas fa-times"></i> Limpar
+            </a>
+        </div>
+    </form>
+</div>
+
+{% if itens_carteira %}
+<div class="stat-card" style="padding: 0; overflow: hidden;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Descrição</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Cor</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Categoria</th>
+                <th style="padding: 1rem; text-align: center; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Quantidade</th>
+                <th style="padding: 1rem; text-align: center; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Status</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Data Importação</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in itens_carteira %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 1rem; font-weight: 500; font-family: monospace;">{{ item.sku }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ item.descricao or '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ item.cor or '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ item.categoria or '-' }}</td>
+                <td style="padding: 1rem; text-align: center; font-weight: 500;">{{ item.quantidade }}</td>
+                <td style="padding: 1rem; text-align: center;">
+                    {% if item.status == 'com_foto' %}
+                    <span class="status-badge" style="background-color: rgba(63, 185, 80, 0.2); color: #3fb950;">
+                        <i class="fas fa-check"></i> Com Foto
+                    </span>
+                    {% elif item.status == 'sem_foto' %}
+                    <span class="status-badge" style="background-color: rgba(248, 81, 73, 0.2); color: #f85149;">
+                        <i class="fas fa-times"></i> Sem Foto
+                    </span>
+                    {% else %}
+                    <span class="status-badge" style="background-color: rgba(210, 153, 34, 0.2); color: #d29922;">
+                        <i class="fas fa-clock"></i> Pendente
+                    </span>
+                    {% endif %}
+                </td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ item.data_importacao.strftime('%d/%m/%Y %H:%M') if item.data_importacao else '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        <i class="fas fa-wallet"></i>
+    </div>
+    <h3>Carteira Vazia</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Importe um arquivo CSV para popular a carteira de produtos.</p>
+    <a href="{{ url_for('importar_carteira') }}" class="btn btn-primary">
+        <i class="fas fa-file-import"></i> Importar CSV
+    </a>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <h1>Auditoria</h1>
+    <p style="color: var(--text-secondary);">Dashboard de auditoria e controle de qualidade.</p>
+</div>
+
+<h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+    <i class="fas fa-box" style="color: var(--accent-blue);"></i> Status dos Produtos
+</h3>
+<div class="dashboard-stats" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Total de Produtos</p>
+                <h2 style="font-size: 2rem; font-weight: 600;">{{ total_produtos }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(31, 111, 235, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-boxes" style="color: var(--accent-blue); font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Produtos com Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #3fb950;">{{ produtos_com_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(63, 185, 80, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-image" style="color: #3fb950; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+        <a href="{{ url_for('exportar_auditoria', tipo='produtos_com_foto') }}" style="color: var(--accent-blue); font-size: 0.85rem; margin-top: 0.5rem; display: inline-block;">
+            <i class="fas fa-download"></i> Exportar lista
+        </a>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Produtos sem Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #f85149;">{{ produtos_sem_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(248, 81, 73, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-image" style="color: #f85149; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+        <a href="{{ url_for('skus_pendentes') }}" style="color: var(--accent-blue); font-size: 0.85rem; margin-top: 0.5rem; display: inline-block;">
+            <i class="fas fa-list"></i> Ver lista completa
+        </a>
+    </div>
+</div>
+
+<h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+    <i class="fas fa-wallet" style="color: var(--accent-blue);"></i> Status da Carteira
+</h3>
+<div class="dashboard-stats" style="margin-bottom: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Total na Carteira</p>
+                <h2 style="font-size: 2rem; font-weight: 600;">{{ carteira_total }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(31, 111, 235, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-wallet" style="color: var(--accent-blue); font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Com Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #3fb950;">{{ carteira_com_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(63, 185, 80, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-check-circle" style="color: #3fb950; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Sem Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #f85149;">{{ carteira_sem_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(248, 81, 73, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-times-circle" style="color: #f85149; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Pendente</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #d29922;">{{ carteira_pendente }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(210, 153, 34, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-clock" style="color: #d29922; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-history" style="color: #d29922;"></i> Alterações Recentes de SKU
+            </h3>
+            <a href="{{ url_for('historico_sku') }}" style="color: var(--accent-blue); font-size: 0.85rem;">
+                Ver histórico completo <i class="fas fa-arrow-right"></i>
+            </a>
+        </div>
+        
+        {% if alteracoes_sku %}
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <th style="padding: 0.5rem; text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--text-secondary);">SKU Antigo</th>
+                    <th style="padding: 0.5rem; text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--text-secondary);">SKU Novo</th>
+                    <th style="padding: 0.5rem; text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--text-secondary);">Data</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in alteracoes_sku[:10] %}
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85rem; color: #f85149;">{{ item.sku_antigo }}</td>
+                    <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85rem; color: #3fb950;">{{ item.sku_novo }}</td>
+                    <td style="padding: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">{{ item.data_alteracao.strftime('%d/%m/%Y') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+            <i class="fas fa-check-circle" style="font-size: 2rem; margin-bottom: 0.5rem; color: #3fb950;"></i>
+            <p>Nenhuma alteração de SKU registrada</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-exclamation-triangle" style="color: #f85149;"></i> Divergências
+            </h3>
+        </div>
+        
+        {% if divergencias %}
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <th style="padding: 0.5rem; text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--text-secondary);">SKU</th>
+                    <th style="padding: 0.5rem; text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--text-secondary);">Tipo</th>
+                    <th style="padding: 0.5rem; text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--text-secondary);">Descrição</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for div in divergencias[:10] %}
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85rem;">{{ div.sku }}</td>
+                    <td style="padding: 0.5rem;">
+                        <span class="status-badge" style="background-color: rgba(248, 81, 73, 0.2); color: #f85149; font-size: 0.75rem;">{{ div.tipo }}</span>
+                    </td>
+                    <td style="padding: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">{{ div.descricao }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+            <i class="fas fa-check-circle" style="font-size: 2rem; margin-bottom: 0.5rem; color: #3fb950;"></i>
+            <p>Nenhuma divergência encontrada</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="stat-card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 style="display: flex; align-items: center; gap: 0.5rem;">
+            <i class="fas fa-image" style="color: #f85149;"></i> SKUs Pendentes (Sem Foto)
+        </h3>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('skus_pendentes') }}" class="btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 0.85rem;">
+                <i class="fas fa-list"></i> Ver Todos
+            </a>
+            <a href="{{ url_for('exportar_auditoria', tipo='skus_pendentes') }}" class="btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 0.85rem;">
+                <i class="fas fa-download"></i> Exportar CSV
+            </a>
+        </div>
+    </div>
+    
+    {% if skus_pendentes %}
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU</th>
+                <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Descrição</th>
+                <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Cor</th>
+                <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Marca</th>
+                <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Coleção</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for produto in skus_pendentes[:20] %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 0.75rem; font-weight: 500; font-family: monospace;">{{ produto.sku }}</td>
+                <td style="padding: 0.75rem; color: var(--text-secondary);">{{ produto.descricao or '-' }}</td>
+                <td style="padding: 0.75rem; color: var(--text-secondary);">{{ produto.cor or '-' }}</td>
+                <td style="padding: 0.75rem; color: var(--text-secondary);">{{ produto.marca.name if produto.marca else '-' }}</td>
+                <td style="padding: 0.75rem; color: var(--text-secondary);">{{ produto.colecao.name if produto.colecao else '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if skus_pendentes|length > 20 %}
+    <div style="text-align: center; padding: 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+        Mostrando 20 de {{ skus_pendentes|length }} produtos pendentes. <a href="{{ url_for('skus_pendentes') }}" style="color: var(--accent-blue);">Ver todos</a>
+    </div>
+    {% endif %}
+    {% else %}
+    <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+        <i class="fas fa-check-circle" style="font-size: 2rem; margin-bottom: 0.5rem; color: #3fb950;"></i>
+        <p>Todos os produtos possuem foto!</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

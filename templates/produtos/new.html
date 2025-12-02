@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <a href="{{ url_for('produtos') }}" style="color: var(--text-secondary); font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+        <i class="fas fa-arrow-left"></i> Voltar para Produtos
+    </a>
+    <h1 style="margin-top: 1rem;">Novo Produto</h1>
+    <p style="color: var(--text-secondary);">Preencha os campos abaixo para cadastrar um novo produto.</p>
+</div>
+
+<div class="stat-card" style="max-width: 800px;">
+    <form action="{{ url_for('new_produto') }}" method="POST">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div class="form-group">
+                <label class="form-label">
+                    SKU <span style="color: #f85149;">*</span>
+                </label>
+                <input type="text" name="sku" class="form-control" required placeholder="Ex: ABC-12345">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    Descrição <span style="color: #f85149;">*</span>
+                </label>
+                <input type="text" name="descricao" class="form-control" required placeholder="Nome do produto">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Cor</label>
+                <input type="text" name="cor" class="form-control" placeholder="Ex: Azul, Vermelho">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Categoria</label>
+                <input type="text" name="categoria" class="form-control" placeholder="Ex: Eletrônicos, Roupas">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Marca</label>
+                <select name="marca_id" class="form-control">
+                    <option value="">Selecione uma marca</option>
+                    {% for marca in marcas %}
+                    <option value="{{ marca.id }}">{{ marca.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Coleção</label>
+                <select name="colecao_id" class="form-control">
+                    <option value="">Selecione uma coleção</option>
+                    {% for colecao in colecoes %}
+                    <option value="{{ colecao.id }}">{{ colecao.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 1.5rem;">
+            <label class="form-label">Atributos Técnicos</label>
+            <textarea name="atributos_tecnicos" class="form-control" rows="4" placeholder="Descreva os atributos técnicos do produto (material, dimensões, peso, etc.)"></textarea>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Cadastrar Produto
+            </button>
+            <a href="{{ url_for('produtos') }}" class="btn" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                Cancelar
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

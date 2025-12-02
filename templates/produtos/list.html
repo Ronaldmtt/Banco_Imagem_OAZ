@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1>Produtos</h1>
+        <p style="color: var(--text-secondary);">Gerencie os produtos cadastrados no sistema.</p>
+    </div>
+    <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('new_produto') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Novo Produto
+        </a>
+        <a href="{{ url_for('export_produtos_csv') }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+            <i class="fas fa-file-export"></i> Exportar CSV
+        </a>
+    </div>
+</div>
+
+<div class="dashboard-stats" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Total de Produtos</p>
+                <h2 style="font-size: 2rem; font-weight: 600;">{{ total_produtos }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(31, 111, 235, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-box" style="color: var(--accent-blue); font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Com Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #3fb950;">{{ com_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(63, 185, 80, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-image" style="color: #3fb950; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">Sem Foto</p>
+                <h2 style="font-size: 2rem; font-weight: 600; color: #f85149;">{{ sem_foto }}</h2>
+            </div>
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(248, 81, 73, 0.1); display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-image" style="color: #f85149; font-size: 1.25rem;"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stat-card" style="margin-bottom: 2rem;">
+    <form action="{{ url_for('produtos') }}" method="GET" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
+            <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Buscar</label>
+            <div style="position: relative;">
+                <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                <input type="text" name="q" class="form-control" style="padding-left: 40px;" placeholder="SKU, descrição..." value="{{ search_query or '' }}">
+            </div>
+        </div>
+
+        <div style="min-width: 150px;">
+            <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Marca</label>
+            <select name="marca_id" class="form-control">
+                <option value="">Todas as Marcas</option>
+                {% for marca in marcas %}
+                <option value="{{ marca.id }}" {% if request.args.get('marca_id') == marca.id|string %}selected{% endif %}>
+                    {{ marca.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="min-width: 150px;">
+            <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Coleção</label>
+            <select name="colecao_id" class="form-control">
+                <option value="">Todas as Coleções</option>
+                {% for colecao in colecoes %}
+                <option value="{{ colecao.id }}" {% if request.args.get('colecao_id') == colecao.id|string %}selected{% endif %}>
+                    {{ colecao.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="min-width: 150px;">
+            <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Status Foto</label>
+            <select name="status_foto" class="form-control">
+                <option value="">Todos</option>
+                <option value="com_foto" {% if request.args.get('status_foto') == 'com_foto' %}selected{% endif %}>Com Foto</option>
+                <option value="sem_foto" {% if request.args.get('status_foto') == 'sem_foto' %}selected{% endif %}>Sem Foto</option>
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-filter"></i> Filtrar
+            </button>
+            <a href="{{ url_for('produtos') }}" class="btn" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                <i class="fas fa-times"></i> Limpar
+            </a>
+        </div>
+    </form>
+</div>
+
+{% if produtos %}
+<div class="stat-card" style="padding: 0; overflow: hidden;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Descrição</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Cor</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Categoria</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Marca</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Coleção</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Status Foto</th>
+                <th style="padding: 1rem; text-align: center; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for produto in produtos %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 1rem; font-weight: 500;">{{ produto.sku }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.descricao }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.cor or '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.categoria or '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.marca.name if produto.marca else '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.colecao.name if produto.colecao else '-' }}</td>
+                <td style="padding: 1rem;">
+                    {% if produto.tem_foto %}
+                    <span class="status-badge" style="background-color: rgba(63, 185, 80, 0.2); color: #3fb950;">
+                        <i class="fas fa-check"></i> Com Foto
+                    </span>
+                    {% else %}
+                    <span class="status-badge" style="background-color: rgba(248, 81, 73, 0.2); color: #f85149;">
+                        <i class="fas fa-times"></i> Sem Foto
+                    </span>
+                    {% endif %}
+                </td>
+                <td style="padding: 1rem; text-align: center;">
+                    <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                        <a href="{{ url_for('edit_produto', id=produto.id) }}" class="btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--accent-blue);" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <form action="{{ url_for('delete_produto', id=produto.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir este produto?');">
+                            <button type="submit" class="btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: #f85149;" title="Excluir">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        <i class="fas fa-box-open"></i>
+    </div>
+    <h3>Nenhum Produto Encontrado</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Cadastre seu primeiro produto para começar.</p>
+    <a href="{{ url_for('new_produto') }}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Novo Produto
+    </a>
+</div>
+{% endif %}
+{% endblock %}

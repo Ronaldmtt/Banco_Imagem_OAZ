@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <a href="{{ url_for('auditoria') }}" style="color: var(--text-secondary); font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <i class="fas fa-arrow-left"></i> Voltar para Auditoria
+        </a>
+        <h1 style="margin-top: 1rem;">Produtos sem Foto</h1>
+        <p style="color: var(--text-secondary);">Lista completa de produtos que ainda não possuem foto associada.</p>
+    </div>
+    <a href="{{ url_for('exportar_auditoria', tipo='skus_pendentes') }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+        <i class="fas fa-file-export"></i> Exportar CSV
+    </a>
+</div>
+
+<div class="stat-card" style="margin-bottom: 2rem; display: inline-flex; align-items: center; gap: 1rem; padding: 1rem 1.5rem;">
+    <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(248, 81, 73, 0.1); display: flex; align-items: center; justify-content: center;">
+        <i class="fas fa-exclamation-circle" style="color: #f85149; font-size: 1.25rem;"></i>
+    </div>
+    <div>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">Total de SKUs Pendentes</p>
+        <h2 style="font-size: 1.75rem; font-weight: 600; color: #f85149;">{{ produtos|length }}</h2>
+    </div>
+</div>
+
+{% if produtos %}
+<div class="stat-card" style="padding: 0; overflow: hidden;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Descrição</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Cor</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Marca</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Coleção</th>
+                <th style="padding: 1rem; text-align: center; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for produto in produtos %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 1rem;">
+                    <span style="font-family: monospace; font-weight: 500;">{{ produto.sku }}</span>
+                </td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.descricao or '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.cor or '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.marca.name if produto.marca else '-' }}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{{ produto.colecao.name if produto.colecao else '-' }}</td>
+                <td style="padding: 1rem; text-align: center;">
+                    <a href="{{ url_for('edit_produto', id=produto.id) }}" class="btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--accent-blue); font-size: 0.85rem;" title="Associar Foto">
+                        <i class="fas fa-link"></i> Associar Foto
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: #3fb950; margin-bottom: 1rem;">
+        <i class="fas fa-check-circle"></i>
+    </div>
+    <h3>Parabéns!</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Todos os produtos possuem foto associada.</p>
+    <a href="{{ url_for('produtos') }}" class="btn btn-primary">
+        <i class="fas fa-box"></i> Ver Produtos
+    </a>
+</div>
+{% endif %}
+{% endblock %}

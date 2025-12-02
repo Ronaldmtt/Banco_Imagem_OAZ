@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <a href="{{ url_for('carteira') }}" style="color: var(--text-secondary); font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+        <i class="fas fa-arrow-left"></i> Voltar para Carteira
+    </a>
+    <h1 style="margin-top: 1rem;">Importar Carteira</h1>
+    <p style="color: var(--text-secondary);">Importe um arquivo CSV com os produtos da carteira.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+    <div class="stat-card">
+        <form action="{{ url_for('importar_carteira') }}" method="POST" enctype="multipart/form-data" id="importForm">
+            <div class="upload-area" id="dropZone" style="height: 300px; cursor: pointer;" onclick="document.getElementById('fileInput').click();">
+                <div style="text-align: center;">
+                    <div class="upload-icon">
+                        <i class="fas fa-file-csv"></i>
+                    </div>
+                    <h3 style="margin-bottom: 0.5rem;">Arraste e solte seu arquivo CSV aqui</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">ou clique para selecionar</p>
+                    <span class="btn btn-primary">
+                        <i class="fas fa-upload"></i> Selecionar Arquivo
+                    </span>
+                </div>
+            </div>
+            <input type="file" name="arquivo" id="fileInput" accept=".csv" style="display: none;" required onchange="handleFileSelect(this)">
+            
+            <div id="filePreview" style="display: none; margin-top: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <i class="fas fa-file-csv" style="font-size: 2rem; color: #3fb950;"></i>
+                    <div style="flex: 1;">
+                        <div id="fileName" style="font-weight: 500;"></div>
+                        <div id="fileSize" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
+                    </div>
+                    <button type="button" onclick="clearFile()" style="background: none; border: none; color: #f85149; cursor: pointer;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+                    <i class="fas fa-file-import"></i> Importar Carteira
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div>
+        <div class="stat-card">
+            <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-info-circle" style="color: var(--accent-blue);"></i> Formato do Arquivo
+            </h3>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+                O arquivo CSV deve conter as seguintes colunas:
+            </p>
+            <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                <code style="color: #3fb950; font-size: 0.85rem;">
+                    sku, descricao, cor, categoria, quantidade
+                </code>
+            </div>
+            
+            <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem; color: var(--text-secondary);">Descrição das colunas:</h4>
+            <ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; list-style: disc;">
+                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">sku</strong> - Código único do produto (obrigatório)</li>
+                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">descricao</strong> - Descrição do produto</li>
+                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">cor</strong> - Cor do produto</li>
+                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">categoria</strong> - Categoria do produto</li>
+                <li><strong style="color: var(--text-primary);">quantidade</strong> - Quantidade em estoque</li>
+            </ul>
+        </div>
+
+        <div class="stat-card" style="margin-top: 1.5rem;">
+            <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-lightbulb" style="color: #d29922;"></i> Dicas
+            </h3>
+            <ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; list-style: disc;">
+                <li style="margin-bottom: 0.5rem;">Use ponto e vírgula (;) ou vírgula (,) como separador</li>
+                <li style="margin-bottom: 0.5rem;">A primeira linha deve conter os nomes das colunas</li>
+                <li style="margin-bottom: 0.5rem;">Codificação UTF-8 é recomendada</li>
+                <li>SKUs duplicados serão atualizados</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const filePreview = document.getElementById('filePreview');
+
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, preventDefaults, false);
+});
+
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, highlight, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, unhighlight, false);
+});
+
+function highlight(e) {
+    dropZone.style.borderColor = 'var(--accent-blue)';
+    dropZone.style.backgroundColor = 'rgba(31, 111, 235, 0.1)';
+}
+
+function unhighlight(e) {
+    dropZone.style.borderColor = '';
+    dropZone.style.backgroundColor = '';
+}
+
+dropZone.addEventListener('drop', handleDrop, false);
+
+function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files.length > 0) {
+        fileInput.files = files;
+        handleFileSelect(fileInput);
+    }
+}
+
+function handleFileSelect(input) {
+    const file = input.files[0];
+    if (file) {
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent = formatFileSize(file.size);
+        filePreview.style.display = 'block';
+        dropZone.style.display = 'none';
+    }
+}
+
+function clearFile() {
+    fileInput.value = '';
+    filePreview.style.display = 'none';
+    dropZone.style.display = 'flex';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+</script>
+{% endblock %}

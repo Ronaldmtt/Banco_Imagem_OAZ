@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <a href="{{ url_for('produtos') }}" style="color: var(--text-secondary); font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+        <i class="fas fa-arrow-left"></i> Voltar para Produtos
+    </a>
+    <h1 style="margin-top: 1rem;">Editar Produto</h1>
+    <p style="color: var(--text-secondary);">Atualize as informações do produto.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+    <div>
+        <div class="stat-card">
+            <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-edit" style="color: var(--accent-blue);"></i> Informações do Produto
+            </h3>
+            <form action="{{ url_for('edit_produto', id=produto.id) }}" method="POST" id="editForm">
+                <input type="hidden" name="sku_original" value="{{ produto.sku }}">
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                    <div class="form-group">
+                        <label class="form-label">
+                            SKU <span style="color: #f85149;">*</span>
+                        </label>
+                        <input type="text" name="sku" id="skuInput" class="form-control" required value="{{ produto.sku }}" onchange="checkSkuChange()">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            Descrição <span style="color: #f85149;">*</span>
+                        </label>
+                        <input type="text" name="descricao" class="form-control" required value="{{ produto.descricao }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Cor</label>
+                        <input type="text" name="cor" class="form-control" value="{{ produto.cor or '' }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Categoria</label>
+                        <input type="text" name="categoria" class="form-control" value="{{ produto.categoria or '' }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Marca</label>
+                        <select name="marca_id" class="form-control">
+                            <option value="">Selecione uma marca</option>
+                            {% for marca in marcas %}
+                            <option value="{{ marca.id }}" {% if produto.marca_id == marca.id %}selected{% endif %}>{{ marca.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Coleção</label>
+                        <select name="colecao_id" class="form-control">
+                            <option value="">Selecione uma coleção</option>
+                            {% for colecao in colecoes %}
+                            <option value="{{ colecao.id }}" {% if produto.colecao_id == colecao.id %}selected{% endif %}>{{ colecao.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 1.5rem;">
+                    <label class="form-label">Atributos Técnicos</label>
+                    <textarea name="atributos_tecnicos" class="form-control" rows="4">{{ produto.atributos_tecnicos or '' }}</textarea>
+                </div>
+
+                <div id="motivoAlteracaoDiv" style="display: none; margin-top: 1.5rem; padding: 1rem; background: rgba(210, 153, 34, 0.1); border: 1px solid #d29922; border-radius: 8px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="color: #d29922;">
+                            <i class="fas fa-exclamation-triangle"></i> Motivo da Alteração do SKU <span style="color: #f85149;">*</span>
+                        </label>
+                        <textarea name="motivo_alteracao" id="motivoAlteracao" class="form-control" rows="2" placeholder="Descreva o motivo da alteração do SKU"></textarea>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Salvar Alterações
+                    </button>
+                    <a href="{{ url_for('produtos') }}" class="btn" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                        Cancelar
+                    </a>
+                </div>
+            </form>
+        </div>
+
+        {% if historico_sku %}
+        <div class="stat-card" style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-history" style="color: #d29922;"></i> Histórico de Alterações de SKU
+            </h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU Antigo</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">SKU Novo</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Data</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Motivo</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Usuário</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in historico_sku %}
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.75rem; font-family: monospace; color: #f85149;">{{ item.sku_antigo }}</td>
+                        <td style="padding: 0.75rem; font-family: monospace; color: #3fb950;">{{ item.sku_novo }}</td>
+                        <td style="padding: 0.75rem; color: var(--text-secondary);">{{ item.data_alteracao.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td style="padding: 0.75rem; color: var(--text-secondary);">{{ item.motivo or '-' }}</td>
+                        <td style="padding: 0.75rem; color: var(--text-secondary);">{{ item.usuario.username if item.usuario else '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <div>
+        <div class="stat-card">
+            <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-images" style="color: var(--accent-blue);"></i> Imagens Associadas
+            </h3>
+
+            {% if produto.imagens %}
+            <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+                {% for imagem in produto.imagens %}
+                <div style="display: flex; gap: 0.75rem; align-items: center; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
+                    <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; flex-shrink: 0;">
+                        <img src="{{ url_for('static', filename='uploads/' + imagem.filename) }}" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 500; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ imagem.sku or imagem.original_name }}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">{{ imagem.status }}</div>
+                    </div>
+                    <form action="{{ url_for('desassociar_imagem', produto_id=produto.id, imagem_id=imagem.id) }}" method="POST" onsubmit="return confirm('Desassociar esta imagem?');">
+                        <button type="submit" style="background: none; border: none; color: #f85149; cursor: pointer; padding: 4px;" title="Desassociar">
+                            <i class="fas fa-unlink"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="text-align: center; padding: 2rem; color: var(--text-secondary); background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 1.5rem;">
+                <i class="fas fa-image" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
+                <p style="font-size: 0.9rem;">Nenhuma imagem associada</p>
+            </div>
+            {% endif %}
+
+            <form action="{{ url_for('associar_imagem', produto_id=produto.id) }}" method="POST" style="padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Associar Nova Imagem</label>
+                    <select name="imagem_id" class="form-control" required>
+                        <option value="">Selecione uma imagem</option>
+                        {% for imagem in imagens_disponiveis %}
+                        <option value="{{ imagem.id }}">{{ imagem.sku or imagem.original_name }} - {{ imagem.status }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                    <i class="fas fa-link"></i> Associar
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+const skuOriginal = "{{ produto.sku }}";
+
+function checkSkuChange() {
+    const skuAtual = document.getElementById('skuInput').value;
+    const motivoDiv = document.getElementById('motivoAlteracaoDiv');
+    const motivoInput = document.getElementById('motivoAlteracao');
+    
+    if (skuAtual !== skuOriginal) {
+        motivoDiv.style.display = 'block';
+        motivoInput.required = true;
+    } else {
+        motivoDiv.style.display = 'none';
+        motivoInput.required = false;
+    }
+}
+
+document.getElementById('skuInput').addEventListener('input', checkSkuChange);
+</script>
+{% endblock %}

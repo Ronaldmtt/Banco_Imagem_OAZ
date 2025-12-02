@@ -127,11 +127,21 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Supported formats: PNG, JPG, JPEG, GIF
 
 ## Recent Changes
+- **2025-12-02**: Auto-criação de Entidades na Importação
+  - Auto-criação de Coleções: "INVERNO 2026" → cria coleção com ano=2026 e estação=Inverno
+  - Auto-criação de Marcas: detecta coluna MARCA/BRAND e cria automaticamente
+  - Auto-criação de Produtos: cria produto com SKU, descrição, cor, categoria do Excel
+  - Extração inteligente de ano (2024-2029) e estação (Inverno, Verão, Primavera, Outono, Resort)
+  - Novas colunas: colecao_id e marca_id em CarteiraCompras para associação
+  - Flash messages detalhadas: "Criados automaticamente: 3 coleção(ões), 2 marca(s), 150 produto(s)"
+  - Funções auxiliares: obter_ou_criar_colecao(), obter_ou_criar_marca(), obter_ou_criar_produto()
+
 - **2025-12-02**: Excel Import Enhancement for Carteira de Compras
   - New `normalizar_carteira_dataframe()` function with robust column normalization
   - Case-insensitive, accent-insensitive, whitespace-tolerant column matching
   - Support for importing ALL sheets at once from Excel files
   - Column auto-mapping: REFERÊNCIA E COR → SKU, NOME → descrição, GRUPO → categoria, etc.
+  - Mapeamento de MARCA/BRAND para criação automática de marcas
   - Clear error messages when SKU column not found
   - Enhanced template with "Import all sheets" checkbox
   - Detailed instructions on expected Excel format

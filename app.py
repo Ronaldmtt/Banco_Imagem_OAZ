@@ -62,8 +62,9 @@ class Collection(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
-    season = db.Column(db.String(50))
-    year = db.Column(db.Integer)
+    season = db.Column(db.String(50))  # Estação: Primavera/Verão, Outono/Inverno
+    year = db.Column(db.Integer)  # Ano da coleção
+    campanha = db.Column(db.String(100))  # Nome da campanha
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     images = db.relationship('Image', backref='collection', lazy=True)
 
@@ -826,8 +827,51 @@ def upload():
 @app.route('/collections')
 @login_required
 def collections():
-    collections = Collection.query.order_by(Collection.created_at.desc()).all()
+    search = request.args.get('search', '')
+    season = request.args.get('season', '')
+    year = request.args.get('year', '')
+    
+    query = Collection.query
+    
+    if search:
+        query = query.filter(Collection.name.ilike(f'%{search}%'))
+    if season:
+        query = query.filter_by(season=season)
+    if year:
+        query = query.filter_by(year=int(year))
+    
+    collections = query.order_by(Collection.created_at.desc()).all()
     return render_template('collections/list.html', collections=collections)
+
+@app.route('/collections/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_collection(id):
+    collection = Collection.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        collection.name = request.form.get('name')
+        collection.description = request.form.get('description')
+        collection.season = request.form.get('season')
+        year = request.form.get('year')
+        collection.year = int(year) if year else None
+        collection.campanha = request.form.get('campanha')
+        
+        db.session.commit()
+        flash('Coleção atualizada com sucesso!')
+        return redirect(url_for('collections'))
+    
+    current_year = datetime.now().year
+    years = list(range(current_year - 2, current_year + 3))
+    return render_template('collections/edit.html', collection=collection, years=years)
+
+@app.route('/collections/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_collection(id):
+    collection = Collection.query.get_or_404(id)
+    db.session.delete(collection)
+    db.session.commit()
+    flash('Coleção removida com sucesso!')
+    return redirect(url_for('collections'))
 
 @app.route('/collections/new', methods=['GET', 'POST'])
 @login_required
@@ -835,19 +879,30 @@ def new_collection():
     if request.method == 'POST':
         name = request.form.get('name')
         description = request.form.get('description')
+        season = request.form.get('season')
+        year = request.form.get('year')
+        campanha = request.form.get('campanha')
         
         if not name:
             flash('Nome da coleção é obrigatório')
             return redirect(url_for('new_collection'))
             
-        collection = Collection(name=name, description=description)
+        collection = Collection(
+            name=name, 
+            description=description,
+            season=season,
+            year=int(year) if year else None,
+            campanha=campanha
+        )
         db.session.add(collection)
         db.session.commit()
         
         flash('Coleção criada com sucesso!')
         return redirect(url_for('collections'))
-        
-    return render_template('collections/new.html')
+    
+    current_year = datetime.now().year
+    years = list(range(current_year - 2, current_year + 3))
+    return render_template('collections/new.html', years=years)
 
 
 @app.route('/image/<int:id>')
@@ -1253,11 +1308,19 @@ def produtos():
     marcas = Brand.query.order_by(Brand.name).all()
     colecoes = Collection.query.order_by(Collection.name).all()
     
+    # Estatísticas
+    total_produtos = Produto.query.filter_by(ativo=True).count()
+    com_foto = Produto.query.filter_by(ativo=True, tem_foto=True).count()
+    sem_foto = Produto.query.filter_by(ativo=True, tem_foto=False).count()
+    
     return render_template('produtos/list.html', 
                           produtos=produtos_list, 
                           marcas=marcas, 
                           colecoes=colecoes,
-                          search=search)
+                          search_query=search,
+                          total_produtos=total_produtos,
+                          com_foto=com_foto,
+                          sem_foto=sem_foto)
 
 @app.route('/produtos/new', methods=['GET', 'POST'])
 @login_required
@@ -1380,6 +1443,33 @@ def delete_produto(id):
     flash('Produto removido com sucesso')
     return redirect(url_for('produtos'))
 
+@app.route('/produtos/export')
+@login_required
+def export_produtos_csv():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['SKU', 'Descrição', 'Cor', 'Categoria', 'Atributos Técnicos', 'Marca', 'Coleção', 'Tem Foto', 'Data Cadastro'])
+    
+    produtos = Produto.query.filter_by(ativo=True).order_by(Produto.sku).all()
+    for p in produtos:
+        writer.writerow([
+            p.sku,
+            p.descricao,
+            p.cor or '',
+            p.categoria or '',
+            p.atributos_tecnicos or '',
+            p.marca.name if p.marca else '',
+            p.colecao.name if p.colecao else '',
+            'Sim' if p.tem_foto else 'Não',
+            p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else ''
+        ])
+    
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers['Content-Disposition'] = 'attachment; filename=produtos.csv'
+    response.headers['Content-type'] = 'text/csv; charset=utf-8'
+    return response
+
 @app.route('/produtos/<int:id>/associar-imagem', methods=['POST'])
 @login_required
 def associar_imagem_produto(id):
@@ -1477,12 +1567,12 @@ def carteira():
     pendente = CarteiraCompras.query.filter_by(status_foto='Pendente').count()
     
     return render_template('carteira/list.html', 
-                          itens=itens,
-                          total=total,
+                          itens_carteira=itens,
+                          total_carteira=total,
                           com_foto=com_foto,
                           sem_foto=sem_foto,
                           pendente=pendente,
-                          search=search)
+                          search_query=search)
 
 @app.route('/carteira/importar', methods=['GET', 'POST'])
 @login_required

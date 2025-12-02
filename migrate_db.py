@@ -4,6 +4,16 @@ def migrate():
     conn = sqlite3.connect('instance/oaz_img.db')
     cursor = conn.cursor()
     
+    # Add campanha column to Collection table
+    try:
+        cursor.execute("ALTER TABLE collection ADD COLUMN campanha VARCHAR(100)")
+        print("Successfully added 'campanha' column to 'collection' table.")
+    except sqlite3.OperationalError as e:
+        if 'duplicate column name' in str(e).lower():
+            print("Column 'campanha' already exists in 'collection', skipping.")
+        else:
+            print(f"Error adding 'campanha' column: {e}")
+    
     # Add new columns for AI-extracted attributes to Image table
     image_columns_to_add = [
         ('ai_item_type', 'VARCHAR(100)'),

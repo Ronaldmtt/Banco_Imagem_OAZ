@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <div style="margin-bottom: 2rem;">
+        <h1>Editar Coleção</h1>
+        <p style="color: var(--text-secondary);">Atualize as informações da coleção.</p>
+    </div>
+
+    <div class="card">
+        <form method="POST" action="{{ url_for('edit_collection', id=collection.id) }}">
+            <div class="form-group">
+                <label class="form-label">Nome da Coleção *</label>
+                <input type="text" name="name" class="form-control" value="{{ collection.name }}" required>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label class="form-label">Ano</label>
+                    <select name="year" class="form-control">
+                        <option value="">Selecione...</option>
+                        {% for y in years %}
+                        <option value="{{ y }}" {% if collection.year == y %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Estação</label>
+                    <select name="season" class="form-control">
+                        <option value="">Selecione...</option>
+                        <option value="Primavera/Verão" {% if collection.season == 'Primavera/Verão' %}selected{% endif %}>Primavera/Verão</option>
+                        <option value="Outono/Inverno" {% if collection.season == 'Outono/Inverno' %}selected{% endif %}>Outono/Inverno</option>
+                        <option value="Alto Verão" {% if collection.season == 'Alto Verão' %}selected{% endif %}>Alto Verão</option>
+                        <option value="Cruise" {% if collection.season == 'Cruise' %}selected{% endif %}>Cruise</option>
+                        <option value="Resort" {% if collection.season == 'Resort' %}selected{% endif %}>Resort</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Campanha</label>
+                    <input type="text" name="campanha" class="form-control" value="{{ collection.campanha or '' }}" placeholder="Ex: Lançamento Verão">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Descrição</label>
+                <textarea name="description" class="form-control" rows="4">{{ collection.description or '' }}</textarea>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <form method="POST" action="{{ url_for('delete_collection', id=collection.id) }}" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir esta coleção?');">
+                    <button type="submit" class="btn" style="color: #ef4444; border: 1px solid #ef4444;">
+                        <i class="fas fa-trash"></i> Excluir Coleção
+                    </button>
+                </form>
+                
+                <div style="display: flex; gap: 1rem;">
+                    <a href="{{ url_for('collections') }}" class="btn" style="border: 1px solid var(--border-color); color: var(--text-primary);">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    {% if collection.images %}
+    <div class="card" style="margin-top: 2rem;">
+        <h3 style="margin-bottom: 1rem;">Imagens nesta Coleção ({{ collection.images | length }})</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem;">
+            {% for img in collection.images[:12] %}
+            <a href="{{ url_for('image_detail', id=img.id) }}">
+                <img src="{{ url_for('static', filename='uploads/' + img.filename) }}" 
+                     alt="{{ img.original_name }}"
+                     style="width: 100%; height: 100px; object-fit: cover; border-radius: 4px;">
+            </a>
+            {% endfor %}
+        </div>
+        {% if collection.images | length > 12 %}
+        <a href="{{ url_for('catalog') }}?collection_id={{ collection.id }}" style="display: block; text-align: center; margin-top: 1rem; color: var(--accent-blue);">
+            Ver todas as {{ collection.images | length }} imagens <i class="fas fa-arrow-right"></i>
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

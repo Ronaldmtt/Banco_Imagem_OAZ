@@ -3,8 +3,8 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
     <div>
-        <h1>Coleções Ativas</h1>
-        <p style="color: var(--text-secondary);">Gerencie e catalogue todas as coleções de imagens ativas.</p>
+        <h1>Coleções</h1>
+        <p style="color: var(--text-secondary);">Gerencie e catalogue todas as coleções de imagens.</p>
     </div>
     <a href="{{ url_for('new_collection') }}" class="btn btn-primary">
         <i class="fas fa-plus"></i> Nova Coleção
@@ -12,43 +12,74 @@
 </div>
 
 <div style="margin-bottom: 2rem; display: flex; gap: 1rem;">
-    <div class="search-bar" style="flex: 1; width: auto;">
-        <i class="fas fa-search"></i>
-        <input type="text" placeholder="Buscar por nome da coleção...">
-    </div>
-    <select class="form-control" style="width: 150px;">
-        <option>Marca</option>
-    </select>
-    <select class="form-control" style="width: 150px;">
-        <option>Temporada</option>
-    </select>
+    <form method="GET" action="{{ url_for('collections') }}" style="display: flex; gap: 1rem; flex: 1;">
+        <div class="search-bar" style="flex: 1; width: auto;">
+            <i class="fas fa-search"></i>
+            <input type="text" name="search" placeholder="Buscar por nome da coleção..." value="{{ request.args.get('search', '') }}">
+        </div>
+        <select name="season" class="form-control" style="width: 180px;" onchange="this.form.submit()">
+            <option value="">Todas as Estações</option>
+            <option value="Primavera/Verão" {% if request.args.get('season') == 'Primavera/Verão' %}selected{% endif %}>Primavera/Verão</option>
+            <option value="Outono/Inverno" {% if request.args.get('season') == 'Outono/Inverno' %}selected{% endif %}>Outono/Inverno</option>
+            <option value="Alto Verão" {% if request.args.get('season') == 'Alto Verão' %}selected{% endif %}>Alto Verão</option>
+            <option value="Cruise" {% if request.args.get('season') == 'Cruise' %}selected{% endif %}>Cruise</option>
+            <option value="Resort" {% if request.args.get('season') == 'Resort' %}selected{% endif %}>Resort</option>
+        </select>
+        <select name="year" class="form-control" style="width: 120px;" onchange="this.form.submit()">
+            <option value="">Todos os Anos</option>
+            {% for y in range(2020, 2028) %}
+            <option value="{{ y }}" {% if request.args.get('year')|int == y %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </form>
 </div>
 
 {% if collections %}
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
     {% for collection in collections %}
     <div class="stat-card">
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
             <div>
                 <h3 style="margin-bottom: 0.25rem;">{{ collection.name }}</h3>
-                <span style="color: var(--accent-blue); font-size: 0.8rem;">OAZ Ativo</span>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                    {% if collection.year %}
+                    <span style="background: var(--accent-blue); color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">
+                        {{ collection.year }}
+                    </span>
+                    {% endif %}
+                    {% if collection.season %}
+                    <span style="background: var(--bg-tertiary); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">
+                        {{ collection.season }}
+                    </span>
+                    {% endif %}
+                    {% if collection.campanha %}
+                    <span style="background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">
+                        {{ collection.campanha }}
+                    </span>
+                    {% endif %}
+                </div>
             </div>
-            <span style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">
+            <span style="background: var(--bg-tertiary); padding: 4px 10px; border-radius: 4px; font-size: 0.8rem;">
                 {{ collection.images | length }} imagens
             </span>
         </div>
 
         {% if collection.description %}
         <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-            {{ collection.description }}
+            {{ collection.description[:100] }}{% if collection.description|length > 100 %}...{% endif %}
         </p>
         {% endif %}
 
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1rem;">
             <span>Criado em {{ collection.created_at.strftime('%d/%m/%Y') }}</span>
-            <a href="{{ url_for('catalog') }}?collection_id={{ collection.id }}" style="color: var(--accent-blue);">
-                Ver imagens <i class="fas fa-arrow-right"></i>
-            </a>
+            <div style="display: flex; gap: 1rem;">
+                <a href="{{ url_for('edit_collection', id=collection.id) }}" style="color: var(--text-secondary);">
+                    <i class="fas fa-edit"></i> Editar
+                </a>
+                <a href="{{ url_for('catalog') }}?collection_id={{ collection.id }}" style="color: var(--accent-blue);">
+                    Ver imagens <i class="fas fa-arrow-right"></i>
+                </a>
+            </div>
         </div>
     </div>
     {% endfor %}
@@ -56,10 +87,10 @@
 {% else %}
 <div class="stat-card" style="text-align: center; padding: 4rem;">
     <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
-        <i class="fas fa-search-minus"></i>
+        <i class="fas fa-folder-open"></i>
     </div>
     <h3>Nenhuma Coleção Encontrada</h3>
-    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Nenhuma coleção corresponde à sua busca atual.</p>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Crie sua primeira coleção para organizar imagens.</p>
     <a href="{{ url_for('new_collection') }}" class="btn btn-primary">Criar Nova Coleção</a>
 </div>
 {% endif %}

@@ -10,8 +10,37 @@
     <div class="card">
         <form method="POST" action="{{ url_for('new_collection') }}">
             <div class="form-group">
-                <label class="form-label">Nome da Coleção</label>
+                <label class="form-label">Nome da Coleção *</label>
                 <input type="text" name="name" class="form-control" placeholder="Ex: Verão 2025" required>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label class="form-label">Ano</label>
+                    <select name="year" class="form-control">
+                        <option value="">Selecione...</option>
+                        {% for y in years %}
+                        <option value="{{ y }}">{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Estação</label>
+                    <select name="season" class="form-control">
+                        <option value="">Selecione...</option>
+                        <option value="Primavera/Verão">Primavera/Verão</option>
+                        <option value="Outono/Inverno">Outono/Inverno</option>
+                        <option value="Alto Verão">Alto Verão</option>
+                        <option value="Cruise">Cruise</option>
+                        <option value="Resort">Resort</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Campanha</label>
+                    <input type="text" name="campanha" class="form-control" placeholder="Ex: Lançamento Verão">
+                </div>
             </div>
 
             <div class="form-group">

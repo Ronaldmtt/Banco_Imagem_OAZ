@@ -1811,7 +1811,7 @@ def obter_ou_criar_marca(nome_marca, contadores):
     contadores['marcas_criadas'] += 1
     return nova_marca.id
 
-def obter_ou_criar_produto(sku, dados_linha, contadores):
+def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_id=None):
     """Busca ou cria um produto pelo SKU. Retorna o ID do produto."""
     import pandas as pd
     import json
@@ -1822,6 +1822,16 @@ def obter_ou_criar_produto(sku, dados_linha, contadores):
     produto = Produto.query.filter_by(sku=sku).first()
     
     if produto:
+        # Atualizar marca e coleção se ainda não tiver
+        atualizado = False
+        if marca_id and not produto.marca_id:
+            produto.marca_id = marca_id
+            atualizado = True
+        if colecao_id and not produto.colecao_id:
+            produto.colecao_id = colecao_id
+            atualizado = True
+        if atualizado:
+            db.session.flush()
         return produto.id
     
     descricao = str(dados_linha.get('descricao', ''))[:255] if pd.notna(dados_linha.get('descricao', '')) else sku
@@ -1839,6 +1849,8 @@ def obter_ou_criar_produto(sku, dados_linha, contadores):
         descricao=descricao if descricao else sku,
         cor=cor,
         categoria=categoria,
+        marca_id=marca_id,
+        colecao_id=colecao_id,
         atributos_tecnicos=json.dumps(atributos_extras) if atributos_extras else None,
         tem_foto=False
     )
@@ -1887,7 +1899,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None):
         
         colecao_id = obter_ou_criar_colecao(nome_colecao, contadores) if nome_colecao else None
         marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else None
-        produto_id = obter_ou_criar_produto(sku, row, contadores)
+        produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id)
         
         existing = CarteiraCompras.query.filter_by(sku=sku).first()
         if existing:

@@ -1839,7 +1839,8 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
     if not sku or not sku.strip():
         return None
     
-    produto = Produto.query.filter_by(sku=sku).first()
+    # Buscar apenas produtos ATIVOS (não deletados)
+    produto = Produto.query.filter_by(sku=sku, ativo=True).first()
     
     if produto:
         # Atualizar marca e coleção se ainda não tiver

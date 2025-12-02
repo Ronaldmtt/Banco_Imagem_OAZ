@@ -1752,6 +1752,12 @@ def normalizar_carteira_dataframe(df):
     
     sku_encontrado = 'sku' in df_normalizado.columns
     
+    # DEBUG: Mostrar colunas detectadas
+    print(f"[DEBUG] Colunas originais: {list(df.columns)}")
+    print(f"[DEBUG] Mapeamento: {novo_mapeamento}")
+    print(f"[DEBUG] Colunas normalizadas: {list(df_normalizado.columns)}")
+    print(f"[DEBUG] col_marca={col_marca}, col_colecao={col_colecao}")
+    
     return df_normalizado, sku_encontrado
 
 def extrair_ano_estacao(nome_colecao):

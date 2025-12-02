@@ -128,35 +128,51 @@ def analyze_image_with_ai(image_path):
         
         1. **Tipo de Item**: O tipo específico da peça ou acessório (ex: Vestido Midi, Jaqueta Jeans, Tênis de Corrida, Camisa Social, Blusa, Calça).
         
-        2. **Cor Principal**: A cor dominante (ex: Azul Marinho, Vermelho, Preto, Branco, Bege, Rosa).
+        2. **Cor Principal**: A cor dominante com nuances se aplicável (ex: Azul Marinho, Vermelho Vinho, Preto, Branco Off-White, Bege Areia, Rosa Blush, Marrom Chocolate).
         
-        3. **Material/Tecido**: ANALISE COM CUIDADO o material baseado na textura, caimento, brilho e aparência visual.
-           Considere estas opções comuns em moda:
+        3. **Material/Tecido**: ANALISE COM MUITO CUIDADO o material baseado na textura, caimento, brilho, transparência e aparência visual.
+           
+           TECIDOS DELICADOS E TRANSPARENTES (priorize identificar):
+           - Tule: tecido leve, transparente, com textura de rede fina, usado em saias, vestidos, detalhes
+           - Organza: tecido fino, transparente, levemente rígido, com brilho sutil
+           - Chiffon: tecido leve, transparente, fluido e esvoaçante
+           - Renda: tecido com padrões vazados, ornamental
+           - Gaze: tecido muito leve e transparente, textura suave
+           - Voal: tecido leve, semi-transparente, macio
+           
+           OUTRAS FIBRAS E TECIDOS:
            - Fibras naturais: Algodão, Linho, Seda, Lã
            - Fibras sintéticas: Poliéster, Poliamida (Nylon), Elastano (Lycra), Acrílico
            - Fibras artificiais: Viscose, Modal, Lyocell (Tencel), Acetato
-           - Misturas comuns: Algodão/Poliéster, Viscose/Elastano, Linho/Viscose, Algodão/Elastano
-           - Tecidos específicos: Jeans (Denim), Couro, Camurça, Tweed, Crepe, Cetim, Chiffon, Tricô, Moletom
+           - Misturas comuns: Algodão/Poliéster, Viscose/Elastano, Linho/Viscose
+           - Tecidos específicos: Jeans/Denim, Couro, Camurça, Tweed, Crepe, Cetim, Tricô, Moletom, Veludo
            
-           DICAS VISUAIS:
-           - Linho: textura rústica, amassa facilmente, aparência natural
-           - Seda: brilho suave, caimento fluido, toque delicado
-           - Viscose: caimento fluido, brilho leve, aparência fresca
-           - Poliéster: brilho mais artificial, não amassa, estruturado
-           - Algodão: textura opaca, sem brilho, aparência básica
-           - Crepe: textura granulada, opaco, caimento pesado
+           DICAS VISUAIS IMPORTANTES:
+           - Tule: transparente com textura de malha/rede, muito usado em saias volumosas
+           - Organza: transparente mas mais estruturado que chiffon
+           - Viscose: opaca, caimento fluido, NÃO transparente
+           - Seda: brilho suave natural, caimento fluido
+           - Poliéster: brilho mais artificial, estruturado
            
-           Se não conseguir determinar com precisão, indique a estimativa mais provável.
+           ATENÇÃO: Não confunda tule/organza (transparentes) com viscose (opaca).
         
-        4. **Estampa/Padrão**: Qualquer padrão visível (ex: Liso, Listrado, Floral, Xadrez, Geométrico, Animal Print, Abstrato, Tie-Dye).
+        4. **Estampa/Padrão**: Qualquer padrão visível (ex: Liso, Listrado, Floral, Xadrez, Geométrico, Animal Print, Abstrato, Poá, Étnico).
         
-        5. **Estilo**: O estilo de moda (ex: Casual, Formal/Social, Streetwear, Vintage, Esportivo, Romântico, Minimalista, Boho).
+        5. **Estilo**: Estilo específico da peça (ex: Festa, Social, Esportivo, Streetwear, Vintage, Romântico, Minimalista, Boho, Praia).
+           EVITE usar apenas "Casual" - seja mais específico sobre o contexto de uso.
         
-        6. **Descrição Visual**: Uma descrição profissional detalhada adequada para SEO e e-commerce.
+        6. **Descrição Visual**: Crie uma descrição MUITO DETALHADA e PRECISA que inclua:
+           - Tipo exato da peça e modelagem (ajustada, ampla, oversized, etc.)
+           - Comprimento (curto, midi, longo, cropped)
+           - Detalhes de design (decote, mangas, bolsos, botões, zíperes, recortes, babados, franzidos)
+           - Acabamentos e aviamentos visíveis
+           - Características únicas que diferenciam esta peça
+           
+           Esta descrição será usada para VERIFICAR se o SKU está correto, então seja o mais específico possível sobre os detalhes visuais únicos do produto.
         
         Retorne a resposta neste formato JSON ESTRITO:
         {
-            "description": "Uma descrição profissional detalhada em português...",
+            "description": "Descrição muito detalhada incluindo todos os detalhes visuais únicos...",
             "attributes": {
                 "item_type": "...",
                 "color": "...",
@@ -166,6 +182,8 @@ def analyze_image_with_ai(image_path):
             },
             "seo_keywords": ["palavra-chave1", "palavra-chave2", "palavra-chave3"]
         }
+        
+        IMPORTANTE: As keywords devem ser específicas e úteis. EVITE termos genéricos como "moda casual", "casual", "roupa feminina".
         """
         
         response = client.chat.completions.create(
@@ -185,7 +203,7 @@ def analyze_image_with_ai(image_path):
                 }
             ],
             response_format={"type": "json_object"},
-            max_tokens=500,
+            max_tokens=800,
         )
         
         content = response.choices[0].message.content
@@ -195,14 +213,25 @@ def analyze_image_with_ai(image_path):
         attributes = data.get('attributes', {})
         keywords = data.get('seo_keywords', [])
         
+        # Tags genéricas a serem filtradas (não agregam valor)
+        generic_tags = [
+            'casual', 'moda casual', 'roupa feminina', 'roupa masculina',
+            'moda feminina', 'moda masculina', 'vestuário', 'roupa',
+            'fashion', 'moda', 'look', 'outfit', 'estilo casual'
+        ]
+        
         # Flatten attributes into tags
         tags = []
         for key, value in attributes.items():
             if value and value.lower() != 'none' and value.lower() != 'n/a':
-                tags.append(value)
+                # Filtrar tags genéricas dos atributos
+                if value.lower() not in generic_tags:
+                    tags.append(value)
         
-        # Add SEO keywords to tags
-        tags.extend(keywords)
+        # Add SEO keywords to tags (filtering generic ones)
+        for keyword in keywords:
+            if keyword.lower() not in generic_tags:
+                tags.extend([keyword])
         
         # Remove duplicates and limit
         unique_tags = list(set(tags))

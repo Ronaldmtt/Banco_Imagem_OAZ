@@ -6,7 +6,7 @@
         <i class="fas fa-arrow-left"></i> Voltar para Carteira
     </a>
     <h1 style="margin-top: 1rem;">Importar Carteira</h1>
-    <p style="color: var(--text-secondary);">Importe um arquivo CSV com os produtos da carteira.</p>
+    <p style="color: var(--text-secondary);">Importe um arquivo Excel (.xlsx) ou CSV com os produtos da carteira.</p>
 </div>
 
 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
@@ -15,20 +15,20 @@
             <div class="upload-area" id="dropZone" style="height: 300px; cursor: pointer;" onclick="document.getElementById('fileInput').click();">
                 <div style="text-align: center;">
                     <div class="upload-icon">
-                        <i class="fas fa-file-csv"></i>
+                        <i class="fas fa-file-excel"></i>
                     </div>
-                    <h3 style="margin-bottom: 0.5rem;">Arraste e solte seu arquivo CSV aqui</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">ou clique para selecionar</p>
+                    <h3 style="margin-bottom: 0.5rem;">Arraste e solte seu arquivo aqui</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Aceita arquivos Excel (.xlsx) ou CSV</p>
                     <span class="btn btn-primary">
                         <i class="fas fa-upload"></i> Selecionar Arquivo
                     </span>
                 </div>
             </div>
-            <input type="file" name="arquivo" id="fileInput" accept=".csv" style="display: none;" required onchange="handleFileSelect(this)">
+            <input type="file" name="arquivo" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;" required onchange="handleFileSelect(this)">
             
             <div id="filePreview" style="display: none; margin-top: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
                 <div style="display: flex; align-items: center; gap: 1rem;">
-                    <i class="fas fa-file-csv" style="font-size: 2rem; color: #3fb950;"></i>
+                    <i class="fas fa-file-excel" id="fileIcon" style="font-size: 2rem; color: #3fb950;"></i>
                     <div style="flex: 1;">
                         <div id="fileName" style="font-weight: 500;"></div>
                         <div id="fileSize" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
@@ -39,8 +39,18 @@
                 </div>
             </div>
 
+            <div id="abaSelector" style="display: none; margin-top: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">
+                    <i class="fas fa-layer-group" style="color: var(--accent-blue);"></i> Selecione a aba para importar:
+                </label>
+                <select name="aba" id="abaSelect" class="form-input" style="width: 100%;">
+                    <option value="">Carregando abas...</option>
+                </select>
+                <p id="abaInfo" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);"></p>
+            </div>
+
             <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
-                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+                <button type="submit" class="btn btn-primary" id="submitBtn" style="width: 100%; justify-content: center; padding: 12px;">
                     <i class="fas fa-file-import"></i> Importar Carteira
                 </button>
             </div>
@@ -50,25 +60,38 @@
     <div>
         <div class="stat-card">
             <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-                <i class="fas fa-info-circle" style="color: var(--accent-blue);"></i> Formato do Arquivo
+                <i class="fas fa-file-excel" style="color: #3fb950;"></i> Arquivos Excel
             </h3>
             <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-                O arquivo CSV deve conter as seguintes colunas:
+                Para arquivos Excel, o sistema reconhece automaticamente as colunas:
+            </p>
+            <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                <ul style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; padding-left: 1rem;">
+                    <li><strong style="color: #3fb950;">REFERÊNCIA E COR</strong> → SKU</li>
+                    <li><strong style="color: #3fb950;">NOME</strong> → Descrição</li>
+                    <li><strong style="color: #3fb950;">NOME / COR</strong> → Cor</li>
+                    <li><strong style="color: #3fb950;">GRUPO</strong> → Categoria</li>
+                    <li><strong style="color: #3fb950;">SUBGRUPO</strong> → Subcategoria</li>
+                    <li><strong style="color: #3fb950;">ENTRADA</strong> → Coleção</li>
+                    <li><strong style="color: #3fb950;">ESTILISTA</strong> → Estilista</li>
+                    <li><strong style="color: #3fb950;">QUANDO</strong> → Shooting</li>
+                    <li><strong style="color: #3fb950;">FOTO</strong> → Status Foto</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="stat-card" style="margin-top: 1.5rem;">
+            <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-file-csv" style="color: #d29922;"></i> Arquivos CSV
+            </h3>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+                Para arquivos CSV simples:
             </p>
             <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
                 <code style="color: #3fb950; font-size: 0.85rem;">
-                    sku, descricao, cor, categoria, quantidade
+                    sku, descricao, cor, categoria
                 </code>
             </div>
-            
-            <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem; color: var(--text-secondary);">Descrição das colunas:</h4>
-            <ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; list-style: disc;">
-                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">sku</strong> - Código único do produto (obrigatório)</li>
-                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">descricao</strong> - Descrição do produto</li>
-                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">cor</strong> - Cor do produto</li>
-                <li style="margin-bottom: 0.5rem;"><strong style="color: var(--text-primary);">categoria</strong> - Categoria do produto</li>
-                <li><strong style="color: var(--text-primary);">quantidade</strong> - Quantidade em estoque</li>
-            </ul>
         </div>
 
         <div class="stat-card" style="margin-top: 1.5rem;">
@@ -76,10 +99,10 @@
                 <i class="fas fa-lightbulb" style="color: #d29922;"></i> Dicas
             </h3>
             <ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; list-style: disc;">
-                <li style="margin-bottom: 0.5rem;">Use ponto e vírgula (;) ou vírgula (,) como separador</li>
-                <li style="margin-bottom: 0.5rem;">A primeira linha deve conter os nomes das colunas</li>
-                <li style="margin-bottom: 0.5rem;">Codificação UTF-8 é recomendada</li>
-                <li>SKUs duplicados serão atualizados</li>
+                <li style="margin-bottom: 0.5rem;">Arquivos Excel com múltiplas abas: selecione a aba desejada</li>
+                <li style="margin-bottom: 0.5rem;">SKUs duplicados serão ignorados</li>
+                <li style="margin-bottom: 0.5rem;">O status "SIM" na coluna FOTO marca como "Com Foto"</li>
+                <li>Cruzamento automático com produtos cadastrados</li>
             </ul>
         </div>
     </div>
@@ -89,6 +112,9 @@
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const filePreview = document.getElementById('filePreview');
+const abaSelector = document.getElementById('abaSelector');
+const abaSelect = document.getElementById('abaSelect');
+const abaInfo = document.getElementById('abaInfo');
 
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     dropZone.addEventListener(eventName, preventDefaults, false);
@@ -128,19 +154,68 @@ function handleDrop(e) {
     }
 }
 
-function handleFileSelect(input) {
+async function handleFileSelect(input) {
     const file = input.files[0];
     if (file) {
         document.getElementById('fileName').textContent = file.name;
         document.getElementById('fileSize').textContent = formatFileSize(file.size);
         filePreview.style.display = 'block';
         dropZone.style.display = 'none';
+        
+        const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
+        const fileIcon = document.getElementById('fileIcon');
+        
+        if (isExcel) {
+            fileIcon.className = 'fas fa-file-excel';
+            fileIcon.style.color = '#3fb950';
+            
+            abaSelector.style.display = 'block';
+            abaSelect.innerHTML = '<option value="">Carregando abas...</option>';
+            abaInfo.textContent = '';
+            
+            const formData = new FormData();
+            formData.append('arquivo', file);
+            
+            try {
+                const response = await fetch('/carteira/abas', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    abaSelect.innerHTML = '';
+                    
+                    data.abas.forEach((aba, index) => {
+                        const option = document.createElement('option');
+                        option.value = aba.nome;
+                        option.textContent = `${aba.nome} (${aba.linhas} linhas)`;
+                        if (index === 0) option.selected = true;
+                        abaSelect.appendChild(option);
+                    });
+                    
+                    if (data.abas.length > 0) {
+                        abaInfo.textContent = `${data.abas.length} aba(s) encontrada(s)`;
+                    }
+                } else {
+                    abaSelect.innerHTML = '<option value="">Erro ao carregar abas</option>';
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                abaSelect.innerHTML = '<option value="">Erro ao carregar abas</option>';
+            }
+        } else {
+            fileIcon.className = 'fas fa-file-csv';
+            fileIcon.style.color = '#d29922';
+            abaSelector.style.display = 'none';
+        }
     }
 }
 
 function clearFile() {
     fileInput.value = '';
     filePreview.style.display = 'none';
+    abaSelector.style.display = 'none';
     dropZone.style.display = 'flex';
 }
 

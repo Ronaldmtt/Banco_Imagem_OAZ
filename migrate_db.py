@@ -121,19 +121,49 @@ def migrate():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sku VARCHAR(50) NOT NULL,
                 descricao VARCHAR(255),
-                cor VARCHAR(50),
+                cor VARCHAR(100),
                 categoria VARCHAR(100),
+                subcategoria VARCHAR(100),
+                colecao_nome VARCHAR(100),
+                estilista VARCHAR(255),
+                shooting VARCHAR(100),
+                observacoes TEXT,
+                origem VARCHAR(50),
                 quantidade INTEGER DEFAULT 1,
-                status_foto VARCHAR(20) DEFAULT 'Pendente',
+                status_foto VARCHAR(30) DEFAULT 'Pendente',
+                okr VARCHAR(20),
                 produto_id INTEGER,
                 data_importacao DATETIME DEFAULT CURRENT_TIMESTAMP,
                 lote_importacao VARCHAR(50),
+                aba_origem VARCHAR(50),
                 FOREIGN KEY (produto_id) REFERENCES produto (id)
             )
         ''')
         print("Successfully created 'carteira_compras' table.")
     except sqlite3.OperationalError as e:
         print(f"Error creating 'carteira_compras' table: {e}")
+    
+    # Add new columns to existing carteira_compras table
+    carteira_columns = [
+        ('subcategoria', 'VARCHAR(100)'),
+        ('colecao_nome', 'VARCHAR(100)'),
+        ('estilista', 'VARCHAR(255)'),
+        ('shooting', 'VARCHAR(100)'),
+        ('observacoes', 'TEXT'),
+        ('origem', 'VARCHAR(50)'),
+        ('okr', 'VARCHAR(20)'),
+        ('aba_origem', 'VARCHAR(50)')
+    ]
+    
+    for column_name, column_type in carteira_columns:
+        try:
+            cursor.execute(f"ALTER TABLE carteira_compras ADD COLUMN {column_name} {column_type}")
+            print(f"Successfully added '{column_name}' column to 'carteira_compras' table.")
+        except sqlite3.OperationalError as e:
+            if 'duplicate column name' in str(e).lower():
+                print(f"Column '{column_name}' already exists in 'carteira_compras', skipping.")
+            else:
+                print(f"Error adding '{column_name}' column: {e}")
     
     # Create indexes for faster queries
     indexes = [

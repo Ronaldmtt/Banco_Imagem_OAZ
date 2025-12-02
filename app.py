@@ -168,17 +168,25 @@ class CarteiraCompras(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sku = db.Column(db.String(50), nullable=False)
     descricao = db.Column(db.String(255))
-    cor = db.Column(db.String(50))
-    categoria = db.Column(db.String(100))
+    cor = db.Column(db.String(100))
+    categoria = db.Column(db.String(100))  # GRUPO
+    subcategoria = db.Column(db.String(100))  # SUBGRUPO
+    colecao_nome = db.Column(db.String(100))  # ENTRADA (ex: INVERNO 2026)
+    estilista = db.Column(db.String(255))
+    shooting = db.Column(db.String(100))  # QUANDO
+    observacoes = db.Column(db.Text)  # OBS
+    origem = db.Column(db.String(50))  # NACIONAL / IMPORTADO
     quantidade = db.Column(db.Integer, default=1)
     
     # Status
-    status_foto = db.Column(db.String(20), default='Pendente')  # Pendente, Com Foto, Sem Foto
+    status_foto = db.Column(db.String(30), default='Pendente')  # Pendente, Com Foto, Sem Foto
+    okr = db.Column(db.String(20))  # Status de aprovação
     produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'))  # Link com produto se existir
     
     # Metadados de importação
     data_importacao = db.Column(db.DateTime, default=datetime.utcnow)
     lote_importacao = db.Column(db.String(50))  # Identificador do lote de importação
+    aba_origem = db.Column(db.String(50))  # Aba do Excel de origem
     
     # Relacionamento
     produto = db.relationship('Produto', backref='itens_carteira')
@@ -1587,66 +1595,155 @@ def importar_carteira():
             flash('Nenhum arquivo selecionado')
             return redirect(request.url)
         
-        if not file.filename.endswith('.csv'):
-            flash('Apenas arquivos CSV são permitidos')
+        filename = file.filename.lower()
+        if not (filename.endswith('.csv') or filename.endswith('.xlsx') or filename.endswith('.xls')):
+            flash('Apenas arquivos CSV ou Excel (.xlsx, .xls) são permitidos')
             return redirect(request.url)
         
         try:
-            # Gerar ID do lote
             import uuid
-            lote_id = f"LOTE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
+            import pandas as pd
             
-            # Ler CSV
-            content = file.read().decode('utf-8')
-            reader = csv.DictReader(io.StringIO(content))
+            lote_id = f"LOTE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
+            aba_selecionada = request.form.get('aba', '')
             
             count = 0
-            for row in reader:
-                sku = row.get('sku', row.get('SKU', '')).strip()
-                if not sku:
+            
+            if filename.endswith('.csv'):
+                content = file.read().decode('utf-8')
+                df = pd.read_csv(io.StringIO(content))
+                aba_selecionada = 'CSV'
+            else:
+                xl = pd.ExcelFile(file)
+                if aba_selecionada and aba_selecionada in xl.sheet_names:
+                    df = pd.read_excel(xl, sheet_name=aba_selecionada)
+                else:
+                    df = pd.read_excel(xl, sheet_name=0)
+                    aba_selecionada = xl.sheet_names[0]
+            
+            col_map = {
+                'REFERÊNCIA E COR': 'sku',
+                'REFERENCIA E COR': 'sku',
+                'SKU': 'sku',
+                'sku': 'sku',
+                'NOME ': 'descricao',
+                'NOME': 'descricao',
+                'DESCRICAO': 'descricao',
+                'descricao': 'descricao',
+                'NOME / COR ': 'cor',
+                'NOME / COR': 'cor',
+                'COR': 'cor',
+                'cor': 'cor',
+                'GRUPO': 'categoria',
+                'CATEGORIA': 'categoria',
+                'categoria': 'categoria',
+                'SUBGRUPO': 'subcategoria',
+                'SUBCATEGORIA': 'subcategoria',
+                'subcategoria': 'subcategoria',
+                'ENTRADA': 'colecao_nome',
+                'COLECAO': 'colecao_nome',
+                'colecao': 'colecao_nome',
+                'ESTILISTA': 'estilista',
+                'estilista': 'estilista',
+                'QUANDO': 'shooting',
+                'SHOOTING': 'shooting',
+                'shooting': 'shooting',
+                'OBS': 'observacoes',
+                'OBSERVACOES': 'observacoes',
+                'observacoes': 'observacoes',
+                'NACIONAL / IMPORTADO': 'origem',
+                'ORIGEM': 'origem',
+                'origem': 'origem',
+                'FOTO': 'status_foto_original',
+                'OKR': 'okr',
+                'QUANTIDADE': 'quantidade',
+                'quantidade': 'quantidade'
+            }
+            
+            df_renamed = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            
+            for idx, row in df_renamed.iterrows():
+                sku = str(row.get('sku', '')).strip() if pd.notna(row.get('sku', '')) else ''
+                if not sku or sku == 'SKUS' or sku == 'nan':
                     continue
                 
-                # Verificar se já existe na carteira
+                sku = sku.rstrip('.00').strip()
+                
                 existing = CarteiraCompras.query.filter_by(sku=sku).first()
                 if existing:
-                    # Atualizar quantidade
-                    existing.quantidade = existing.quantidade + int(row.get('quantidade', row.get('QUANTIDADE', 1)) or 1)
                     existing.lote_importacao = lote_id
+                    existing.aba_origem = aba_selecionada
                 else:
-                    # Criar novo
+                    status_foto_original = str(row.get('status_foto_original', '')).upper() if pd.notna(row.get('status_foto_original', '')) else ''
+                    if 'SIM' in status_foto_original:
+                        status_foto = 'Com Foto'
+                    elif 'NAO' in status_foto_original or 'NÃO' in status_foto_original:
+                        status_foto = 'Sem Foto'
+                    else:
+                        status_foto = 'Pendente'
+                    
                     item = CarteiraCompras(
                         sku=sku,
-                        descricao=row.get('descricao', row.get('DESCRICAO', '')),
-                        cor=row.get('cor', row.get('COR', '')),
-                        categoria=row.get('categoria', row.get('CATEGORIA', '')),
-                        quantidade=int(row.get('quantidade', row.get('QUANTIDADE', 1)) or 1),
-                        lote_importacao=lote_id
+                        descricao=str(row.get('descricao', ''))[:255] if pd.notna(row.get('descricao', '')) else None,
+                        cor=str(row.get('cor', ''))[:100] if pd.notna(row.get('cor', '')) else None,
+                        categoria=str(row.get('categoria', ''))[:100] if pd.notna(row.get('categoria', '')) else None,
+                        subcategoria=str(row.get('subcategoria', ''))[:100] if pd.notna(row.get('subcategoria', '')) else None,
+                        colecao_nome=str(row.get('colecao_nome', ''))[:100] if pd.notna(row.get('colecao_nome', '')) else None,
+                        estilista=str(row.get('estilista', ''))[:255] if pd.notna(row.get('estilista', '')) else None,
+                        shooting=str(row.get('shooting', ''))[:100] if pd.notna(row.get('shooting', '')) else None,
+                        observacoes=str(row.get('observacoes', '')) if pd.notna(row.get('observacoes', '')) else None,
+                        origem=str(row.get('origem', ''))[:50] if pd.notna(row.get('origem', '')) else None,
+                        okr=str(row.get('okr', ''))[:20] if pd.notna(row.get('okr', '')) else None,
+                        quantidade=int(row.get('quantidade', 1)) if pd.notna(row.get('quantidade', 1)) else 1,
+                        status_foto=status_foto,
+                        lote_importacao=lote_id,
+                        aba_origem=aba_selecionada
                     )
                     
-                    # Verificar se já tem foto
                     produto = Produto.query.filter_by(sku=sku).first()
-                    if produto and produto.tem_foto:
-                        item.status_foto = 'Com Foto'
+                    if produto:
                         item.produto_id = produto.id
-                    else:
-                        item.status_foto = 'Pendente'
+                        if produto.tem_foto:
+                            item.status_foto = 'Com Foto'
                     
                     db.session.add(item)
                     count += 1
             
             db.session.commit()
-            flash(f'Importação concluída! {count} novos itens adicionados. Lote: {lote_id}')
+            flash(f'Importação concluída! {count} novos itens da aba "{aba_selecionada}" adicionados. Lote: {lote_id}')
             
-            # Executar cruzamento automático
             atualizar_status_carteira()
             
             return redirect(url_for('carteira'))
             
         except Exception as e:
+            db.session.rollback()
             flash(f'Erro ao importar: {str(e)}')
             return redirect(request.url)
     
     return render_template('carteira/importar.html')
+
+@app.route('/carteira/abas', methods=['POST'])
+@login_required
+def listar_abas_excel():
+    """Retorna lista de abas de um arquivo Excel para seleção"""
+    import pandas as pd
+    if 'arquivo' not in request.files:
+        return {'error': 'Nenhum arquivo enviado'}, 400
+    
+    file = request.files['arquivo']
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
+        return {'error': 'Apenas arquivos Excel'}, 400
+    
+    try:
+        xl = pd.ExcelFile(file)
+        abas = []
+        for sheet_name in xl.sheet_names:
+            df = pd.read_excel(xl, sheet_name=sheet_name)
+            abas.append({'nome': sheet_name, 'linhas': len(df)})
+        return {'abas': abas}
+    except Exception as e:
+        return {'error': str(e)}, 500
 
 @app.route('/carteira/cruzar')
 @login_required

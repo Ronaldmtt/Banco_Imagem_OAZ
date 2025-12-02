@@ -4,3 +4,5 @@ Flask-Login
 werkzeug
 openai
 python-dotenv
+openpyxl
+pandas

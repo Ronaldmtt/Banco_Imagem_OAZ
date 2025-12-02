@@ -1559,11 +1559,15 @@ def desassociar_imagem_produto(id, imagem_id):
 def carteira():
     status = request.args.get('status', '')
     search = request.args.get('search', '')
+    lote = request.args.get('lote', '')
     
     query = CarteiraCompras.query
     
     if status:
         query = query.filter_by(status_foto=status)
+    
+    if lote:
+        query = query.filter_by(lote_importacao=lote)
     
     if search:
         search_term = f'%{search}%'
@@ -1580,13 +1584,62 @@ def carteira():
     sem_foto = CarteiraCompras.query.filter_by(status_foto='Sem Foto').count()
     pendente = CarteiraCompras.query.filter_by(status_foto='Pendente').count()
     
+    # Listar lotes únicos
+    lotes = db.session.query(
+        CarteiraCompras.lote_importacao,
+        db.func.count(CarteiraCompras.id).label('total_itens'),
+        db.func.min(CarteiraCompras.data_importacao).label('data_importacao')
+    ).filter(
+        CarteiraCompras.lote_importacao.isnot(None)
+    ).group_by(
+        CarteiraCompras.lote_importacao
+    ).order_by(
+        db.desc('data_importacao')
+    ).all()
+    
     return render_template('carteira/list.html', 
                           itens_carteira=itens,
                           total_carteira=total,
                           com_foto=com_foto,
                           sem_foto=sem_foto,
                           pendente=pendente,
-                          search_query=search)
+                          search_query=search,
+                          lotes=lotes,
+                          lote_selecionado=lote)
+
+@app.route('/carteira/lote/<lote_id>/delete', methods=['POST'])
+@login_required
+def deletar_lote_carteira(lote_id):
+    """Deleta todos os itens de um lote de importação"""
+    try:
+        itens = CarteiraCompras.query.filter_by(lote_importacao=lote_id).all()
+        count = len(itens)
+        
+        for item in itens:
+            db.session.delete(item)
+        
+        db.session.commit()
+        flash(f'Lote "{lote_id}" deletado com sucesso! {count} itens removidos.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao deletar lote: {str(e)}', 'error')
+    
+    return redirect(url_for('carteira'))
+
+@app.route('/carteira/limpar-tudo', methods=['POST'])
+@login_required
+def limpar_toda_carteira():
+    """Limpa toda a carteira de compras"""
+    try:
+        count = CarteiraCompras.query.count()
+        CarteiraCompras.query.delete()
+        db.session.commit()
+        flash(f'Carteira limpa com sucesso! {count} itens removidos.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao limpar carteira: {str(e)}', 'error')
+    
+    return redirect(url_for('carteira'))
 
 def normalizar_nome_coluna(nome):
     """Remove acentos, espaços extras e converte para minúsculas para comparação"""

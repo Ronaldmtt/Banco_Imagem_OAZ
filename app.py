@@ -2059,35 +2059,13 @@ def importar_carteira():
             
             atualizar_status_carteira()
             
-            # Usar JavaScript redirect para funcionar no iframe
-            return f'''
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta http-equiv="refresh" content="0;url={url_for('carteira')}">
-                <script>window.location.href = "{url_for('carteira')}";</script>
-            </head>
-            <body>
-                <p>Redirecionando... <a href="{url_for('carteira')}">Clique aqui se não for redirecionado</a></p>
-            </body>
-            </html>
-            '''
+            # Retornar sucesso para requisição AJAX
+            return {'success': True, 'message': f'{total_count} itens importados'}, 200
             
         except Exception as e:
             db.session.rollback()
             flash(f'Erro ao importar: {str(e)}', 'error')
-            return f'''
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta http-equiv="refresh" content="0;url={request.url}">
-                <script>window.location.href = "{request.url}";</script>
-            </head>
-            <body>
-                <p>Redirecionando... <a href="{request.url}">Clique aqui</a></p>
-            </body>
-            </html>
-            '''
+            return {'success': False, 'error': str(e)}, 500
     
     return render_template('carteira/importar.html')
 

@@ -287,12 +287,12 @@ function hideError() {
     document.getElementById('errorMessage').style.display = 'none';
 }
 
-document.getElementById('importForm').addEventListener('submit', function(e) {
+document.getElementById('importForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
     hideError();
     
     const fileInput = document.getElementById('fileInput');
     if (!fileInput.files || fileInput.files.length === 0) {
-        e.preventDefault();
         showError('Por favor, selecione um arquivo Excel (.xlsx) ou CSV para importar.');
         return false;
     }
@@ -301,8 +301,29 @@ document.getElementById('importForm').addEventListener('submit', function(e) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importando... Aguarde';
     
-    // Permitir o submit normal do formulário
-    return true;
+    try {
+        const formData = new FormData(this);
+        
+        const response = await fetch('{{ url_for("importar_carteira") }}', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            // Redirecionar para carteira após sucesso
+            window.location.href = '{{ url_for("carteira") }}';
+        } else {
+            const text = await response.text();
+            showError('Erro ao importar: ' + (text || 'Erro desconhecido'));
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-file-import"></i> Importar Carteira';
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        showError('Erro de conexão ao importar. Tente novamente.');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-file-import"></i> Importar Carteira';
+    }
 });
 </script>
 {% endblock %}

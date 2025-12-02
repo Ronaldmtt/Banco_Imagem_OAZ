@@ -5,26 +5,27 @@
     <a href="{{ url_for('carteira') }}" style="color: var(--text-secondary); font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
         <i class="fas fa-arrow-left"></i> Voltar para Carteira
     </a>
-    <h1 style="margin-top: 1rem;">Importar Carteira</h1>
+    <h1 style="margin-top: 1rem;">Importar Carteira de Compras</h1>
     <p style="color: var(--text-secondary);">Importe um arquivo Excel (.xlsx) ou CSV com os produtos da carteira.</p>
 </div>
 
 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
     <div class="stat-card">
         <form action="{{ url_for('importar_carteira') }}" method="POST" enctype="multipart/form-data" id="importForm">
-            <div class="upload-area" id="dropZone" style="height: 300px; cursor: pointer;" onclick="document.getElementById('fileInput').click();">
+            <div class="upload-area" id="dropZone" style="height: 280px; cursor: pointer;" onclick="document.getElementById('fileInput').click();">
                 <div style="text-align: center;">
                     <div class="upload-icon">
                         <i class="fas fa-file-excel"></i>
                     </div>
                     <h3 style="margin-bottom: 0.5rem;">Arraste e solte seu arquivo aqui</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Aceita arquivos Excel (.xlsx) ou CSV</p>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Aceita arquivos Excel (.xlsx, .xls) ou CSV</p>
                     <span class="btn btn-primary">
                         <i class="fas fa-upload"></i> Selecionar Arquivo
                     </span>
                 </div>
             </div>
             <input type="file" name="arquivo" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;" required onchange="handleFileSelect(this)">
+            <input type="hidden" name="importar_todas" id="importarTodasInput" value="false">
             
             <div id="filePreview" style="display: none; margin-top: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
                 <div style="display: flex; align-items: center; gap: 1rem;">
@@ -33,20 +34,30 @@
                         <div id="fileName" style="font-weight: 500;"></div>
                         <div id="fileSize" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
                     </div>
-                    <button type="button" onclick="clearFile()" style="background: none; border: none; color: #f85149; cursor: pointer;">
+                    <button type="button" onclick="clearFile()" style="background: none; border: none; color: #f85149; cursor: pointer; font-size: 1.2rem;">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
 
             <div id="abaSelector" style="display: none; margin-top: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">
-                    <i class="fas fa-layer-group" style="color: var(--accent-blue);"></i> Selecione a aba para importar:
-                </label>
-                <select name="aba" id="abaSelect" class="form-input" style="width: 100%;">
-                    <option value="">Carregando abas...</option>
-                </select>
-                <p id="abaInfo" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);"></p>
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="importarTodasCheck" onchange="toggleImportarTodas()" style="width: 18px; height: 18px;">
+                        <span style="font-weight: 500;">Importar TODAS as abas de uma vez</span>
+                    </label>
+                </div>
+                
+                <div id="abaSelectContainer">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">
+                        <i class="fas fa-layer-group" style="color: var(--accent-blue);"></i> Ou selecione uma aba:
+                    </label>
+                    <select name="aba" id="abaSelect" class="form-input" style="width: 100%;">
+                        <option value="">Carregando abas...</option>
+                    </select>
+                </div>
+                
+                <p id="abaInfo" style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-secondary);"></p>
             </div>
 
             <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
@@ -63,21 +74,25 @@
                 <i class="fas fa-file-excel" style="color: #3fb950;"></i> Arquivos Excel
             </h3>
             <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-                Para arquivos Excel, o sistema reconhece automaticamente as colunas:
+                O sistema reconhece automaticamente as seguintes colunas (ignora maiusculas/minusculas e acentos):
             </p>
             <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
-                <ul style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; padding-left: 1rem;">
-                    <li><strong style="color: #3fb950;">REFERÊNCIA E COR</strong> → SKU</li>
-                    <li><strong style="color: #3fb950;">NOME</strong> → Descrição</li>
-                    <li><strong style="color: #3fb950;">NOME / COR</strong> → Cor</li>
-                    <li><strong style="color: #3fb950;">GRUPO</strong> → Categoria</li>
-                    <li><strong style="color: #3fb950;">SUBGRUPO</strong> → Subcategoria</li>
-                    <li><strong style="color: #3fb950;">ENTRADA</strong> → Coleção</li>
-                    <li><strong style="color: #3fb950;">ESTILISTA</strong> → Estilista</li>
-                    <li><strong style="color: #3fb950;">QUANDO</strong> → Shooting</li>
-                    <li><strong style="color: #3fb950;">FOTO</strong> → Status Foto</li>
+                <ul style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; padding-left: 1rem; line-height: 1.6;">
+                    <li><strong style="color: #3fb950;">REFERENCIA E COR</strong> ou <strong style="color: #3fb950;">SKU</strong> ou <strong style="color: #3fb950;">CODIGO</strong> <span style="color: #f85149;">(obrigatorio)</span></li>
+                    <li><strong style="color: #79c0ff;">NOME</strong> → Descricao</li>
+                    <li><strong style="color: #79c0ff;">NOME / COR</strong> ou <strong style="color: #79c0ff;">COR</strong> → Cor</li>
+                    <li><strong style="color: #79c0ff;">GRUPO</strong> ou <strong style="color: #79c0ff;">CATEGORIA</strong> → Categoria</li>
+                    <li><strong style="color: #79c0ff;">SUBGRUPO</strong> → Subcategoria</li>
+                    <li><strong style="color: #79c0ff;">ENTRADA</strong> → Colecao</li>
+                    <li><strong style="color: #79c0ff;">ESTILISTA</strong> → Estilista</li>
+                    <li><strong style="color: #79c0ff;">QUANDO</strong> → Shooting</li>
+                    <li><strong style="color: #79c0ff;">FOTO</strong> → Status (SIM/NAO)</li>
                 </ul>
             </div>
+            <p style="font-size: 0.8rem; color: var(--text-secondary);">
+                <i class="fas fa-info-circle" style="color: var(--accent-blue);"></i> 
+                Colunas nao reconhecidas serao ignoradas.
+            </p>
         </div>
 
         <div class="stat-card" style="margin-top: 1.5rem;">
@@ -85,11 +100,11 @@
                 <i class="fas fa-file-csv" style="color: #d29922;"></i> Arquivos CSV
             </h3>
             <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-                Para arquivos CSV simples:
+                Para arquivos CSV, use as mesmas colunas:
             </p>
-            <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+            <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem;">
                 <code style="color: #3fb950; font-size: 0.85rem;">
-                    sku, descricao, cor, categoria
+                    SKU, DESCRICAO, COR, CATEGORIA, QUANTIDADE
                 </code>
             </div>
         </div>
@@ -98,11 +113,12 @@
             <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
                 <i class="fas fa-lightbulb" style="color: #d29922;"></i> Dicas
             </h3>
-            <ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; list-style: disc;">
-                <li style="margin-bottom: 0.5rem;">Arquivos Excel com múltiplas abas: selecione a aba desejada</li>
-                <li style="margin-bottom: 0.5rem;">SKUs duplicados serão ignorados</li>
-                <li style="margin-bottom: 0.5rem;">O status "SIM" na coluna FOTO marca como "Com Foto"</li>
-                <li>Cruzamento automático com produtos cadastrados</li>
+            <ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; list-style: disc; line-height: 1.8;">
+                <li>Excel com multiplas abas: escolha uma ou importe todas</li>
+                <li>SKUs duplicados serao ignorados (nao duplica)</li>
+                <li>Coluna FOTO com "SIM" marca como "Com Foto"</li>
+                <li>Cruzamento automatico com produtos cadastrados</li>
+                <li>Quantidade padrao = 1 se nao informada</li>
             </ul>
         </div>
     </div>
@@ -114,7 +130,10 @@ const fileInput = document.getElementById('fileInput');
 const filePreview = document.getElementById('filePreview');
 const abaSelector = document.getElementById('abaSelector');
 const abaSelect = document.getElementById('abaSelect');
+const abaSelectContainer = document.getElementById('abaSelectContainer');
 const abaInfo = document.getElementById('abaInfo');
+const importarTodasCheck = document.getElementById('importarTodasCheck');
+const importarTodasInput = document.getElementById('importarTodasInput');
 
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     dropZone.addEventListener(eventName, preventDefaults, false);
@@ -154,6 +173,17 @@ function handleDrop(e) {
     }
 }
 
+function toggleImportarTodas() {
+    if (importarTodasCheck.checked) {
+        importarTodasInput.value = 'true';
+        abaSelectContainer.style.display = 'none';
+        abaInfo.innerHTML = '<i class="fas fa-check-circle" style="color: #3fb950;"></i> Todas as abas com coluna de SKU valida serao importadas.';
+    } else {
+        importarTodasInput.value = 'false';
+        abaSelectContainer.style.display = 'block';
+    }
+}
+
 async function handleFileSelect(input) {
     const file = input.files[0];
     if (file) {
@@ -172,6 +202,9 @@ async function handleFileSelect(input) {
             abaSelector.style.display = 'block';
             abaSelect.innerHTML = '<option value="">Carregando abas...</option>';
             abaInfo.textContent = '';
+            importarTodasCheck.checked = false;
+            importarTodasInput.value = 'false';
+            abaSelectContainer.style.display = 'block';
             
             const formData = new FormData();
             formData.append('arquivo', file);
@@ -186,16 +219,25 @@ async function handleFileSelect(input) {
                     const data = await response.json();
                     abaSelect.innerHTML = '';
                     
+                    let abasComSku = 0;
                     data.abas.forEach((aba, index) => {
                         const option = document.createElement('option');
                         option.value = aba.nome;
-                        option.textContent = `${aba.nome} (${aba.linhas} linhas)`;
-                        if (index === 0) option.selected = true;
+                        const skuStatus = aba.tem_sku ? '✓ SKU' : '✗ Sem SKU';
+                        const skuColor = aba.tem_sku ? '#3fb950' : '#f85149';
+                        option.innerHTML = `${aba.nome} (${aba.linhas} linhas) - ${skuStatus}`;
+                        option.style.color = aba.tem_sku ? '' : '#888';
+                        if (index === 0 || (aba.tem_sku && abasComSku === 0)) {
+                            option.selected = true;
+                        }
+                        if (aba.tem_sku) abasComSku++;
                         abaSelect.appendChild(option);
                     });
                     
-                    if (data.abas.length > 0) {
-                        abaInfo.textContent = `${data.abas.length} aba(s) encontrada(s)`;
+                    if (data.abas.length > 1) {
+                        abaInfo.innerHTML = `<i class="fas fa-info-circle" style="color: var(--accent-blue);"></i> ${data.abas.length} abas encontradas, ${abasComSku} com coluna de SKU. Total: ${data.total_linhas} linhas.`;
+                    } else {
+                        abaInfo.innerHTML = `<i class="fas fa-info-circle" style="color: var(--accent-blue);"></i> 1 aba encontrada com ${data.total_linhas} linhas.`;
                     }
                 } else {
                     abaSelect.innerHTML = '<option value="">Erro ao carregar abas</option>';
@@ -217,6 +259,8 @@ function clearFile() {
     filePreview.style.display = 'none';
     abaSelector.style.display = 'none';
     dropZone.style.display = 'flex';
+    importarTodasCheck.checked = false;
+    importarTodasInput.value = 'false';
 }
 
 function formatFileSize(bytes) {

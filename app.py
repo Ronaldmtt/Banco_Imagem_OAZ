@@ -1582,22 +1582,173 @@ def carteira():
                           pendente=pendente,
                           search_query=search)
 
+def normalizar_nome_coluna(nome):
+    """Remove acentos, espaços extras e converte para minúsculas para comparação"""
+    import unicodedata
+    if not isinstance(nome, str):
+        return str(nome).lower().strip()
+    nome = unicodedata.normalize('NFD', nome)
+    nome = ''.join(c for c in nome if unicodedata.category(c) != 'Mn')
+    return nome.lower().strip()
+
+def normalizar_carteira_dataframe(df):
+    """
+    Normaliza um DataFrame da carteira, mapeando colunas do Excel para o padrão do sistema.
+    Regras: case-insensitive, ignora acentos e espaços extras.
+    
+    Retorna: (df_normalizado, sku_encontrado: bool)
+    """
+    import pandas as pd
+    
+    mapeamento_sku = ['referencia e cor', 'referência e cor', 'sku', 'codigo', 'código', 'ref']
+    mapeamento_descricao = ['nome', 'nome produto', 'descricao', 'descrição', 'produto']
+    mapeamento_cor = ['nome / cor', 'nome/cor', 'cor', 'cor produto']
+    mapeamento_categoria = ['grupo', 'categoria', 'departamento', 'tipo']
+    mapeamento_subcategoria = ['subgrupo', 'subcategoria', 'sub categoria', 'subtipo']
+    mapeamento_colecao = ['entrada', 'colecao', 'coleção', 'temporada']
+    mapeamento_estilista = ['estilista', 'designer', 'criador']
+    mapeamento_shooting = ['quando', 'shooting', 'data shooting', 'foto quando']
+    mapeamento_observacoes = ['obs', 'observacoes', 'observações', 'notas', 'comentarios']
+    mapeamento_origem = ['nacional / importado', 'nacional/importado', 'origem', 'procedencia']
+    mapeamento_foto = ['foto', 'tem foto', 'status foto']
+    mapeamento_okr = ['okr', 'status okr', 'aprovacao']
+    mapeamento_quantidade = ['quantidade', 'qtd', 'qty', 'quant']
+    
+    colunas_originais = {normalizar_nome_coluna(col): col for col in df.columns}
+    
+    novo_mapeamento = {}
+    
+    def encontrar_coluna(lista_nomes):
+        for nome in lista_nomes:
+            if nome in colunas_originais:
+                return colunas_originais[nome]
+        return None
+    
+    col_sku = encontrar_coluna(mapeamento_sku)
+    col_descricao = encontrar_coluna(mapeamento_descricao)
+    col_cor = encontrar_coluna(mapeamento_cor)
+    col_categoria = encontrar_coluna(mapeamento_categoria)
+    col_subcategoria = encontrar_coluna(mapeamento_subcategoria)
+    col_colecao = encontrar_coluna(mapeamento_colecao)
+    col_estilista = encontrar_coluna(mapeamento_estilista)
+    col_shooting = encontrar_coluna(mapeamento_shooting)
+    col_observacoes = encontrar_coluna(mapeamento_observacoes)
+    col_origem = encontrar_coluna(mapeamento_origem)
+    col_foto = encontrar_coluna(mapeamento_foto)
+    col_okr = encontrar_coluna(mapeamento_okr)
+    col_quantidade = encontrar_coluna(mapeamento_quantidade)
+    
+    if col_sku:
+        novo_mapeamento[col_sku] = 'sku'
+    if col_descricao:
+        novo_mapeamento[col_descricao] = 'descricao'
+    if col_cor:
+        novo_mapeamento[col_cor] = 'cor'
+    if col_categoria:
+        novo_mapeamento[col_categoria] = 'categoria'
+    if col_subcategoria:
+        novo_mapeamento[col_subcategoria] = 'subcategoria'
+    if col_colecao:
+        novo_mapeamento[col_colecao] = 'colecao_nome'
+    if col_estilista:
+        novo_mapeamento[col_estilista] = 'estilista'
+    if col_shooting:
+        novo_mapeamento[col_shooting] = 'shooting'
+    if col_observacoes:
+        novo_mapeamento[col_observacoes] = 'observacoes'
+    if col_origem:
+        novo_mapeamento[col_origem] = 'origem'
+    if col_foto:
+        novo_mapeamento[col_foto] = 'status_foto_original'
+    if col_okr:
+        novo_mapeamento[col_okr] = 'okr'
+    if col_quantidade:
+        novo_mapeamento[col_quantidade] = 'quantidade'
+    
+    df_normalizado = df.rename(columns=novo_mapeamento)
+    
+    sku_encontrado = 'sku' in df_normalizado.columns
+    
+    return df_normalizado, sku_encontrado
+
+def processar_linhas_carteira(df, lote_id, aba_origem):
+    """Processa linhas do DataFrame e insere/atualiza na CarteiraCompras"""
+    import pandas as pd
+    count = 0
+    skus_invalidos = 0
+    
+    for idx, row in df.iterrows():
+        sku = str(row.get('sku', '')).strip() if pd.notna(row.get('sku', '')) else ''
+        
+        if not sku or sku.upper() in ['SKUS', 'SKU', 'NAN', 'NONE', '']:
+            skus_invalidos += 1
+            continue
+        
+        sku = sku.rstrip('.00').rstrip('.0').strip()
+        
+        existing = CarteiraCompras.query.filter_by(sku=sku).first()
+        if existing:
+            existing.lote_importacao = lote_id
+            existing.aba_origem = aba_origem
+        else:
+            status_foto_original = str(row.get('status_foto_original', '')).upper() if pd.notna(row.get('status_foto_original', '')) else ''
+            if 'SIM' in status_foto_original or 'YES' in status_foto_original or 'S' == status_foto_original:
+                status_foto = 'Com Foto'
+            elif 'NAO' in status_foto_original or 'NÃO' in status_foto_original or 'NO' in status_foto_original or 'N' == status_foto_original:
+                status_foto = 'Sem Foto'
+            else:
+                status_foto = 'Pendente'
+            
+            try:
+                qtd = int(float(row.get('quantidade', 1))) if pd.notna(row.get('quantidade', 1)) else 1
+            except (ValueError, TypeError):
+                qtd = 1
+            
+            item = CarteiraCompras(
+                sku=sku,
+                descricao=str(row.get('descricao', ''))[:255] if pd.notna(row.get('descricao', '')) else None,
+                cor=str(row.get('cor', ''))[:100] if pd.notna(row.get('cor', '')) else None,
+                categoria=str(row.get('categoria', ''))[:100] if pd.notna(row.get('categoria', '')) else None,
+                subcategoria=str(row.get('subcategoria', ''))[:100] if pd.notna(row.get('subcategoria', '')) else None,
+                colecao_nome=str(row.get('colecao_nome', ''))[:100] if pd.notna(row.get('colecao_nome', '')) else None,
+                estilista=str(row.get('estilista', ''))[:255] if pd.notna(row.get('estilista', '')) else None,
+                shooting=str(row.get('shooting', ''))[:100] if pd.notna(row.get('shooting', '')) else None,
+                observacoes=str(row.get('observacoes', '')) if pd.notna(row.get('observacoes', '')) else None,
+                origem=str(row.get('origem', ''))[:50] if pd.notna(row.get('origem', '')) else None,
+                okr=str(row.get('okr', ''))[:20] if pd.notna(row.get('okr', '')) else None,
+                quantidade=qtd,
+                status_foto=status_foto,
+                lote_importacao=lote_id,
+                aba_origem=aba_origem
+            )
+            
+            produto = Produto.query.filter_by(sku=sku).first()
+            if produto:
+                item.produto_id = produto.id
+                if produto.tem_foto:
+                    item.status_foto = 'Com Foto'
+            
+            db.session.add(item)
+            count += 1
+    
+    return count, skus_invalidos
+
 @app.route('/carteira/importar', methods=['GET', 'POST'])
 @login_required
 def importar_carteira():
     if request.method == 'POST':
         if 'arquivo' not in request.files:
-            flash('Nenhum arquivo enviado')
+            flash('Nenhum arquivo enviado', 'error')
             return redirect(request.url)
         
         file = request.files['arquivo']
         if file.filename == '':
-            flash('Nenhum arquivo selecionado')
+            flash('Nenhum arquivo selecionado', 'error')
             return redirect(request.url)
         
         filename = file.filename.lower()
         if not (filename.endswith('.csv') or filename.endswith('.xlsx') or filename.endswith('.xls')):
-            flash('Apenas arquivos CSV ou Excel (.xlsx, .xls) são permitidos')
+            flash('Apenas arquivos CSV ou Excel (.xlsx, .xls) são permitidos', 'error')
             return redirect(request.url)
         
         try:
@@ -1606,111 +1757,82 @@ def importar_carteira():
             
             lote_id = f"LOTE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
             aba_selecionada = request.form.get('aba', '')
+            importar_todas = request.form.get('importar_todas', '') == 'true'
             
-            count = 0
+            total_count = 0
+            total_invalidos = 0
+            abas_processadas = []
             
             if filename.endswith('.csv'):
-                content = file.read().decode('utf-8')
+                try:
+                    content = file.read().decode('utf-8')
+                except UnicodeDecodeError:
+                    file.seek(0)
+                    content = file.read().decode('latin-1')
+                
                 df = pd.read_csv(io.StringIO(content))
-                aba_selecionada = 'CSV'
+                df_normalizado, sku_encontrado = normalizar_carteira_dataframe(df)
+                
+                if not sku_encontrado:
+                    flash('Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".', 'error')
+                    return redirect(request.url)
+                
+                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV')
+                total_count = count
+                total_invalidos = invalidos
+                abas_processadas.append('CSV')
+                
             else:
                 xl = pd.ExcelFile(file)
-                if aba_selecionada and aba_selecionada in xl.sheet_names:
-                    df = pd.read_excel(xl, sheet_name=aba_selecionada)
-                else:
-                    df = pd.read_excel(xl, sheet_name=0)
-                    aba_selecionada = xl.sheet_names[0]
-            
-            col_map = {
-                'REFERÊNCIA E COR': 'sku',
-                'REFERENCIA E COR': 'sku',
-                'SKU': 'sku',
-                'sku': 'sku',
-                'NOME ': 'descricao',
-                'NOME': 'descricao',
-                'DESCRICAO': 'descricao',
-                'descricao': 'descricao',
-                'NOME / COR ': 'cor',
-                'NOME / COR': 'cor',
-                'COR': 'cor',
-                'cor': 'cor',
-                'GRUPO': 'categoria',
-                'CATEGORIA': 'categoria',
-                'categoria': 'categoria',
-                'SUBGRUPO': 'subcategoria',
-                'SUBCATEGORIA': 'subcategoria',
-                'subcategoria': 'subcategoria',
-                'ENTRADA': 'colecao_nome',
-                'COLECAO': 'colecao_nome',
-                'colecao': 'colecao_nome',
-                'ESTILISTA': 'estilista',
-                'estilista': 'estilista',
-                'QUANDO': 'shooting',
-                'SHOOTING': 'shooting',
-                'shooting': 'shooting',
-                'OBS': 'observacoes',
-                'OBSERVACOES': 'observacoes',
-                'observacoes': 'observacoes',
-                'NACIONAL / IMPORTADO': 'origem',
-                'ORIGEM': 'origem',
-                'origem': 'origem',
-                'FOTO': 'status_foto_original',
-                'OKR': 'okr',
-                'QUANTIDADE': 'quantidade',
-                'quantidade': 'quantidade'
-            }
-            
-            df_renamed = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-            
-            for idx, row in df_renamed.iterrows():
-                sku = str(row.get('sku', '')).strip() if pd.notna(row.get('sku', '')) else ''
-                if not sku or sku == 'SKUS' or sku == 'nan':
-                    continue
                 
-                sku = sku.rstrip('.00').strip()
-                
-                existing = CarteiraCompras.query.filter_by(sku=sku).first()
-                if existing:
-                    existing.lote_importacao = lote_id
-                    existing.aba_origem = aba_selecionada
+                if importar_todas:
+                    for sheet_name in xl.sheet_names:
+                        df = pd.read_excel(xl, sheet_name=sheet_name)
+                        
+                        if df.empty or len(df) == 0:
+                            continue
+                        
+                        df_normalizado, sku_encontrado = normalizar_carteira_dataframe(df)
+                        
+                        if not sku_encontrado:
+                            continue
+                        
+                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name)
+                        total_count += count
+                        total_invalidos += invalidos
+                        if count > 0:
+                            abas_processadas.append(f"{sheet_name} ({count})")
+                    
+                    if total_count == 0:
+                        flash('Nenhum item válido encontrado nas abas do Excel. Verifique se existe uma coluna "REFERÊNCIA E COR" ou "SKU" em pelo menos uma aba.', 'error')
+                        return redirect(request.url)
                 else:
-                    status_foto_original = str(row.get('status_foto_original', '')).upper() if pd.notna(row.get('status_foto_original', '')) else ''
-                    if 'SIM' in status_foto_original:
-                        status_foto = 'Com Foto'
-                    elif 'NAO' in status_foto_original or 'NÃO' in status_foto_original:
-                        status_foto = 'Sem Foto'
+                    if aba_selecionada and aba_selecionada in xl.sheet_names:
+                        df = pd.read_excel(xl, sheet_name=aba_selecionada)
                     else:
-                        status_foto = 'Pendente'
+                        df = pd.read_excel(xl, sheet_name=0)
+                        aba_selecionada = xl.sheet_names[0]
                     
-                    item = CarteiraCompras(
-                        sku=sku,
-                        descricao=str(row.get('descricao', ''))[:255] if pd.notna(row.get('descricao', '')) else None,
-                        cor=str(row.get('cor', ''))[:100] if pd.notna(row.get('cor', '')) else None,
-                        categoria=str(row.get('categoria', ''))[:100] if pd.notna(row.get('categoria', '')) else None,
-                        subcategoria=str(row.get('subcategoria', ''))[:100] if pd.notna(row.get('subcategoria', '')) else None,
-                        colecao_nome=str(row.get('colecao_nome', ''))[:100] if pd.notna(row.get('colecao_nome', '')) else None,
-                        estilista=str(row.get('estilista', ''))[:255] if pd.notna(row.get('estilista', '')) else None,
-                        shooting=str(row.get('shooting', ''))[:100] if pd.notna(row.get('shooting', '')) else None,
-                        observacoes=str(row.get('observacoes', '')) if pd.notna(row.get('observacoes', '')) else None,
-                        origem=str(row.get('origem', ''))[:50] if pd.notna(row.get('origem', '')) else None,
-                        okr=str(row.get('okr', ''))[:20] if pd.notna(row.get('okr', '')) else None,
-                        quantidade=int(row.get('quantidade', 1)) if pd.notna(row.get('quantidade', 1)) else 1,
-                        status_foto=status_foto,
-                        lote_importacao=lote_id,
-                        aba_origem=aba_selecionada
-                    )
+                    df_normalizado, sku_encontrado = normalizar_carteira_dataframe(df)
                     
-                    produto = Produto.query.filter_by(sku=sku).first()
-                    if produto:
-                        item.produto_id = produto.id
-                        if produto.tem_foto:
-                            item.status_foto = 'Com Foto'
+                    if not sku_encontrado:
+                        flash(f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".', 'error')
+                        return redirect(request.url)
                     
-                    db.session.add(item)
-                    count += 1
+                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada)
+                    total_count = count
+                    total_invalidos = invalidos
+                    abas_processadas.append(aba_selecionada)
             
             db.session.commit()
-            flash(f'Importação concluída! {count} novos itens da aba "{aba_selecionada}" adicionados. Lote: {lote_id}')
+            
+            if len(abas_processadas) > 1:
+                flash(f'Importação concluída! {total_count} novos itens de {len(abas_processadas)} abas adicionados. Abas: {", ".join(abas_processadas)}. Lote: {lote_id}', 'success')
+            else:
+                flash(f'Importação concluída! {total_count} novos itens da aba "{abas_processadas[0]}" adicionados. Lote: {lote_id}', 'success')
+            
+            if total_invalidos > 0:
+                flash(f'{total_invalidos} linhas ignoradas (SKU vazio ou inválido).', 'warning')
             
             atualizar_status_carteira()
             
@@ -1718,7 +1840,7 @@ def importar_carteira():
             
         except Exception as e:
             db.session.rollback()
-            flash(f'Erro ao importar: {str(e)}')
+            flash(f'Erro ao importar: {str(e)}', 'error')
             return redirect(request.url)
     
     return render_template('carteira/importar.html')
@@ -1738,10 +1860,19 @@ def listar_abas_excel():
     try:
         xl = pd.ExcelFile(file)
         abas = []
+        total_linhas = 0
         for sheet_name in xl.sheet_names:
             df = pd.read_excel(xl, sheet_name=sheet_name)
-            abas.append({'nome': sheet_name, 'linhas': len(df)})
-        return {'abas': abas}
+            linhas = len(df)
+            total_linhas += linhas
+            
+            df_norm, tem_sku = normalizar_carteira_dataframe(df)
+            abas.append({
+                'nome': sheet_name, 
+                'linhas': linhas,
+                'tem_sku': tem_sku
+            })
+        return {'abas': abas, 'total_linhas': total_linhas}
     except Exception as e:
         return {'error': str(e)}, 500
 

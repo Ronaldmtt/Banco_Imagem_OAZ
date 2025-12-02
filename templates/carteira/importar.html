@@ -11,7 +11,7 @@
 
 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
     <div class="stat-card">
-        <form action="{{ url_for('importar_carteira') }}" method="POST" enctype="multipart/form-data" id="importForm">
+        <form action="{{ url_for('importar_carteira') }}" method="POST" enctype="multipart/form-data" id="importForm" target="_self">
             <div class="upload-area" id="dropZone" style="height: 280px; cursor: pointer;" onclick="document.getElementById('fileInput').click();">
                 <div style="text-align: center;">
                     <div class="upload-icon">
@@ -287,12 +287,12 @@ function hideError() {
     document.getElementById('errorMessage').style.display = 'none';
 }
 
-document.getElementById('importForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
+document.getElementById('importForm').addEventListener('submit', function(e) {
     hideError();
     
     const fileInput = document.getElementById('fileInput');
     if (!fileInput.files || fileInput.files.length === 0) {
+        e.preventDefault();
         showError('Por favor, selecione um arquivo Excel (.xlsx) ou CSV para importar.');
         return false;
     }
@@ -301,28 +301,8 @@ document.getElementById('importForm').addEventListener('submit', async function(
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importando... Aguarde';
     
-    try {
-        const formData = new FormData(this);
-        
-        const response = await fetch(this.action, {
-            method: 'POST',
-            body: formData,
-            redirect: 'follow'
-        });
-        
-        if (response.redirected) {
-            window.location.href = response.url;
-        } else if (response.ok) {
-            window.location.href = '/carteira';
-        } else {
-            throw new Error('Erro no servidor');
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-file-import"></i> Importar Carteira';
-        showError('Erro ao importar arquivo. Tente novamente.');
-    }
+    // Permitir o submit normal do formulário
+    return true;
 });
 </script>
 {% endblock %}

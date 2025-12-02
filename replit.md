@@ -117,6 +117,15 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Supported formats: PNG, JPG, JPEG, GIF
 
 ## Recent Changes
+- **2025-12-02**: AI Analysis Major Upgrade
+  - Comprehensive material identification (30+ fabric types with visual characteristics)
+  - Added transparent fabrics: Tule, Organza, Chiffon, Voal, Renda
+  - Added structured fabrics: Crepe, Gabardine, Sarja, Cetim, Veludo
+  - Added knits: Tricô, Moletom, Ribana/Canelada
+  - Generic tag filtering (removes "casual", "moda casual", etc.)
+  - Ultra-detailed descriptions for SKU verification
+  - Specific style categories (avoiding generic "casual")
+
 - **2025-12-01**: Full feature implementation
   - Added image editing page (/image/{id}/edit)
   - Created reports page with metrics and statistics

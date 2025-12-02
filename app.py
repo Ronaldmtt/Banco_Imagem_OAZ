@@ -120,70 +120,237 @@ def analyze_image_with_ai(image_path):
         base64_image = encode_image(image_path)
         
         prompt = """
-        Analise esta imagem para um banco de imagens de varejo de moda profissional (OAZ).
-        Precisamos de dados estruturados para catalogar este produto efetivamente.
+        Você é um especialista em moda e têxteis analisando imagens para o banco de imagens OAZ (varejo de moda profissional).
+        Sua análise deve ser EXTREMAMENTE PRECISA para catalogação e verificação de SKUs.
         
-        Por favor, extraia os seguintes atributos específicos baseados na análise visual.
-        IMPORTANTE: Responda TUDO em PORTUGUÊS DO BRASIL (PT-BR).
+        RESPONDA TUDO EM PORTUGUÊS DO BRASIL.
         
-        1. **Tipo de Item**: O tipo específico da peça ou acessório (ex: Vestido Midi, Jaqueta Jeans, Tênis de Corrida, Camisa Social, Blusa, Calça).
+        ═══════════════════════════════════════════════════════════════════
+        1. TIPO DE ITEM - Identifique com precisão:
+        ═══════════════════════════════════════════════════════════════════
         
-        2. **Cor Principal**: A cor dominante com nuances se aplicável (ex: Azul Marinho, Vermelho Vinho, Preto, Branco Off-White, Bege Areia, Rosa Blush, Marrom Chocolate).
+        VESTIDOS (com modelagem):
+        - Vestido Tubinho (justo, segue o corpo)
+        - Vestido Evasê (cintura marcada, saia em A)
+        - Vestido Ciganinha/Ombro a Ombro
+        - Vestido Chemise (estilo camisa, com botões)
+        - Vestido Transpassado (amarração lateral)
+        - Vestido Tomara que Caia
+        - Vestido Godê (saia rodada e ampla)
+        - Vestido Peplum (babado na cintura)
         
-        3. **Material/Tecido**: ANALISE COM MUITO CUIDADO o material baseado na textura, caimento, brilho, transparência e aparência visual.
-           
-           TECIDOS DELICADOS E TRANSPARENTES (priorize identificar):
-           - Tule: tecido leve, transparente, com textura de rede fina, usado em saias, vestidos, detalhes
-           - Organza: tecido fino, transparente, levemente rígido, com brilho sutil
-           - Chiffon: tecido leve, transparente, fluido e esvoaçante
-           - Renda: tecido com padrões vazados, ornamental
-           - Gaze: tecido muito leve e transparente, textura suave
-           - Voal: tecido leve, semi-transparente, macio
-           
-           OUTRAS FIBRAS E TECIDOS:
-           - Fibras naturais: Algodão, Linho, Seda, Lã
-           - Fibras sintéticas: Poliéster, Poliamida (Nylon), Elastano (Lycra), Acrílico
-           - Fibras artificiais: Viscose, Modal, Lyocell (Tencel), Acetato
-           - Misturas comuns: Algodão/Poliéster, Viscose/Elastano, Linho/Viscose
-           - Tecidos específicos: Jeans/Denim, Couro, Camurça, Tweed, Crepe, Cetim, Tricô, Moletom, Veludo
-           
-           DICAS VISUAIS IMPORTANTES:
-           - Tule: transparente com textura de malha/rede, muito usado em saias volumosas
-           - Organza: transparente mas mais estruturado que chiffon
-           - Viscose: opaca, caimento fluido, NÃO transparente
-           - Seda: brilho suave natural, caimento fluido
-           - Poliéster: brilho mais artificial, estruturado
-           
-           ATENÇÃO: Não confunda tule/organza (transparentes) com viscose (opaca).
+        BLUSAS/TOPS:
+        - Camiseta/T-shirt, Camisa Social, Regata, Top/Cropped
+        - Blusa de Alcinha, Body, Blusa Ciganinha
+        - Blusa de Renda/Laise, Bata, Polo
         
-        4. **Estampa/Padrão**: Qualquer padrão visível (ex: Liso, Listrado, Floral, Xadrez, Geométrico, Animal Print, Abstrato, Poá, Étnico).
+        CALÇAS (com modelagem):
+        - Skinny, Flare/Boca de Sino, Pantalona/Wide Leg
+        - Reta, Cargo, Jogger, Legging, Alfaiataria, Cigarrete
         
-        5. **Estilo**: Estilo específico da peça (ex: Festa, Social, Esportivo, Streetwear, Vintage, Romântico, Minimalista, Boho, Praia).
-           EVITE usar apenas "Casual" - seja mais específico sobre o contexto de uso.
+        SAIAS: Lápis, Evasê, Godê, Plissada, Envelope/Transpassada
         
-        6. **Descrição Visual**: Crie uma descrição MUITO DETALHADA e PRECISA que inclua:
-           - Tipo exato da peça e modelagem (ajustada, ampla, oversized, etc.)
-           - Comprimento (curto, midi, longo, cropped)
-           - Detalhes de design (decote, mangas, bolsos, botões, zíperes, recortes, babados, franzidos)
-           - Acabamentos e aviamentos visíveis
-           - Características únicas que diferenciam esta peça
-           
-           Esta descrição será usada para VERIFICAR se o SKU está correto, então seja o mais específico possível sobre os detalhes visuais únicos do produto.
+        OUTROS: Blazer, Jaqueta, Cardigan, Suéter, Macacão, Shorts, Bermuda
         
-        Retorne a resposta neste formato JSON ESTRITO:
+        COMPRIMENTOS: Curto, Midi, Longo, Cropped, Mini, Maxi
+        
+        ═══════════════════════════════════════════════════════════════════
+        2. COR - Seja específico com nuances:
+        ═══════════════════════════════════════════════════════════════════
+        Exemplos: Azul Marinho, Azul Royal, Azul Bebê, Vermelho Vinho, 
+        Vermelho Ferrari, Rosa Blush, Rosa Pink, Preto, Branco Off-White,
+        Bege Areia, Marrom Chocolate, Marrom Caramelo, Verde Militar,
+        Verde Esmeralda, Cinza Chumbo, Cinza Mescla, Nude, Terracota
+        
+        ═══════════════════════════════════════════════════════════════════
+        3. MATERIAL/TECIDO - ANÁLISE CRÍTICA (mais importante!)
+        ═══════════════════════════════════════════════════════════════════
+        
+        ▼▼▼ TECIDOS TRANSPARENTES E DELICADOS (PRIORIDADE MÁXIMA) ▼▼▼
+        
+        TULE:
+        - Visual: Rede/malha TRANSPARENTE com furinhos visíveis
+        - Estrutura: Leve mas FIRME, mantém volume
+        - Uso: Saias volumosas, detalhes, véus, sobreposições
+        - NÃO confundir com: Viscose (opaca), Chiffon (mais fluido)
+        
+        ORGANZA:
+        - Visual: Transparente, RÍGIDO, brilho acetinado
+        - Estrutura: Armado, não flui, mantém forma
+        - Uso: Saias estruturadas, vestidos de festa
+        - NÃO confundir com: Tule (tem furos), Chiffon (fluido)
+        
+        CHIFFON:
+        - Visual: Transparente, MUITO FLUIDO e esvoaçante
+        - Estrutura: Leve, sem estrutura, cai naturalmente
+        - Uso: Vestidos românticos, blusas leves, lenços
+        - NÃO confundir com: Organza (rígido), Voal (menos fluido)
+        
+        VOAL:
+        - Visual: Semi-transparente, intermediário
+        - Estrutura: Entre organza e chiffon
+        - Uso: Sobreposições, cortinas, detalhes
+        
+        RENDA:
+        - Visual: Padrões VAZADOS ornamentais, desenhos florais
+        - Estrutura: Pode ser rígida ou flexível
+        - Uso: Detalhes, blusas, vestidos românticos
+        
+        ▼▼▼ FIBRAS NATURAIS (SEM BRILHO) ▼▼▼
+        
+        ALGODÃO:
+        - Visual: OPACO, mate, sem brilho, trama uniforme
+        - Toque: Macio, fresco, confortável
+        - Amassa: Sim, moderadamente
+        - Uso: Camisetas, calças, roupas básicas
+        
+        LINHO:
+        - Visual: Textura RÚSTICA, aspecto AMASSADO natural
+        - Toque: Fresco, levemente áspero
+        - Amassa: MUITO (é característica do tecido)
+        - Uso: Roupas de verão, peças elegantes
+        
+        SEDA:
+        - Visual: Brilho LUXUOSO e NATURAL, muito lisa
+        - Toque: Extremamente macio e suave
+        - Caimento: Fluido e delicado
+        - Uso: Vestidos de festa, blusas finas
+        
+        LÃ:
+        - Visual: Textura peluda/felpuda, encorpado
+        - Toque: Quente, pode ser áspero ou macio
+        - Uso: Casacos, suéteres, inverno
+        
+        ▼▼▼ FIBRAS ARTIFICIAIS (de celulose) ▼▼▼
+        
+        VISCOSE:
+        - Visual: Brilho SUTIL sedoso, OPACA (não transparente!)
+        - Toque: Macio, fresco, similar ao algodão
+        - Caimento: Fluido, molda o corpo
+        - Amassa: Sim, facilmente
+        - ATENÇÃO: Viscose NÃO é transparente! Se for transparente, é outro tecido!
+        
+        MODAL:
+        - Visual: Similar à viscose, mais macio
+        - Toque: Muito suave, sedoso
+        - Uso: Roupas íntimas, camisetas premium
+        
+        ▼▼▼ FIBRAS SINTÉTICAS (derivadas de petróleo) ▼▼▼
+        
+        POLIÉSTER:
+        - Visual: Brilho ARTIFICIAL e direto, aspecto "plástico"
+        - Toque: Liso, levemente rígido
+        - Amassa: NÃO amassa
+        - Uso: Roupas esportivas, uniformes, misturas
+        
+        POLIAMIDA/NYLON:
+        - Visual: Liso, brilhante, leve
+        - Uso: Roupas esportivas, meias, lingerie
+        
+        ▼▼▼ MALHAS ▼▼▼
+        
+        TRICÔ:
+        - Visual: Pontos ENTRELAÇADOS visíveis, textura artesanal
+        - Uso: Suéteres, cardigans, vestidos de inverno
+        
+        MOLETOM:
+        - Visual: Face externa lisa, interna felpuda
+        - Uso: Moletons, casacos casuais
+        
+        RIBANA/CANELADA:
+        - Visual: Nervuras VERTICAIS paralelas
+        - Alta elasticidade
+        - Uso: Punhos, golas, camisetas justas
+        
+        ▼▼▼ TECIDOS ESTRUTURADOS ▼▼▼
+        
+        JEANS/DENIM:
+        - Visual: Diagonal característica, resistente
+        - Cores: Azul índigo (claro/escuro), preto, branco
+        
+        SARJA:
+        - Visual: Linhas DIAGONAIS bem visíveis (45°)
+        - Uso: Calças, uniformes, shorts
+        
+        GABARDINE:
+        - Visual: Liso com brilho sutil, muito estruturado
+        - Uso: Alfaiataria, uniformes, blazers
+        
+        CREPE:
+        - Visual: Textura GRANULADA, opaco, caimento pesado
+        - Uso: Vestidos elegantes, alfaiataria
+        
+        CETIM/SATIN:
+        - Visual: MUITO BRILHANTE, liso, escorregadio
+        - Uso: Vestidos de festa, lingerie
+        
+        VELUDO:
+        - Visual: Superfície PELUDA/felpuda, brilho característico
+        - Uso: Vestidos de festa, blazers, inverno
+        
+        COURO/COURINO:
+        - Visual: Liso, brilhante ou fosco, aspecto de pele
+        - Uso: Jaquetas, calças, saias
+        
+        ═══════════════════════════════════════════════════════════════════
+        4. ESTAMPA/PADRÃO:
+        ═══════════════════════════════════════════════════════════════════
+        Liso, Listrado (horizontal/vertical), Floral (grande/pequeno/delicado),
+        Xadrez, Poá/Bolinhas, Geométrico, Animal Print (onça/zebra/cobra),
+        Abstrato, Tie-Dye, Étnico, Tropical, Paisley, Camuflado
+        
+        ═══════════════════════════════════════════════════════════════════
+        5. ESTILO (seja específico, evite "casual"):
+        ═══════════════════════════════════════════════════════════════════
+        - Festa/Gala: peças elegantes para eventos
+        - Social/Trabalho: alfaiataria, peças formais
+        - Streetwear/Urbano: estilo de rua, despojado
+        - Romântico: rendas, babados, tons suaves
+        - Minimalista: linhas limpas, cores neutras
+        - Boho/Bohemian: fluido, étnico, franjas
+        - Esportivo/Athleisure: confortável, funcional
+        - Praia/Resort: leve, estampas tropicais
+        - Vintage/Retrô: inspiração décadas passadas
+        
+        ═══════════════════════════════════════════════════════════════════
+        6. DESCRIÇÃO DETALHADA (CRÍTICO para verificação de SKU):
+        ═══════════════════════════════════════════════════════════════════
+        
+        INCLUA OBRIGATORIAMENTE:
+        □ Tipo exato e modelagem (tubinho, evasê, skinny, etc.)
+        □ Comprimento preciso (curto, midi, longo, cropped, 7/8)
+        □ Cintura (alta, média, baixa)
+        □ Decote (V, redondo, quadrado, tomara que caia, ombro a ombro)
+        □ Mangas (sem manga, curta, 3/4, longa, bufante, sino)
+        □ Detalhes de design (botões, zíperes, bolsos, pregas, franzidos)
+        □ Acabamentos (babados, rendas, bordados, recortes)
+        □ Aviamentos visíveis (fivelas, argolas, ilhoses)
+        □ Características ÚNICAS que diferenciam esta peça
+        
+        Exemplo de descrição boa:
+        "Vestido midi evasê em crepe preto com decote V profundo, mangas 3/4 
+        bufantes com elástico no punho, cintura marcada com cinto removível 
+        de mesma cor com fivela dourada, saia fluida com comprimento abaixo 
+        do joelho, fechamento por zíper invisível nas costas, forro completo."
+        
+        ═══════════════════════════════════════════════════════════════════
+        
+        FORMATO DE RESPOSTA (JSON estrito):
         {
-            "description": "Descrição muito detalhada incluindo todos os detalhes visuais únicos...",
+            "description": "Descrição ultra-detalhada conforme instruções acima...",
             "attributes": {
-                "item_type": "...",
-                "color": "...",
-                "material": "...",
-                "pattern": "...",
-                "style": "..."
+                "item_type": "Tipo + Modelagem + Comprimento",
+                "color": "Cor com nuance específica",
+                "material": "Material identificado com precisão",
+                "pattern": "Estampa ou Liso",
+                "style": "Estilo específico (não use apenas 'casual')"
             },
-            "seo_keywords": ["palavra-chave1", "palavra-chave2", "palavra-chave3"]
+            "seo_keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
         }
         
-        IMPORTANTE: As keywords devem ser específicas e úteis. EVITE termos genéricos como "moda casual", "casual", "roupa feminina".
+        REGRAS PARA KEYWORDS:
+        ✗ PROIBIDO: casual, moda casual, roupa feminina, moda, fashion, look, outfit, estilo
+        ✓ USE: termos específicos do produto (material, cor, modelagem, detalhes)
         """
         
         response = client.chat.completions.create(
@@ -203,7 +370,7 @@ def analyze_image_with_ai(image_path):
                 }
             ],
             response_format={"type": "json_object"},
-            max_tokens=800,
+            max_tokens=1200,
         )
         
         content = response.choices[0].message.content

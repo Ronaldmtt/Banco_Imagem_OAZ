@@ -1,0 +1,166 @@
+Comportamento esperado:
+
+Recebe um DataFrame lido do Excel (pode ser de uma aba específica).
+
+Faz o mapeamento de colunas usando regra de "melhor esforço".
+
+Regras de mapeamento (case-insensitive, ignorando acentos e espaços extras):
+
+SKU:
+
+Se existir coluna chamada algo como:
+
+"REFERÊNCIA E COR"
+
+"REFERENCIA E COR"
+
+"SKU"
+
+"CODIGO"
+
+Mapear essa coluna para sku.
+
+DESCRICAO:
+
+Se existir:
+
+"NOME"
+
+"NOME "
+
+"NOME PRODUTO"
+
+Mapear para descricao.
+
+COR:
+
+Se existir:
+
+"NOME / COR"
+
+"COR"
+
+"COR PRODUTO"
+
+Mapear para cor.
+
+CATEGORIA:
+
+Se existir:
+
+"GRUPO"
+
+"DEPARTAMENTO"
+
+eventualmente combinar "GRUPO" com "TOP/BOTTOM/INTEIRO" (por exemplo f"{grupo} - {tipo}"), mas isso não é obrigatório.
+
+Mapear o resultado para categoria.
+
+QUANTIDADE:
+
+Se existir coluna com:
+
+"QUANTIDADE"
+
+"QTD"
+
+Usar como quantidade.
+
+Senão, definir quantidade = 1 para todas as linhas.
+
+Qualquer coluna que não encaixar nessas regras pode ser ignorada para o import.
+
+No final, a função deve devolver um DataFrame com pelo menos a coluna sku preenchida e, se possível, descricao, cor, categoria, quantidade.
+
+Lidar com múltiplas abas no Excel
+
+A carteira pode vir com múltiplas abas, por exemplo: "ROUPAS", "HOME", "ACESSÓRIOS".
+
+Implementar uma lógica assim:
+
+Se houver múltiplas sheets:
+
+Ler todas as sheets.
+
+Para cada sheet, chamar a função normalizar_carteira_dataframe(df_sheet).
+
+Concatenar os DataFrames normalizados em um único DataFrame antes de alimentar a lógica de import.
+
+Se for necessário, ignore sheets completamente vazias.
+
+Reaproveitar a lógica existente de import
+
+Depois de normalizar as colunas (Excel → padrão), NÃO reescreva toda a lógica de criação da Carteira.
+
+O ideal é:
+
+Transformar o DataFrame normalizado (de Excel) em uma estrutura compatível com o que já é usado pelo import de CSV (um iterador de linhas com chaves sku, descricao, etc.).
+
+Reutilizar a mesma função ou bloco que:
+
+verifica se o SKU já existe na CarteiraCompras,
+
+atualiza ou cria o registro,
+
+atribui status_foto inicial correto,
+
+marca data_importacao e lote_importacao.
+
+Mensagens e feedback ao usuário
+
+Se um arquivo Excel for importado com sucesso, mostrar uma mensagem clara (via flash) do tipo:
+
+"Carteira importada com sucesso a partir de arquivo Excel. X itens processados."
+
+Se nenhum campo de SKU for encontrado após o mapeamento:
+
+Exibir uma mensagem explicando que não foi possível encontrar a coluna de SKU e sugerir que a planilha tenha uma coluna como "REFERÊNCIA E COR" ou "SKU".
+
+Explicar (dentro do sistema) como montar a carteira Excel
+
+Na template da tela de import da carteira (provavelmente um HTML como carteira_import.html ou similar), adicione um pequeno bloco de texto explicando:
+
+Que o sistema aceita agora:
+
+CSV com as colunas: SKU, DESCRICAO, COR, CATEGORIA, QUANTIDADE.
+
+EXCEL (xlsx/xls) com colunas como:
+
+"REFERÊNCIA E COR" → será mapeado automaticamente para SKU
+
+"NOME" → descrição
+
+"NOME / COR" → cor
+
+"GRUPO" → categoria
+
+Que as outras colunas serão ignoradas.
+
+Que, se não houver quantidade na planilha, será assumido 1.
+
+Garantir que não quebre nada existente
+
+Depois de implementar, verifique:
+
+Import de CSV antigo continua funcionando do mesmo jeito.
+
+Import de Excel funciona e preenche CarteiraCompras corretamente.
+
+Auditoria, relatórios e cruzamentos (produtos com foto/sem foto, divergências de SKU etc.) continuam funcionando com a carteira vinda de Excel.
+
+========================
+ENTREGA ESPERADA
+
+Código modificado com:
+
+Rota de import aceitando xlsx/xls além de csv.
+
+Função clara de normalização/mapeamento de colunas de Excel para o padrão (sku, descricao, cor, categoria, quantidade).
+
+Uso dessa função para importar todas as sheets de um arquivo Excel.
+
+Mensagens de erro/sucesso adequadas.
+
+Pequena explicação na UI (template) de como deve ser a carteira em Excel.
+
+Sem quebrar o fluxo atual de CSV.

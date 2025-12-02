@@ -1,0 +1,87 @@
+Quero que você leia o código TODO do projeto e faça as seguintes alterações de forma consistente.
+
+========================
+CONTEXTUALIZAÇÃO DO SISTEMA
+========================
+Este projeto é um sistema de banco de imagens + carteira de compras, em Flask + SQLAlchemy.
+
+Hoje já existe:
+- Modelo de carteira de compras (CarteiraCompras), com campos como:
+  - sku
+  - descricao
+  - cor
+  - categoria
+  - quantidade
+  - status_foto
+  - data_importacao
+  - lote_importacao
+- Uma rota de importação de carteira (provavelmente algo como /carteira/importar) que:
+  - Aceita upload de arquivo .csv
+  - Usa csv.DictReader
+  - Procura colunas com os nomes (case-insensitive):
+    - "sku" ou "SKU"             (OBRIGATÓRIO)
+    - "descricao" ou "DESCRICAO" (opcional)
+    - "cor" ou "COR"             (opcional)
+    - "categoria" ou "CATEGORIA" (opcional)
+    - "quantidade" ou "QUANTIDADE" (opcional, default = 1 se não existir)
+  - Para cada linha válida, cria ou atualiza registros em CarteiraCompras.
+
+O sistema já funciona bem com CSV nesse formato.
+
+Porém, na prática, a carteira vem em arquivos EXCEL (xlsx) com colunas como:
+- "REFERÊNCIA E COR"
+- "NOME "
+- "NOME / COR "
+- "GRUPO"
+- "TOP/BOTTOM/INTEIRO"
+- e outras colunas que devem ser ignoradas para o import.
+
+Exemplos de mapeamento desejado:
+- Coluna "REFERÊNCIA E COR"  → deve virar "SKU"
+- Coluna "NOME "             → deve virar "DESCRICAO"
+- Coluna "NOME / COR "       → deve virar "COR"
+- Coluna "GRUPO"             → pode virar "CATEGORIA"
+- Coluna "TOP/BOTTOM/INTEIRO" pode entrar em CATEGORIA junto com GRUPO, ou ser ignorada por enquanto.
+
+================================
+OBJETIVO DA ALTERAÇÃO (IMPORTAR EXCEL)
+================================
+Quero adicionar uma funcionalidade para que o sistema aceite também arquivos EXCEL (xlsx/xls) como "carteira" e faça o mapeamento automático para o formato que o sistema já espera, SEM quebrar a importação CSV atual.
+
+Resumindo:
+- Manter o comportamento atual para CSV funcionando.
+- Adicionar suporte a XLS/XLSX.
+- Fazer o mapeamento de colunas de Excel → colunas padrão (`sku`, `descricao`, `cor`, `categoria`, `quantidade`).
+- No final, alimentar a mesma lógica de import já existente (ou algo equivalente) para popular CarteiraCompras.
+
+====================
+O QUE VOCÊ DEVE FAZER
+====================
+
+1) Localizar a rota de importação da carteira
+--------------------------------------------
+- Encontre a rota Flask responsável por importar a carteira (algo como `/carteira/importar` ou similar).
+- Entenda como ela:
+  - Faz o upload do arquivo
+  - Identifica se é CSV
+  - Usa csv.DictReader para iterar pelas linhas
+  - Cria/atualiza CarteiraCompras.
+
+2) Adicionar suporte a arquivos .xlsx e .xls
+--------------------------------------------
+- Permitir upload de arquivos `.xlsx` e `.xls` nessa mesma rota.
+- Você pode usar `pandas` ou `openpyxl` ou a lib que já estiver no projeto (se alguma existir) para ler o Excel.
+- Se precisar, adicione a dependência no `requirements.txt`.
+
+Regras:
+- Se o arquivo for `.csv`, manter o fluxo atual (não quebrar nada).
+- Se o arquivo for `.xlsx` ou `.xls`, seguir os passos abaixo.
+
+3) Implementar uma função de normalização de coluna (Excel → padrão esperado)
+-------------------------------------------------------------------------------
+Crie uma função utilitária, por exemplo:
+
+```python
+def normalizar_carteira_dataframe(df):
+    ...
+    return df_normalizado

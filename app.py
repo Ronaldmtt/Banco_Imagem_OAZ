@@ -1814,6 +1814,7 @@ def obter_ou_criar_marca(nome_marca, contadores):
 def obter_ou_criar_produto(sku, dados_linha, contadores):
     """Busca ou cria um produto pelo SKU. Retorna o ID do produto."""
     import pandas as pd
+    import json
     
     if not sku or not sku.strip():
         return None
@@ -1823,18 +1824,22 @@ def obter_ou_criar_produto(sku, dados_linha, contadores):
     if produto:
         return produto.id
     
-    descricao = str(dados_linha.get('descricao', ''))[:255] if pd.notna(dados_linha.get('descricao', '')) else None
-    cor = str(dados_linha.get('cor', ''))[:100] if pd.notna(dados_linha.get('cor', '')) else None
+    descricao = str(dados_linha.get('descricao', ''))[:255] if pd.notna(dados_linha.get('descricao', '')) else sku
+    cor = str(dados_linha.get('cor', ''))[:50] if pd.notna(dados_linha.get('cor', '')) else None
     categoria = str(dados_linha.get('categoria', ''))[:100] if pd.notna(dados_linha.get('categoria', '')) else None
-    subcategoria = str(dados_linha.get('subcategoria', ''))[:100] if pd.notna(dados_linha.get('subcategoria', '')) else None
+    
+    # Guardar informações extras em atributos_tecnicos como JSON
+    atributos_extras = {}
+    if pd.notna(dados_linha.get('subcategoria', '')):
+        atributos_extras['subcategoria'] = str(dados_linha.get('subcategoria', ''))[:100]
+    atributos_extras['origem'] = 'Importação Carteira'
     
     novo_produto = Produto(
         sku=sku,
-        descricao=descricao,
+        descricao=descricao if descricao else sku,
         cor=cor,
         categoria=categoria,
-        subcategoria=subcategoria,
-        origem='Importação Carteira',
+        atributos_tecnicos=json.dumps(atributos_extras) if atributos_extras else None,
         tem_foto=False
     )
     db.session.add(novo_produto)

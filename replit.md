@@ -178,6 +178,13 @@ The workflow "Flask App" is configured to run the application automatically. It 
 ## User Preferences
 - Interface em português brasileiro
 
+## Tutorial Completo
+Consulte o arquivo **TUTORIAL_COMPLETO.md** para um guia passo a passo detalhado de todas as funcionalidades do sistema, incluindo:
+- Fluxo de trabalho completo
+- Exemplos de dados para teste
+- Formato de arquivos CSV para importação
+- Solução de problemas
+
 ## Notes
 - The application uses Flask's built-in development server
 - For production, consider using a production WSGI server like Gunicorn

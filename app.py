@@ -795,21 +795,6 @@ def upload():
             temp_file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
             file.save(temp_file_path)
             
-            storage_path = None
-            use_object_storage = os.environ.get('OBJECT_STORAGE_BUCKET', '')
-            
-            if use_object_storage:
-                try:
-                    from object_storage import object_storage
-                    with open(temp_file_path, 'rb') as f:
-                        content_type = file.content_type or 'image/jpeg'
-                        result = object_storage.upload_file(f, unique_filename, content_type)
-                        storage_path = result['storage_path']
-                        print(f"[INFO] Image uploaded to Object Storage: {storage_path}")
-                except Exception as e:
-                    print(f"[WARNING] Object Storage upload failed, using local: {e}")
-                    storage_path = None
-            
             ai_items = []
             try:
                 ai_result = analyze_image_with_ai(temp_file_path)
@@ -826,12 +811,24 @@ def upload():
                 print(f"[ERROR] Exception during AI analysis: {e}")
                 ai_items = []
             
-            if storage_path:
-                try:
-                    os.remove(temp_file_path)
-                    print(f"[INFO] Temporary file deleted: {temp_file_path}")
-                except Exception as e:
-                    print(f"[WARNING] Could not delete temp file: {e}")
+            storage_path = None
+            try:
+                from object_storage import object_storage
+                with open(temp_file_path, 'rb') as f:
+                    content_type = file.content_type or 'image/jpeg'
+                    result = object_storage.upload_file(f, unique_filename, content_type)
+                    storage_path = result['storage_path']
+                    print(f"[INFO] Image uploaded to Object Storage: {storage_path}")
+            except Exception as e:
+                print(f"[ERROR] Object Storage upload failed: {e}")
+                flash('Erro ao fazer upload para o armazenamento. Tente novamente.')
+                return redirect(request.url)
+            
+            try:
+                os.remove(temp_file_path)
+                print(f"[INFO] Temporary file deleted: {temp_file_path}")
+            except Exception as e:
+                print(f"[WARNING] Could not delete temp file: {e}")
             
             import uuid
             unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"

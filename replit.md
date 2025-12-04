@@ -126,39 +126,37 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Filenames are timestamped to prevent conflicts
 - Supported formats: PNG, JPG, JPEG, GIF
 
-### Object Storage (Optional)
-The application supports Replit Object Storage for scalable image storage:
+### Object Storage (Always Active)
+All image uploads are stored in Replit Object Storage (cloud) automatically:
 
-1. **Enable Object Storage**:
-   - Open the "App Storage" tab in Replit
-   - Create a new bucket (or use default)
-   - Copy the Bucket ID from Settings
-
-2. **Configure Environment Variable**:
-   - Add `OBJECT_STORAGE_BUCKET` with your bucket ID
-   - Example: `OBJECT_STORAGE_BUCKET=your-bucket-id`
-
-3. **How it works**:
-   - When `OBJECT_STORAGE_BUCKET` is set, new uploads go to cloud storage
+1. **How it works**:
+   - All new uploads go directly to cloud storage (no local files)
    - Images are served via `/storage/<object_path>` route
-   - Existing images in `static/uploads/` continue to work (fallback)
+   - Existing images in `static/uploads/` continue to work (legacy fallback)
    - Files stored in bucket under `images/` prefix
 
-4. **File Structure in Bucket**:
+2. **File Structure in Bucket**:
    ```
    images/
      20251204123456_abc12345.jpg
      20251204123457_def67890.png
    ```
 
+3. **Benefits**:
+   - Scalable cloud storage
+   - No disk space limitations
+   - Automatic CDN caching
+   - Persistent across deployments
+
 ## Recent Changes
-- **2025-12-04**: Object Storage Integration
+- **2025-12-04**: Object Storage Integration (Mandatory)
+  - All uploads now go directly to Replit Object Storage (no local files)
   - Added replit-object-storage SDK for cloud image storage
   - New object_storage.py service with upload/download/delete methods
   - Route /storage/<path> serves images from Object Storage
   - Image model has storage_path column for cloud storage paths
   - Templates use image.image_url for transparent local/cloud URLs
-  - Fallback to local static/uploads/ when bucket not configured
+  - Temporary files are deleted after upload to cloud
 
 
 - **2025-12-02**: Auto-criação de Entidades na Importação

@@ -7,24 +7,20 @@ import os
 from datetime import datetime
 import uuid
 from replit.object_storage import Client
-from replit.object_storage import DefaultBucketError, ObjectNotFoundError
+from replit.object_storage.errors import ObjectNotFoundError
 
 
 class ObjectStorageService:
-    """Service for interacting with Replit Object Storage"""
+    """Service for interacting with Replit Object Storage using default bucket"""
     
-    def __init__(self, bucket_id=None):
-        self._bucket_id = bucket_id or os.environ.get('OBJECT_STORAGE_BUCKET')
+    def __init__(self):
         self._client = None
     
     @property
     def client(self):
-        """Lazy initialization of the storage client"""
+        """Lazy initialization of the storage client with default bucket"""
         if self._client is None:
-            if self._bucket_id:
-                self._client = Client(bucket_id=self._bucket_id)
-            else:
-                self._client = Client()
+            self._client = Client()
         return self._client
     
     def get_object_prefix(self):

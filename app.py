@@ -2484,6 +2484,193 @@ def export_auditoria(tipo):
     response.headers['Content-type'] = 'text/csv; charset=utf-8'
     return response
 
+# ==================== BATCH UPLOAD (UPLOAD EM LOTE) ====================
+
+import threading
+import tempfile
+from batch_processor import BatchProcessor, extract_zip_to_temp, extract_sku_from_filename
+
+batch_processor_instance = None
+
+def get_batch_processor():
+    global batch_processor_instance
+    if batch_processor_instance is None:
+        from object_storage import object_storage
+        batch_processor_instance = BatchProcessor(app, db, object_storage, analyze_image_with_ai)
+    return batch_processor_instance
+
+@app.route('/batch')
+@login_required
+def batch_list():
+    """Lista todos os lotes de upload"""
+    batches = BatchUpload.query.filter_by(usuario_id=current_user.id).order_by(BatchUpload.created_at.desc()).all()
+    return render_template('batch/index.html', batches=batches)
+
+@app.route('/batch/new', methods=['GET', 'POST'])
+@login_required
+def batch_new():
+    """Criar novo lote de upload"""
+    if request.method == 'POST':
+        files = request.files.getlist('files')
+        zip_file = request.files.get('zip_file')
+        collection_id = request.form.get('collection_id')
+        brand_id = request.form.get('brand_id')
+        batch_name = request.form.get('batch_name', f"Lote {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        
+        temp_dir = tempfile.mkdtemp(prefix='batch_upload_')
+        temp_file_paths = []
+        
+        try:
+            if zip_file and zip_file.filename:
+                temp_zip_path = os.path.join(temp_dir, 'upload.zip')
+                zip_file.save(temp_zip_path)
+                temp_file_paths = extract_zip_to_temp(temp_zip_path, temp_dir)
+                os.remove(temp_zip_path)
+            
+            elif files:
+                for i, file in enumerate(files):
+                    if file and file.filename:
+                        ext = os.path.splitext(file.filename)[1].lower()
+                        if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                            sku = extract_sku_from_filename(file.filename)
+                            if sku:
+                                temp_filename = f"upload_{i}_{sku}{ext}"
+                                temp_path = os.path.join(temp_dir, temp_filename)
+                                file.save(temp_path)
+                                temp_file_paths.append({
+                                    'sku': sku,
+                                    'temp_path': temp_path,
+                                    'filename': file.filename
+                                })
+            
+            if not temp_file_paths:
+                flash('Nenhum arquivo válido encontrado. Envie imagens ou um arquivo ZIP.')
+                return redirect(request.url)
+            
+            batch = BatchUpload(
+                nome=batch_name,
+                total_arquivos=len(temp_file_paths),
+                usuario_id=current_user.id,
+                colecao_id=int(collection_id) if collection_id else None,
+                marca_id=int(brand_id) if brand_id else None,
+                status='Pendente'
+            )
+            db.session.add(batch)
+            db.session.flush()
+            
+            for i, file_info in enumerate(temp_file_paths):
+                item = BatchItem(
+                    batch_id=batch.id,
+                    sku=file_info['sku'],
+                    filename_original=file_info['filename'],
+                    status='Pendente'
+                )
+                db.session.add(item)
+                db.session.flush()
+                file_info['item_id'] = item.id
+            
+            db.session.commit()
+            
+            processor = get_batch_processor()
+            thread = threading.Thread(
+                target=processor.process_batch,
+                args=(batch.id, temp_file_paths)
+            )
+            thread.daemon = True
+            thread.start()
+            
+            flash(f'Lote criado com {len(temp_file_paths)} arquivos. Processamento iniciado.')
+            return redirect(url_for('batch_detail', batch_id=batch.id))
+            
+        except Exception as e:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            flash(f'Erro ao processar arquivos: {str(e)}')
+            return redirect(request.url)
+    
+    collections = Collection.query.order_by(Collection.name).all()
+    brands = Brand.query.order_by(Brand.name).all()
+    return render_template('batch/new.html', collections=collections, brands=brands)
+
+@app.route('/batch/<int:batch_id>')
+@login_required
+def batch_detail(batch_id):
+    """Detalhes de um lote de upload"""
+    batch = BatchUpload.query.get_or_404(batch_id)
+    
+    page = request.args.get('page', 1, type=int)
+    status_filter = request.args.get('status', '')
+    
+    query = BatchItem.query.filter_by(batch_id=batch_id)
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    
+    items = query.order_by(BatchItem.id).paginate(page=page, per_page=50, error_out=False)
+    
+    return render_template('batch/detail.html', batch=batch, items=items, status_filter=status_filter)
+
+@app.route('/batch/<int:batch_id>/status')
+@login_required
+def batch_status(batch_id):
+    """API para obter status do lote (polling)"""
+    batch = BatchUpload.query.get_or_404(batch_id)
+    return {
+        'id': batch.id,
+        'status': batch.status,
+        'total': batch.total_arquivos,
+        'processados': batch.processados,
+        'sucesso': batch.sucesso,
+        'falhas': batch.falhas,
+        'progresso': batch.progresso
+    }
+
+@app.route('/batch/<int:batch_id>/retry-failed', methods=['POST'])
+@login_required
+def batch_retry_failed(batch_id):
+    """Reprocessar itens com falha"""
+    batch = BatchUpload.query.get_or_404(batch_id)
+    
+    failed_items = BatchItem.query.filter_by(batch_id=batch_id, status='Erro').all()
+    if not failed_items:
+        flash('Não há itens com erro para reprocessar.')
+        return redirect(url_for('batch_detail', batch_id=batch_id))
+    
+    batch.status = 'Processando'
+    batch.processados -= len(failed_items)
+    batch.falhas = 0
+    db.session.commit()
+    
+    files_data = []
+    for item in failed_items:
+        item.status = 'Pendente'
+        item.erro_mensagem = None
+        item.tentativas = 0
+        
+        if item.storage_path:
+            from object_storage import object_storage
+            file_bytes = object_storage.download_file(item.storage_path.replace('/storage/', ''))
+            if file_bytes:
+                files_data.append({
+                    'sku': item.sku,
+                    'file_bytes': file_bytes,
+                    'filename': item.filename_original,
+                    'item_id': item.id
+                })
+    
+    db.session.commit()
+    
+    if files_data:
+        processor = get_batch_processor()
+        thread = threading.Thread(
+            target=processor.process_batch,
+            args=(batch.id, files_data)
+        )
+        thread.daemon = True
+        thread.start()
+        flash(f'Reprocessando {len(files_data)} itens com falha.')
+    
+    return redirect(url_for('batch_detail', batch_id=batch_id))
+
 # Initialize DB
 with app.app_context():
     db.create_all()

@@ -149,6 +149,16 @@ All image uploads are stored in Replit Object Storage (cloud) automatically:
    - Persistent across deployments
 
 ## Recent Changes
+- **2025-12-04**: Batch Upload System for 1M+ Images
+  - Migrated database from SQLite to PostgreSQL for scalability
+  - New BatchUpload and BatchItem models for tracking batch processing
+  - Upload via ZIP file or multiple files (SKU = filename)
+  - ThreadPoolExecutor with 5 parallel workers
+  - AI analysis with automatic retry (3 attempts, exponential backoff)
+  - Real-time progress dashboard with polling
+  - Optimized indexes for 1M+ records (sku, status, collection, brand, upload_date)
+  - New routes: /batch, /batch/new, /batch/<id>, /batch/<id>/status
+
 - **2025-12-04**: Object Storage Integration (Mandatory)
   - All uploads now go directly to Replit Object Storage (no local files)
   - Added replit-object-storage SDK for cloud image storage

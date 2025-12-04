@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Novo Upload em Lote - OAZ Smart Image Bank{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Novo Upload em Lote</h1>
+    <a href="{{ url_for('batch_list') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Configurar Lote</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data" id="batch-form">
+            <div class="form-row">
+                <div class="form-group col-md-6">
+                    <label for="batch_name">Nome do Lote</label>
+                    <input type="text" class="form-control" id="batch_name" name="batch_name" 
+                           placeholder="Ex: Coleção Verão 2025">
+                </div>
+                <div class="form-group col-md-3">
+                    <label for="collection_id">Coleção</label>
+                    <select class="form-control" id="collection_id" name="collection_id">
+                        <option value="">Selecione...</option>
+                        {% for c in collections %}
+                        <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group col-md-3">
+                    <label for="brand_id">Marca</label>
+                    <select class="form-control" id="brand_id" name="brand_id">
+                        <option value="">Selecione...</option>
+                        {% for b in brands %}
+                        <option value="{{ b.id }}">{{ b.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            
+            <div class="upload-tabs">
+                <button type="button" class="tab-btn active" data-tab="files">
+                    <i class="fas fa-images"></i> Múltiplos Arquivos
+                </button>
+                <button type="button" class="tab-btn" data-tab="zip">
+                    <i class="fas fa-file-archive"></i> Arquivo ZIP
+                </button>
+            </div>
+            
+            <div class="tab-content" id="files-tab">
+                <div class="upload-zone" id="drop-zone">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>Arraste as imagens aqui</h3>
+                    <p>ou clique para selecionar</p>
+                    <input type="file" id="files" name="files" multiple 
+                           accept=".jpg,.jpeg,.png,.gif,.webp" class="file-input">
+                    <small>Formatos: JPG, PNG, GIF, WebP | O nome do arquivo será usado como SKU</small>
+                </div>
+                <div id="file-list" class="file-list"></div>
+            </div>
+            
+            <div class="tab-content hidden" id="zip-tab">
+                <div class="upload-zone" id="drop-zone-zip">
+                    <i class="fas fa-file-archive"></i>
+                    <h3>Arraste o arquivo ZIP aqui</h3>
+                    <p>ou clique para selecionar</p>
+                    <input type="file" id="zip_file" name="zip_file" 
+                           accept=".zip" class="file-input">
+                    <small>O ZIP deve conter imagens com nomes = SKUs</small>
+                </div>
+                <div id="zip-info" class="zip-info"></div>
+            </div>
+            
+            <div class="info-box">
+                <h4><i class="fas fa-info-circle"></i> Como funciona</h4>
+                <ul>
+                    <li><strong>SKU = Nome do Arquivo:</strong> O nome de cada arquivo (sem extensão) será usado como código SKU do produto</li>
+                    <li><strong>Processamento Paralelo:</strong> 5 imagens são processadas simultaneamente</li>
+                    <li><strong>Análise de IA:</strong> Cada imagem recebe descrição detalhada automática via OpenAI</li>
+                    <li><strong>Retry Automático:</strong> Falhas são automaticamente reprocessadas até 3 vezes</li>
+                </ul>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                    <i class="fas fa-rocket"></i> Iniciar Upload
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.upload-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.tab-btn {
+    padding: 12px 24px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.3s;
+}
+.tab-btn:hover, .tab-btn.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+.tab-content.hidden {
+    display: none;
+}
+.upload-zone {
+    border: 2px dashed rgba(255,255,255,0.2);
+    border-radius: 12px;
+    padding: 60px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+}
+.upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--primary-color);
+    background: rgba(255,107,53,0.1);
+}
+.upload-zone i {
+    font-size: 3rem;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+.upload-zone h3 {
+    margin-bottom: 10px;
+}
+.file-input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+.file-list {
+    margin-top: 20px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+.file-item .file-name {
+    flex: 1;
+    margin-left: 10px;
+}
+.file-item .file-sku {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+.file-item .file-size {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+.info-box {
+    background: rgba(0, 123, 255, 0.1);
+    border: 1px solid rgba(0, 123, 255, 0.3);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 30px 0;
+}
+.info-box h4 {
+    color: #007bff;
+    margin-bottom: 15px;
+}
+.info-box ul {
+    margin: 0;
+    padding-left: 20px;
+}
+.info-box li {
+    margin-bottom: 8px;
+}
+.form-actions {
+    text-align: center;
+    margin-top: 30px;
+}
+.btn-lg {
+    padding: 15px 40px;
+    font-size: 1.1rem;
+}
+.zip-info {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(40, 167, 69, 0.1);
+    border-radius: 8px;
+    display: none;
+}
+.zip-info.visible {
+    display: block;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const filesInput = document.getElementById('files');
+    const zipInput = document.getElementById('zip_file');
+    const fileList = document.getElementById('file-list');
+    const zipInfo = document.getElementById('zip-info');
+    const dropZone = document.getElementById('drop-zone');
+    const dropZoneZip = document.getElementById('drop-zone-zip');
+    
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            
+            const tab = this.dataset.tab;
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById(tab + '-tab').classList.remove('hidden');
+        });
+    });
+    
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+    
+    function updateFileList(files) {
+        fileList.innerHTML = '';
+        if (files.length === 0) return;
+        
+        let html = `<div class="file-count">${files.length} arquivo(s) selecionado(s)</div>`;
+        
+        Array.from(files).forEach(file => {
+            const sku = file.name.replace(/\.[^/.]+$/, '');
+            html += `
+                <div class="file-item">
+                    <i class="fas fa-image"></i>
+                    <div class="file-name">
+                        <div class="file-sku">SKU: ${sku}</div>
+                        <div class="file-size">${file.name} (${formatSize(file.size)})</div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        fileList.innerHTML = html;
+    }
+    
+    filesInput.addEventListener('change', function() {
+        updateFileList(this.files);
+    });
+    
+    zipInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            const file = this.files[0];
+            zipInfo.innerHTML = `
+                <i class="fas fa-check-circle" style="color: #28a745;"></i>
+                <strong>${file.name}</strong> (${formatSize(file.size)})
+                <br><small>As imagens serão extraídas e processadas automaticamente</small>
+            `;
+            zipInfo.classList.add('visible');
+        } else {
+            zipInfo.classList.remove('visible');
+        }
+    });
+    
+    [dropZone, dropZoneZip].forEach(zone => {
+        zone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('dragover');
+        });
+        
+        zone.addEventListener('dragleave', function() {
+            this.classList.remove('dragover');
+        });
+        
+        zone.addEventListener('drop', function() {
+            this.classList.remove('dragover');
+        });
+    });
+});
+</script>
+{% endblock %}

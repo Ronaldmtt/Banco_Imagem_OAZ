@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Lote #{{ batch.id }} - OAZ Smart Image Bank{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Lote: {{ batch.nome or 'Sem nome' }}</h1>
+    <a href="{{ url_for('batch_list') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="batch-status-card" id="batch-status">
+    <div class="status-header">
+        <span class="status-badge status-{{ batch.status|lower|replace(' ', '-') }}">
+            {{ batch.status }}
+        </span>
+        <span class="batch-id">#{{ batch.id }}</span>
+    </div>
+    
+    <div class="progress-section">
+        <div class="progress-bar-large">
+            <div class="progress-fill" style="width: {{ batch.progresso }}%"></div>
+        </div>
+        <div class="progress-info">
+            <span id="progress-percent">{{ batch.progresso }}%</span>
+            <span id="progress-count">{{ batch.processados }} / {{ batch.total_arquivos }}</span>
+        </div>
+    </div>
+    
+    <div class="stats-row">
+        <div class="stat-box">
+            <span class="stat-value" id="stat-total">{{ batch.total_arquivos }}</span>
+            <span class="stat-label">Total</span>
+        </div>
+        <div class="stat-box success">
+            <span class="stat-value" id="stat-success">{{ batch.sucesso }}</span>
+            <span class="stat-label">Sucesso</span>
+        </div>
+        <div class="stat-box danger">
+            <span class="stat-value" id="stat-failed">{{ batch.falhas }}</span>
+            <span class="stat-label">Falhas</span>
+        </div>
+        <div class="stat-box info">
+            <span class="stat-value">{{ batch.processados }}</span>
+            <span class="stat-label">Processados</span>
+        </div>
+    </div>
+    
+    {% if batch.status == 'Concluído' and batch.falhas > 0 %}
+    <div class="actions">
+        <form method="POST" action="{{ url_for('batch_retry_failed', batch_id=batch.id) }}" style="display: inline;">
+            <button type="submit" class="btn btn-warning">
+                <i class="fas fa-redo"></i> Reprocessar Falhas ({{ batch.falhas }})
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Itens do Lote</h3>
+        <div class="filter-tabs">
+            <a href="{{ url_for('batch_detail', batch_id=batch.id) }}" 
+               class="filter-tab {% if not status_filter %}active{% endif %}">Todos</a>
+            <a href="{{ url_for('batch_detail', batch_id=batch.id, status='Pendente') }}" 
+               class="filter-tab {% if status_filter == 'Pendente' %}active{% endif %}">Pendentes</a>
+            <a href="{{ url_for('batch_detail', batch_id=batch.id, status='Processando') }}" 
+               class="filter-tab {% if status_filter == 'Processando' %}active{% endif %}">Processando</a>
+            <a href="{{ url_for('batch_detail', batch_id=batch.id, status='Sucesso') }}" 
+               class="filter-tab {% if status_filter == 'Sucesso' %}active{% endif %}">Sucesso</a>
+            <a href="{{ url_for('batch_detail', batch_id=batch.id, status='Erro') }}" 
+               class="filter-tab {% if status_filter == 'Erro' %}active{% endif %}">Erros</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Arquivo Original</th>
+                    <th>Status</th>
+                    <th>Tentativas</th>
+                    <th>Processado</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items.items %}
+                <tr>
+                    <td><strong>{{ item.sku }}</strong></td>
+                    <td>{{ item.filename_original or '-' }}</td>
+                    <td>
+                        <span class="status-badge status-{{ item.status|lower }}">
+                            {{ item.status }}
+                        </span>
+                        {% if item.erro_mensagem %}
+                        <div class="error-msg" title="{{ item.erro_mensagem }}">
+                            <i class="fas fa-exclamation-circle"></i>
+                            {{ item.erro_mensagem[:50] }}{% if item.erro_mensagem|length > 50 %}...{% endif %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.tentativas }}</td>
+                    <td>{{ item.processed_at.strftime('%d/%m %H:%M') if item.processed_at else '-' }}</td>
+                    <td>
+                        {% if item.image_id %}
+                        <a href="{{ url_for('image_detail', image_id=item.image_id) }}" class="btn btn-sm btn-primary">
+                            Ver Imagem
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        {% if items.pages > 1 %}
+        <div class="pagination">
+            {% if items.has_prev %}
+            <a href="{{ url_for('batch_detail', batch_id=batch.id, page=items.prev_num, status=status_filter) }}" class="btn btn-sm btn-secondary">
+                Anterior
+            </a>
+            {% endif %}
+            
+            <span class="page-info">Página {{ items.page }} de {{ items.pages }}</span>
+            
+            {% if items.has_next %}
+            <a href="{{ url_for('batch_detail', batch_id=batch.id, page=items.next_num, status=status_filter) }}" class="btn btn-sm btn-secondary">
+                Próxima
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.batch-status-card {
+    background: var(--card-bg);
+    border-radius: 16px;
+    padding: 30px;
+    margin-bottom: 30px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+.status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.batch-id {
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+}
+.progress-section {
+    margin: 20px 0;
+}
+.progress-bar-large {
+    height: 24px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    border-radius: 12px;
+    transition: width 0.5s ease;
+}
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 1.1rem;
+}
+#progress-percent {
+    font-weight: 700;
+    color: var(--primary-color);
+}
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-top: 30px;
+}
+.stat-box {
+    background: rgba(255,255,255,0.05);
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+}
+.stat-box.success { border-left: 4px solid #28a745; }
+.stat-box.danger { border-left: 4px solid #dc3545; }
+.stat-box.info { border-left: 4px solid #007bff; }
+.stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+}
+.stat-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+.filter-tabs {
+    display: flex;
+    gap: 10px;
+}
+.filter-tab {
+    padding: 8px 16px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all 0.3s;
+}
+.filter-tab:hover, .filter-tab.active {
+    background: var(--primary-color);
+    color: white;
+}
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.status-pendente {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+.status-processando {
+    background: rgba(0, 123, 255, 0.2);
+    color: #007bff;
+}
+.status-sucesso {
+    background: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+}
+.status-erro {
+    background: rgba(220, 53, 69, 0.2);
+    color: #dc3545;
+}
+.status-concluído {
+    background: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+}
+.error-msg {
+    font-size: 0.75rem;
+    color: #dc3545;
+    margin-top: 5px;
+}
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 20px;
+}
+.page-info {
+    color: var(--text-secondary);
+}
+.actions {
+    margin-top: 20px;
+    text-align: center;
+}
+</style>
+
+{% if batch.status == 'Processando' %}
+<script>
+setInterval(function() {
+    fetch('{{ url_for("batch_status", batch_id=batch.id) }}')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('progress-percent').textContent = data.progresso + '%';
+            document.getElementById('progress-count').textContent = data.processados + ' / ' + data.total;
+            document.querySelector('.progress-fill').style.width = data.progresso + '%';
+            document.getElementById('stat-success').textContent = data.sucesso;
+            document.getElementById('stat-failed').textContent = data.falhas;
+            
+            const statusBadge = document.querySelector('.status-badge');
+            if (data.status !== '{{ batch.status }}') {
+                statusBadge.textContent = data.status;
+                statusBadge.className = 'status-badge status-' + data.status.toLowerCase().replace(' ', '-');
+                
+                if (data.status === 'Concluído') {
+                    location.reload();
+                }
+            }
+        });
+}, 2000);
+</script>
+{% endif %}
+{% endblock %}

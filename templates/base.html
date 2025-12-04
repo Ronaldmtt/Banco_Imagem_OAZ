@@ -35,6 +35,11 @@
                     <i class="far fa-images"></i>
                     <span>Biblioteca de Imagens</span>
                 </a>
+                <a href="{{ url_for('batch_list') }}"
+                    class="nav-item {% if request.endpoint in ['batch_list', 'batch_new', 'batch_detail'] %}active{% endif %}">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <span>Upload em Lote</span>
+                </a>
                 <a href="{{ url_for('produtos') }}"
                     class="nav-item {% if request.endpoint in ['produtos', 'new_produto', 'edit_produto'] %}active{% endif %}">
                     <i class="fas fa-box"></i>

@@ -11,3 +11,4 @@ google-auth
 replit-object-storage
 requests
 sift-stack-py
+psycopg2-binary

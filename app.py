@@ -17,11 +17,16 @@ load_dotenv()
 
 # Configuration
 class Config:
-    SECRET_KEY = 'dev-secret-key-oaz-img' # Change in production
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///oaz_img.db'
+    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY') or 'dev-secret-key-oaz-img'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///oaz_img.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+    }
     UPLOAD_FOLDER = 'static/uploads'
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+    MAX_BATCH_WORKERS = 5  # Número de threads para processamento paralelo
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -38,7 +43,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128))
+    password_hash = db.Column(db.String(256))
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -204,6 +209,75 @@ class CarteiraCompras(db.Model):
     produto = db.relationship('Produto', backref='itens_carteira')
     colecao = db.relationship('Collection', backref='itens_carteira')
     marca = db.relationship('Brand', backref='itens_carteira')
+
+class BatchUpload(db.Model):
+    """Lote de upload de imagens para processamento em massa"""
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(255))
+    total_arquivos = db.Column(db.Integer, default=0)
+    processados = db.Column(db.Integer, default=0)
+    sucesso = db.Column(db.Integer, default=0)
+    falhas = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(30), default='Pendente')  # Pendente, Processando, Concluído, Erro
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime)
+    finished_at = db.Column(db.DateTime)
+    
+    # Metadados
+    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    colecao_id = db.Column(db.Integer, db.ForeignKey('collection.id'))
+    marca_id = db.Column(db.Integer, db.ForeignKey('brand.id'))
+    
+    # Relacionamentos
+    usuario = db.relationship('User', backref='batches')
+    colecao = db.relationship('Collection', backref='batches')
+    marca = db.relationship('Brand', backref='batches')
+    items = db.relationship('BatchItem', backref='batch', lazy='dynamic', cascade='all, delete-orphan')
+    
+    @property
+    def progresso(self):
+        if self.total_arquivos == 0:
+            return 0
+        return round((self.processados / self.total_arquivos) * 100, 1)
+
+class BatchItem(db.Model):
+    """Item individual de um lote de upload"""
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey('batch_upload.id'), nullable=False)
+    
+    # Identificação
+    sku = db.Column(db.String(100), nullable=False)  # Nome do arquivo = SKU
+    filename_original = db.Column(db.String(255))
+    
+    # Status do processamento
+    status = db.Column(db.String(30), default='Pendente')  # Pendente, Processando, Sucesso, Erro
+    erro_mensagem = db.Column(db.Text)
+    tentativas = db.Column(db.Integer, default=0)
+    
+    # Resultado do upload
+    storage_path = db.Column(db.String(500))
+    image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    
+    # Resultado da análise IA
+    ai_description = db.Column(db.Text)
+    ai_tags = db.Column(db.Text)  # JSON
+    ai_attributes = db.Column(db.Text)  # JSON com todos os atributos
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    processed_at = db.Column(db.DateTime)
+    
+    # Relacionamento com imagem criada
+    imagem = db.relationship('Image', backref='batch_item')
+    
+    # Índice para busca rápida por SKU
+    __table_args__ = (
+        db.Index('idx_batch_item_sku', 'sku'),
+        db.Index('idx_batch_item_status', 'status'),
+        db.Index('idx_batch_item_batch_status', 'batch_id', 'status'),
+    )
 
 @login_manager.user_loader
 def load_user(user_id):

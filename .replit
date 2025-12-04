@@ -37,3 +37,6 @@ outputType = "webview"
 [deployment]
 deploymentTarget = "autoscale"
 run = ["python", "app.py"]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-ad1ef735-1be2-430d-b333-ddfbce1cdf05"

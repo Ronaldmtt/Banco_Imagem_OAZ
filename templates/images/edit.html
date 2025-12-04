@@ -12,7 +12,7 @@
 
 <div style="display: grid; grid-template-columns: 300px 1fr; gap: 2rem;">
     <div class="stat-card" style="padding: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; background: black; height: 300px;">
-        <img src="{{ url_for('static', filename='uploads/' + image.filename) }}" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+        <img src="{{ image.image_url }}" style="max-width: 100%; max-height: 100%; object-fit: contain;">
     </div>
 
     <div class="stat-card">

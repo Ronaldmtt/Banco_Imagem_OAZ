@@ -72,6 +72,7 @@ class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     original_name = db.Column(db.String(255), nullable=False)
+    storage_path = db.Column(db.String(500))  # Path in Object Storage (e.g., /bucket/images/file.jpg)
     description = db.Column(db.Text)
     sku = db.Column(db.String(50))
     brand_id = db.Column(db.Integer, db.ForeignKey('brand.id'))
@@ -93,6 +94,13 @@ class Image(db.Model):
     
     # Relationship with individual items detected in image
     items = db.relationship('ImageItem', backref='image', lazy=True, cascade='all, delete-orphan')
+    
+    @property
+    def image_url(self):
+        """Returns the URL to access the image (Object Storage or local fallback)"""
+        if self.storage_path:
+            return f"/storage{self.storage_path}"
+        return f"/static/uploads/{self.filename}"
 
 class ImageItem(db.Model):
     """Representa uma peça individual detectada em uma imagem"""
@@ -661,6 +669,38 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+@app.route('/storage/<path:object_path>')
+def serve_storage_image(object_path):
+    """Serve images from Object Storage"""
+    try:
+        from object_storage import object_storage
+        from flask import Response
+        
+        full_path = f"/{object_path}"
+        
+        file_bytes = object_storage.download_file(full_path)
+        
+        ext = object_path.split('.')[-1].lower()
+        content_types = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp'
+        }
+        content_type = content_types.get(ext, 'application/octet-stream')
+        
+        return Response(
+            file_bytes,
+            mimetype=content_type,
+            headers={
+                'Cache-Control': 'public, max-age=31536000'
+            }
+        )
+    except Exception as e:
+        print(f"[ERROR] Failed to serve storage image: {e}")
+        return "Image not found", 404
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -747,19 +787,31 @@ def upload():
             return redirect(request.url)
         if file and file.filename.split('.')[-1].lower() in app.config['ALLOWED_EXTENSIONS']:
             filename = secure_filename(file.filename)
-            # Add timestamp to filename to avoid duplicates
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
             unique_filename = f"{timestamp}_{filename}"
             
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-            file.save(file_path)
+            temp_file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(temp_file_path)
             
-            # Real AI Analysis with better error handling
+            storage_path = None
+            use_object_storage = os.environ.get('OBJECT_STORAGE_BUCKET', '')
+            
+            if use_object_storage:
+                try:
+                    from object_storage import object_storage
+                    with open(temp_file_path, 'rb') as f:
+                        content_type = file.content_type or 'image/jpeg'
+                        result = object_storage.upload_file(f, unique_filename, content_type)
+                        storage_path = result['path']
+                        print(f"[INFO] Image uploaded to Object Storage: {storage_path}")
+                except Exception as e:
+                    print(f"[WARNING] Object Storage upload failed, using local: {e}")
+                    storage_path = None
+            
             ai_items = []
             try:
-                ai_result = analyze_image_with_ai(file_path)
+                ai_result = analyze_image_with_ai(temp_file_path)
                 
-                # Check if analysis failed (returned error message string)
                 if isinstance(ai_result, str):
                     if ai_result.startswith("AI Configuration missing"):
                         print(f"[WARNING] AI not configured, using defaults")
@@ -767,24 +819,29 @@ def upload():
                         print(f"[ERROR] AI analysis failed: {ai_result}")
                     ai_items = []
                 else:
-                    ai_items = ai_result  # Lista de itens detectados
+                    ai_items = ai_result
             except Exception as e:
                 print(f"[ERROR] Exception during AI analysis: {e}")
                 ai_items = []
             
-            # Generate unique code
+            if storage_path:
+                try:
+                    os.remove(temp_file_path)
+                    print(f"[INFO] Temporary file deleted: {temp_file_path}")
+                except Exception as e:
+                    print(f"[WARNING] Could not delete temp file: {e}")
+            
             import uuid
             unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"
             
-            # Prepare legacy fields from first item (for backward compatibility)
             first_item = ai_items[0] if ai_items else {}
             first_attrs = first_item.get('attributes', {}) if first_item else {}
             
-            # Create DB record
             brand_id = request.form.get('brand_id')
             new_image = Image(
                 filename=unique_filename,
                 original_name=file.filename,
+                storage_path=storage_path,
                 collection_id=request.form.get('collection_id') if request.form.get('collection_id') else None,
                 brand_id=int(brand_id) if brand_id else None,
                 sku=request.form.get('sku'),
@@ -801,9 +858,8 @@ def upload():
                 status='Pendente'
             )
             db.session.add(new_image)
-            db.session.flush()  # Get the image ID
+            db.session.flush()
             
-            # Create ImageItem records for each detected piece
             for item_data in ai_items:
                 attrs = item_data.get('attributes', {})
                 new_item = ImageItem(
@@ -823,12 +879,13 @@ def upload():
             db.session.commit()
             
             item_count = len(ai_items)
+            storage_info = " (Object Storage)" if storage_path else ""
             if item_count > 1:
-                flash(f'Imagem enviada com sucesso. {item_count} peças detectadas e analisadas.')
+                flash(f'Imagem enviada com sucesso{storage_info}. {item_count} peças detectadas e analisadas.')
             elif item_count == 1:
-                flash('Imagem enviada com sucesso. Análise de IA concluída.')
+                flash(f'Imagem enviada com sucesso{storage_info}. Análise de IA concluída.')
             else:
-                flash('Imagem enviada com sucesso. Configure a chave OpenAI em Configurações para análise automática.')
+                flash(f'Imagem enviada com sucesso{storage_info}. Configure a chave OpenAI em Configurações para análise automática.')
             return redirect(url_for('catalog'))
         else:
             flash('Formato de arquivo não permitido. Use: PNG, JPG, JPEG ou GIF')

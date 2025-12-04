@@ -11,7 +11,7 @@
             <a href="{{ url_for('edit_image', id=image.id) }}" class="btn" style="background: var(--accent-blue); color: white;">
                 <i class="fas fa-edit"></i> Editar
             </a>
-            <a href="{{ url_for('static', filename='uploads/' + image.filename) }}" download class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
+            <a href="{{ image.image_url }}" download class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
                 <i class="fas fa-download"></i> Baixar
             </a>
             <button onclick="copyToClipboard('direct-url')" class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">
@@ -32,7 +32,7 @@
     <!-- Image View -->
     <div class="stat-card"
         style="padding: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; background: black; height: 600px;">
-        <img src="{{ url_for('static', filename='uploads/' + image.filename) }}"
+        <img src="{{ image.image_url }}"
             style="max-width: 100%; max-height: 100%; object-fit: contain;">
     </div>
 
@@ -261,7 +261,7 @@
                         Direta da Imagem</label>
                     <div style="display: flex; gap: 0.5rem;">
                         <input type="text" id="direct-url" readonly
-                            value="{{ request.url_root }}static/uploads/{{ image.filename }}"
+                            value="{{ request.url_root.rstrip('/') }}{{ image.image_url }}"
                             style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem;">
                         <button onclick="copyToClipboard('direct-url')" class="btn"
                             style="background: var(--accent-blue); color: white;">
@@ -290,7 +290,7 @@
                         HTML para Embed</label>
                     <div style="display: flex; gap: 0.5rem;">
                         <textarea id="html-embed" readonly rows="3"
-                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; font-family: monospace; resize: vertical;">&lt;img src="{{ request.url_root }}static/uploads/{{ image.filename }}" alt="{{ image.original_name }}" /&gt;</textarea>
+                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; font-family: monospace; resize: vertical;">&lt;img src="{{ request.url_root.rstrip('/') }}{{ image.image_url }}" alt="{{ image.original_name }}" /&gt;</textarea>
                         <button onclick="copyToClipboard('html-embed')" class="btn"
                             style="background: var(--accent-blue); color: white;">
                             <i class="fas fa-copy"></i> Copiar

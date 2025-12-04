@@ -79,7 +79,7 @@
             <div class="image-card">
                 <div style="position: relative;">
                     <a href="{{ url_for('image_detail', id=image.id) }}">
-                        <img src="{{ url_for('static', filename='uploads/' + image.filename) }}" class="image-preview"
+                        <img src="{{ image.image_url }}" class="image-preview"
                             alt="{{ image.original_name }}">
                     </a>
                     <div style="position: absolute; top: 8px; left: 8px;">

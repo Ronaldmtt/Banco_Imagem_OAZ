@@ -6,22 +6,24 @@ OAZ Smart Image Bank is a Flask-based intelligent image management system design
 ## Current State
 The project has been successfully configured to run in the Replit environment. The application is fully functional with:
 - User authentication system (login/register)
-- Image upload and cataloging with AI-powered analysis
+- Image upload and cataloging with smart metadata extraction
+- Batch upload system for 1M+ images with parallel processing
 - Brand and Collection management
-- Workflow de status (Pendente → Aprovado/Rejeitado)
+- Workflow de status (Pendente → Aprovado/Rejeitado → Pendente Análise IA)
 - Image editing with metadata management
 - Reports with CSV export
 - Premium dark-mode UI with glassmorphism effects
-- SQLite database with pre-configured admin user
+- PostgreSQL database with pre-configured admin user
 
 ## Project Architecture
 
 ### Tech Stack
 - **Backend**: Flask (Python 3.11)
-- **Database**: SQLite with SQLAlchemy ORM
+- **Database**: PostgreSQL with SQLAlchemy ORM (connection pooling)
 - **Authentication**: Flask-Login with password hashing
-- **AI Integration**: OpenAI GPT-4o Vision API
+- **AI Integration**: OpenAI GPT-4o Vision API (fallback mode)
 - **Frontend**: Vanilla HTML/CSS/JavaScript with custom design system
+- **Storage**: Replit Object Storage (cloud-based)
 
 ### Project Structure
 ```
@@ -62,21 +64,22 @@ The project has been successfully configured to run in the Replit environment. T
 - **CarteiraCompras**: Shopping cart/purchase order import from CSV with photo status tracking
 
 ### Key Features
-1. **Smart Upload**: Drag-and-drop interface with automatic AI analysis
-2. **AI Image Analysis**: Extracts product attributes (type, color, material, pattern, style)
-3. **Portuguese Language**: All AI descriptions and UI text in Brazilian Portuguese
-4. **Brand Management**: Create, edit, and delete brands
-5. **Collection Management**: Organize images into collections
-6. **Status Workflow**: Approve or reject images (Pendente → Aprovado/Rejeitado)
-7. **Image Editing**: Edit SKU, description, brand, collection, photographer, shooting date
-8. **Advanced Filtering**: Filter by status, collection, brand, and search by SKU/description/tags
-9. **Reports**: Metrics by status, brand, collection with CSV export
-10. **SEO-Ready**: AI-generated descriptions and keywords
-11. **Product Catalog (Produtos)**: Full CRUD for products with SKU, description, color, category, technical attributes
-12. **Image-Product Association**: Link multiple images to products and vice-versa
-13. **SKU History Tracking**: Version control for SKU changes with user audit trail
-14. **Shopping Cart Import (Carteira de Compras)**: Periodic CSV import with automatic photo status matching
-15. **Audit Reports**: Cross-reference products vs images vs shopping cart, divergence detection
+1. **Smart Upload**: Drag-and-drop interface with metadata extraction from Carteira de Compras
+2. **Batch Upload**: Upload 1M+ images via ZIP or multiple files with parallel processing (5 workers)
+3. **SKU Matching**: Automatic match between image filename (SKU) and Carteira de Compras data
+4. **AI Fallback**: Images without match are marked "Pendente Análise IA" for future OpenAI analysis
+5. **Portuguese Language**: All UI text in Brazilian Portuguese
+6. **Brand Management**: Create, edit, and delete brands
+7. **Collection Management**: Organize images into collections
+8. **Status Workflow**: Pendente → Aprovado/Rejeitado → Pendente Análise IA
+9. **Image Editing**: Edit SKU, description, brand, collection, photographer, shooting date
+10. **Advanced Filtering**: Filter by status, collection, brand, and search by SKU/description/tags
+11. **Reports**: Metrics by status, brand, collection with CSV export
+12. **Product Catalog (Produtos)**: Full CRUD for products with SKU, description, color, category
+13. **Image-Product Association**: Link multiple images to products and vice-versa
+14. **SKU History Tracking**: Version control for SKU changes with user audit trail
+15. **Shopping Cart Import (Carteira de Compras)**: Excel/CSV import with auto-creation of brands/collections
+16. **Audit Reports**: Cross-reference products vs images vs shopping cart, divergence detection
 
 ## Configuration
 
@@ -149,15 +152,22 @@ All image uploads are stored in Replit Object Storage (cloud) automatically:
    - Persistent across deployments
 
 ## Recent Changes
-- **2025-12-04**: Batch Upload System for 1M+ Images
+- **2025-12-04**: Smart Batch Upload System with SKU Matching
+  - Primary: Match SKU (filename) with CarteiraCompras data
+  - Secondary: Images without match marked "Pendente Análise IA" for future AI fallback
+  - No automatic API calls during batch processing (API is fallback only)
+  - Metadata extraction: description, color, category, subcategory from Carteira
+  - Auto-update CarteiraCompras status_foto to "Com Foto" on match
+  - ThreadPoolExecutor with 5 parallel workers
+  - Real-time progress dashboard with polling
+  - Optimized indexes for 1M+ records
+  - New routes: /batch, /batch/new, /batch/<id>, /batch/<id>/status
+
+- **2025-12-04**: PostgreSQL Migration & Object Storage
   - Migrated database from SQLite to PostgreSQL for scalability
   - New BatchUpload and BatchItem models for tracking batch processing
-  - Upload via ZIP file or multiple files (SKU = filename)
-  - ThreadPoolExecutor with 5 parallel workers
-  - AI analysis with automatic retry (3 attempts, exponential backoff)
-  - Real-time progress dashboard with polling
-  - Optimized indexes for 1M+ records (sku, status, collection, brand, upload_date)
-  - New routes: /batch, /batch/new, /batch/<id>, /batch/<id>/status
+  - All uploads go directly to Replit Object Storage (no local files)
+  - Route /storage/<path> serves images from cloud storage
 
 - **2025-12-04**: Object Storage Integration (Mandatory)
   - All uploads now go directly to Replit Object Storage (no local files)

@@ -2496,7 +2496,7 @@ def get_batch_processor():
     global batch_processor_instance
     if batch_processor_instance is None:
         from object_storage import object_storage
-        batch_processor_instance = BatchProcessor(app, db, object_storage, analyze_image_with_ai)
+        batch_processor_instance = BatchProcessor(app, db, object_storage, analyze_func=None)
     return batch_processor_instance
 
 @app.route('/batch')

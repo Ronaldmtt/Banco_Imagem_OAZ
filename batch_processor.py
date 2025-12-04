@@ -1,6 +1,7 @@
 """
 Batch Processor - Sistema de processamento em lote de imagens
 Processa imagens em paralelo usando ThreadPoolExecutor com sessões de banco isoladas
+Match primário com CarteiraCompras, API como fallback futuro
 """
 
 import os
@@ -22,7 +23,7 @@ progress_lock = Lock()
 class BatchProcessor:
     """Processador de lotes de imagens com threading e sessões isoladas"""
     
-    def __init__(self, app, db, object_storage, analyze_func):
+    def __init__(self, app, db, object_storage, analyze_func=None):
         self.app = app
         self.db = db
         self.object_storage = object_storage
@@ -79,9 +80,49 @@ class BatchProcessor:
         
         self._cleanup_temp_files(temp_file_paths)
     
+    def _match_carteira_compras_in_session(self, sku, db):
+        """
+        Busca dados da CarteiraCompras pelo SKU usando a sessão atual
+        
+        Args:
+            sku: Código SKU para buscar
+            db: Instância do SQLAlchemy database
+            
+        Returns:
+            Dict com dados da carteira ou None se não encontrar
+        """
+        from app import CarteiraCompras
+        
+        carteira = db.session.query(CarteiraCompras).filter_by(sku=sku).first()
+        
+        if not carteira:
+            sku_upper = sku.upper().strip()
+            carteira = db.session.query(CarteiraCompras).filter(
+                db.func.upper(db.func.trim(CarteiraCompras.sku)) == sku_upper
+            ).first()
+        
+        if carteira:
+            return {
+                'found': True,
+                'descricao': carteira.descricao or '',
+                'cor': carteira.cor or '',
+                'categoria': carteira.categoria or '',
+                'subcategoria': carteira.subcategoria or '',
+                'colecao_nome': carteira.colecao_nome or '',
+                'colecao_id': carteira.colecao_id,
+                'marca_id': carteira.marca_id,
+                'estilista': carteira.estilista or '',
+                'shooting': carteira.shooting or '',
+                'observacoes': carteira.observacoes or '',
+                'origem': carteira.origem or '',
+                'carteira_id': carteira.id
+            }
+        
+        return None
+    
     def _process_single_item_isolated(self, batch_id, item_id, sku, temp_path, original_filename):
         """Processa um único item com sessão de banco isolada"""
-        from app import db, BatchUpload, BatchItem, Image, ImageItem
+        from app import db, BatchUpload, BatchItem, Image, ImageItem, CarteiraCompras
         
         with self.app.app_context():
             self.db.session.remove()
@@ -98,19 +139,7 @@ class BatchProcessor:
                 if not os.path.exists(temp_path):
                     raise FileNotFoundError(f"Temp file not found: {temp_path}")
                 
-                ai_result = None
-                ai_items = []
-                for attempt in range(MAX_RETRIES):
-                    try:
-                        ai_result = self.analyze_func(temp_path)
-                        if isinstance(ai_result, list):
-                            ai_items = ai_result
-                        break
-                    except Exception as e:
-                        if attempt < MAX_RETRIES - 1:
-                            time.sleep(RETRY_DELAY * (attempt + 1))
-                        else:
-                            print(f"[WARN] AI analysis failed after {MAX_RETRIES} attempts for {sku}: {e}")
+                carteira_data = self._match_carteira_compras_in_session(sku, db)
                 
                 storage_result = None
                 for attempt in range(MAX_RETRIES):
@@ -127,13 +156,47 @@ class BatchProcessor:
                 
                 storage_path = storage_result.get('storage_path') if storage_result else None
                 
-                first_item = ai_items[0] if ai_items else {}
-                first_attrs = first_item.get('attributes', {}) if first_item else {}
-                
                 import uuid
                 unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"
                 
                 batch = self.db.session.get(BatchUpload, batch_id)
+                
+                if carteira_data and carteira_data.get('found'):
+                    description = carteira_data.get('descricao', '')
+                    cor = carteira_data.get('cor', '')
+                    categoria = carteira_data.get('categoria', '')
+                    subcategoria = carteira_data.get('subcategoria', '')
+                    
+                    tags_list = []
+                    if categoria:
+                        tags_list.append(categoria)
+                    if subcategoria:
+                        tags_list.append(subcategoria)
+                    if cor:
+                        tags_list.append(cor)
+                    if carteira_data.get('colecao_nome'):
+                        tags_list.append(carteira_data['colecao_nome'])
+                    
+                    image_status = 'Pendente'
+                    
+                    collection_id = carteira_data.get('colecao_id') if carteira_data.get('colecao_id') else (batch.colecao_id if batch else None)
+                    brand_id = carteira_data.get('marca_id') if carteira_data.get('marca_id') else (batch.marca_id if batch else None)
+                    
+                    carteira = self.db.session.get(CarteiraCompras, carteira_data['carteira_id'])
+                    if carteira:
+                        carteira.status_foto = 'Com Foto'
+                        self.db.session.add(carteira)
+                    
+                    match_source = 'carteira'
+                else:
+                    description = ''
+                    cor = ''
+                    categoria = ''
+                    tags_list = []
+                    image_status = 'Pendente Análise IA'
+                    collection_id = batch.colecao_id if batch else None
+                    brand_id = batch.marca_id if batch else None
+                    match_source = 'sem_match'
                 
                 ext = os.path.splitext(original_filename)[1] or '.jpg'
                 new_image = Image(
@@ -141,35 +204,34 @@ class BatchProcessor:
                     original_name=original_filename,
                     storage_path=storage_path,
                     sku=sku,
-                    description=first_item.get('description', ''),
-                    tags=json.dumps(first_item.get('tags', [])) if first_item else json.dumps([]),
-                    ai_item_type=first_attrs.get('item_type'),
-                    ai_color=first_attrs.get('color'),
-                    ai_material=first_attrs.get('material'),
-                    ai_pattern=first_attrs.get('pattern'),
-                    ai_style=first_attrs.get('style'),
+                    description=description,
+                    tags=json.dumps(tags_list),
+                    ai_item_type=categoria if carteira_data else None,
+                    ai_color=cor if carteira_data else None,
+                    ai_material=None,
+                    ai_pattern=None,
+                    ai_style=None,
                     uploader_id=batch.usuario_id if batch else None,
-                    collection_id=batch.colecao_id if batch else None,
-                    brand_id=batch.marca_id if batch else None,
+                    collection_id=collection_id,
+                    brand_id=brand_id,
                     unique_code=unique_code,
-                    status='Pendente'
+                    status=image_status
                 )
                 self.db.session.add(new_image)
                 self.db.session.flush()
                 
-                for item_data in ai_items:
-                    attrs = item_data.get('attributes', {})
+                if carteira_data and carteira_data.get('found'):
                     new_item_obj = ImageItem(
                         image_id=new_image.id,
-                        item_order=item_data.get('order', 1),
-                        position_ref=item_data.get('position_ref', 'Peça Única'),
-                        description=item_data.get('description', ''),
-                        tags=json.dumps(item_data.get('tags', [])),
-                        ai_item_type=attrs.get('item_type'),
-                        ai_color=attrs.get('color'),
-                        ai_material=attrs.get('material'),
-                        ai_pattern=attrs.get('pattern'),
-                        ai_style=attrs.get('style')
+                        item_order=1,
+                        position_ref='Peça Única',
+                        description=description,
+                        tags=json.dumps(tags_list),
+                        ai_item_type=categoria,
+                        ai_color=cor,
+                        ai_material=None,
+                        ai_pattern=None,
+                        ai_style=None
                     )
                     self.db.session.add(new_item_obj)
                 
@@ -177,15 +239,20 @@ class BatchProcessor:
                 item.status = 'Sucesso'
                 item.storage_path = storage_path
                 item.image_id = new_image.id
-                item.ai_description = first_item.get('description', '')
-                item.ai_tags = json.dumps(first_item.get('tags', []))
-                item.ai_attributes = json.dumps(first_attrs)
+                item.ai_description = description
+                item.ai_tags = json.dumps(tags_list)
+                item.ai_attributes = json.dumps({
+                    'match_source': match_source,
+                    'categoria': categoria,
+                    'cor': cor,
+                    'carteira_id': carteira_data.get('carteira_id') if carteira_data else None
+                })
                 item.processed_at = datetime.utcnow()
                 item.erro_mensagem = None
                 
                 self.db.session.commit()
                 
-                return {'success': True, 'image_id': new_image.id}
+                return {'success': True, 'image_id': new_image.id, 'match_source': match_source}
                 
             except Exception as e:
                 error_msg = str(e)
@@ -248,41 +315,6 @@ def extract_sku_from_filename(filename):
     return sku.strip()
 
 
-def save_uploaded_files_to_temp(files_data, temp_dir):
-    """
-    Salva arquivos em disco temporário para processamento posterior
-    
-    Args:
-        files_data: Lista de dicts com {sku, file_bytes, filename}
-        temp_dir: Diretório temporário para salvar os arquivos
-    
-    Returns:
-        Lista de dicts com {sku, temp_path, filename} (sem file_bytes)
-    """
-    result = []
-    for i, file_data in enumerate(files_data):
-        sku = file_data['sku']
-        filename = file_data['filename']
-        file_bytes = file_data['file_bytes']
-        
-        ext = os.path.splitext(filename)[1] or '.jpg'
-        temp_filename = f"batch_{i}_{sku}{ext}"
-        temp_path = os.path.join(temp_dir, temp_filename)
-        
-        with open(temp_path, 'wb') as f:
-            f.write(file_bytes)
-        
-        result.append({
-            'sku': sku,
-            'temp_path': temp_path,
-            'filename': filename
-        })
-        
-        file_data['file_bytes'] = None
-    
-    return result
-
-
 def extract_zip_to_temp(zip_path, temp_dir):
     """
     Extrai arquivos de imagem de um ZIP para diretório temporário usando streaming
@@ -331,6 +363,6 @@ def extract_zip_to_temp(zip_path, temp_dir):
     return files_data
 
 
-def get_batch_processor(app, db, object_storage, analyze_func):
+def get_batch_processor(app, db, object_storage, analyze_func=None):
     """Factory function para criar um BatchProcessor"""
     return BatchProcessor(app, db, object_storage, analyze_func)

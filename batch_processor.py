@@ -115,7 +115,12 @@ class BatchProcessor:
                 'shooting': carteira.shooting or '',
                 'observacoes': carteira.observacoes or '',
                 'origem': carteira.origem or '',
-                'carteira_id': carteira.id
+                'carteira_id': carteira.id,
+                'material': carteira.material or carteira.categoria or '',
+                'tipo_peca': carteira.tipo_peca or carteira.subcategoria or '',
+                'posicao_peca': carteira.posicao_peca or '',
+                'referencia_estilo': carteira.referencia_estilo or '',
+                'tipo_carteira': carteira.tipo_carteira or 'Moda'
             }
         
         return None
@@ -166,6 +171,9 @@ class BatchProcessor:
                     cor = carteira_data.get('cor', '')
                     categoria = carteira_data.get('categoria', '')
                     subcategoria = carteira_data.get('subcategoria', '')
+                    material = carteira_data.get('material', '')
+                    tipo_peca = carteira_data.get('tipo_peca', '')
+                    posicao_peca = carteira_data.get('posicao_peca', '')
                     
                     tags_list = []
                     if categoria:
@@ -176,6 +184,10 @@ class BatchProcessor:
                         tags_list.append(cor)
                     if carteira_data.get('colecao_nome'):
                         tags_list.append(carteira_data['colecao_nome'])
+                    if material and material not in tags_list:
+                        tags_list.append(material)
+                    if tipo_peca and tipo_peca not in tags_list:
+                        tags_list.append(tipo_peca)
                     
                     image_status = 'Pendente'
                     
@@ -192,6 +204,9 @@ class BatchProcessor:
                     description = ''
                     cor = ''
                     categoria = ''
+                    material = ''
+                    tipo_peca = ''
+                    posicao_peca = ''
                     tags_list = []
                     image_status = 'Pendente Análise IA'
                     collection_id = batch.colecao_id if batch else None
@@ -206,10 +221,10 @@ class BatchProcessor:
                     sku=sku,
                     description=description,
                     tags=json.dumps(tags_list),
-                    ai_item_type=categoria if carteira_data else None,
+                    ai_item_type=tipo_peca if tipo_peca else (categoria if carteira_data else None),
                     ai_color=cor if carteira_data else None,
-                    ai_material=None,
-                    ai_pattern=None,
+                    ai_material=material if material else None,
+                    ai_pattern=posicao_peca if posicao_peca else None,
                     ai_style=None,
                     uploader_id=batch.usuario_id if batch else None,
                     collection_id=collection_id,
@@ -221,15 +236,24 @@ class BatchProcessor:
                 self.db.session.flush()
                 
                 if carteira_data and carteira_data.get('found'):
+                    position_ref = 'Peça Única'
+                    if posicao_peca:
+                        if 'TOP' in posicao_peca.upper():
+                            position_ref = 'Peça Superior'
+                        elif 'BOTTOM' in posicao_peca.upper():
+                            position_ref = 'Peça Inferior'
+                        elif 'INTEIRO' in posicao_peca.upper():
+                            position_ref = 'Peça Única'
+                    
                     new_item_obj = ImageItem(
                         image_id=new_image.id,
                         item_order=1,
-                        position_ref='Peça Única',
+                        position_ref=position_ref,
                         description=description,
                         tags=json.dumps(tags_list),
-                        ai_item_type=categoria,
+                        ai_item_type=tipo_peca if tipo_peca else categoria,
                         ai_color=cor,
-                        ai_material=None,
+                        ai_material=material if material else None,
                         ai_pattern=None,
                         ai_style=None
                     )

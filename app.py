@@ -182,14 +182,21 @@ class CarteiraCompras(db.Model):
     sku = db.Column(db.String(50), nullable=False)
     descricao = db.Column(db.String(255))
     cor = db.Column(db.String(100))
-    categoria = db.Column(db.String(100))  # GRUPO
-    subcategoria = db.Column(db.String(100))  # SUBGRUPO
+    categoria = db.Column(db.String(100))  # GRUPO (MALHA, TECIDO PLANO, etc)
+    subcategoria = db.Column(db.String(100))  # SUBGRUPO (Blusa, Calça, Vestido, etc)
     colecao_nome = db.Column(db.String(100))  # ENTRADA (ex: INVERNO 2026)
     estilista = db.Column(db.String(255))
     shooting = db.Column(db.String(100))  # QUANDO
     observacoes = db.Column(db.Text)  # OBS
     origem = db.Column(db.String(50))  # NACIONAL / IMPORTADO
     quantidade = db.Column(db.Integer, default=1)
+    
+    # Novos campos para moda/acessórios/home
+    tipo_carteira = db.Column(db.String(30), default='Moda')  # Moda, Acessórios, Home
+    material = db.Column(db.String(100))  # GRUPO normalizado (material do tecido)
+    tipo_peca = db.Column(db.String(100))  # SUBGRUPO normalizado (tipo de peça)
+    posicao_peca = db.Column(db.String(50))  # TOP/BOTTOM/INTEIRO
+    referencia_estilo = db.Column(db.String(50))  # REFERÊNCIA ESTILO (código interno)
     
     # Status
     status_foto = db.Column(db.String(30), default='Pendente')  # Pendente, Com Foto, Sem Foto
@@ -1809,7 +1816,7 @@ def normalizar_carteira_dataframe(df):
     """
     import pandas as pd
     
-    mapeamento_sku = ['referencia e cor', 'referência e cor', 'sku', 'codigo', 'código', 'ref']
+    mapeamento_sku = ['referencia e cor', 'referência e cor', 'referencia ns + cor', 'referência ns + cor', 'sku', 'codigo', 'código', 'ref']
     mapeamento_descricao = ['nome', 'nome produto', 'descricao', 'descrição', 'produto']
     mapeamento_cor = ['nome / cor', 'nome/cor', 'cor', 'cor produto']
     mapeamento_categoria = ['grupo', 'categoria', 'departamento', 'tipo']
@@ -1823,6 +1830,8 @@ def normalizar_carteira_dataframe(df):
     mapeamento_foto = ['foto', 'tem foto', 'status foto']
     mapeamento_okr = ['okr', 'status okr', 'aprovacao']
     mapeamento_quantidade = ['quantidade', 'qtd', 'qty', 'quant']
+    mapeamento_posicao = ['top/bottom/inteiro', 'top / bottom / inteiro', 'posicao', 'posição', 'tipo peca']
+    mapeamento_ref_estilo = ['referencia estilo', 'referência estilo', 'ref estilo', 'codigo estilo', 'código estilo']
     
     colunas_originais = {normalizar_nome_coluna(col): col for col in df.columns}
     
@@ -1848,6 +1857,8 @@ def normalizar_carteira_dataframe(df):
     col_foto = encontrar_coluna(mapeamento_foto)
     col_okr = encontrar_coluna(mapeamento_okr)
     col_quantidade = encontrar_coluna(mapeamento_quantidade)
+    col_posicao = encontrar_coluna(mapeamento_posicao)
+    col_ref_estilo = encontrar_coluna(mapeamento_ref_estilo)
     
     if col_sku:
         novo_mapeamento[col_sku] = 'sku'
@@ -1877,6 +1888,10 @@ def normalizar_carteira_dataframe(df):
         novo_mapeamento[col_okr] = 'okr'
     if col_quantidade:
         novo_mapeamento[col_quantidade] = 'quantidade'
+    if col_posicao:
+        novo_mapeamento[col_posicao] = 'posicao_peca'
+    if col_ref_estilo:
+        novo_mapeamento[col_ref_estilo] = 'referencia_estilo'
     
     df_normalizado = df.rename(columns=novo_mapeamento)
     
@@ -2035,7 +2050,7 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
     
     return novo_produto.id
 
-def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None):
+def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None, tipo_carteira='Moda'):
     """
     Processa linhas do DataFrame e insere/atualiza na CarteiraCompras.
     Auto-cria Coleções, Marcas e Produtos quando dados válidos são encontrados.
@@ -2046,6 +2061,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
         aba_origem: Nome da aba de origem
         contadores: Dicionário para rastrear entidades criadas
         cache_produtos: Cache de produtos já criados nesta importação
+        tipo_carteira: Tipo de carteira (Moda, Acessórios, Home)
     
     Returns:
         (count, skus_invalidos): Quantidade de itens criados e linhas ignoradas
@@ -2105,12 +2121,17 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
             except (ValueError, TypeError):
                 qtd = 1
             
+            categoria_val = str(row.get('categoria', ''))[:100] if pd.notna(row.get('categoria', '')) else None
+            subcategoria_val = str(row.get('subcategoria', ''))[:100] if pd.notna(row.get('subcategoria', '')) else None
+            posicao_val = str(row.get('posicao_peca', ''))[:50] if pd.notna(row.get('posicao_peca', '')) else None
+            ref_estilo_val = str(row.get('referencia_estilo', ''))[:50] if pd.notna(row.get('referencia_estilo', '')) else None
+            
             item = CarteiraCompras(
                 sku=sku,
                 descricao=str(row.get('descricao', ''))[:255] if pd.notna(row.get('descricao', '')) else None,
                 cor=str(row.get('cor', ''))[:100] if pd.notna(row.get('cor', '')) else None,
-                categoria=str(row.get('categoria', ''))[:100] if pd.notna(row.get('categoria', '')) else None,
-                subcategoria=str(row.get('subcategoria', ''))[:100] if pd.notna(row.get('subcategoria', '')) else None,
+                categoria=categoria_val,
+                subcategoria=subcategoria_val,
                 colecao_nome=nome_colecao[:100] if nome_colecao else None,
                 colecao_id=colecao_id,
                 marca_id=marca_id,
@@ -2123,7 +2144,12 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
                 status_foto=status_foto,
                 lote_importacao=lote_id,
                 aba_origem=aba_origem,
-                produto_id=produto_id
+                produto_id=produto_id,
+                material=categoria_val,
+                tipo_peca=subcategoria_val,
+                posicao_peca=posicao_val,
+                referencia_estilo=ref_estilo_val,
+                tipo_carteira=tipo_carteira
             )
             
             if produto_id:
@@ -2161,6 +2187,7 @@ def importar_carteira():
             lote_id = f"LOTE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
             aba_selecionada = request.form.get('aba', '')
             importar_todas = request.form.get('importar_todas', '') == 'true'
+            tipo_carteira = request.form.get('tipo_carteira', 'Moda')
             
             total_count = 0
             total_invalidos = 0
@@ -2189,7 +2216,7 @@ def importar_carteira():
                     flash('Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".', 'error')
                     return redirect(request.url)
                 
-                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores, cache_produtos)
+                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores, cache_produtos, tipo_carteira)
                 total_count = count
                 total_invalidos = invalidos
                 abas_processadas.append('CSV')
@@ -2209,7 +2236,7 @@ def importar_carteira():
                         if not sku_encontrado:
                             continue
                         
-                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores, cache_produtos)
+                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores, cache_produtos, tipo_carteira)
                         total_count += count
                         total_invalidos += invalidos
                         if count > 0:
@@ -2231,7 +2258,7 @@ def importar_carteira():
                         flash(f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".', 'error')
                         return redirect(request.url)
                     
-                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos)
+                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos, tipo_carteira)
                     total_count = count
                     total_invalidos = invalidos
                     abas_processadas.append(aba_selecionada)

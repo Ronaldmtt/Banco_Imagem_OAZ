@@ -27,6 +27,21 @@
             <input type="file" name="arquivo" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleFileSelect(this)">
             <input type="hidden" name="importar_todas" id="importarTodasInput" value="false">
             
+            <div style="margin-top: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">
+                    <i class="fas fa-tags" style="color: var(--accent-blue);"></i> Tipo de Carteira:
+                </label>
+                <select name="tipo_carteira" id="tipoCarteira" class="form-input" style="width: 100%;">
+                    <option value="Moda" selected>Moda (Roupas)</option>
+                    <option value="Acessórios">Acessórios</option>
+                    <option value="Home">Home (Produtos de Casa)</option>
+                </select>
+                <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                    <i class="fas fa-info-circle" style="color: var(--accent-blue);"></i> 
+                    Define o tipo de produtos desta carteira para organização.
+                </p>
+            </div>
+            
             <div id="filePreview" style="display: none; margin-top: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
                 <div style="display: flex; align-items: center; gap: 1rem;">
                     <i class="fas fa-file-excel" id="fileIcon" style="font-size: 2rem; color: #3fb950;"></i>
@@ -82,15 +97,15 @@
             </p>
             <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
                 <ul style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; padding-left: 1rem; line-height: 1.6;">
-                    <li><strong style="color: #3fb950;">REFERENCIA E COR</strong> ou <strong style="color: #3fb950;">SKU</strong> ou <strong style="color: #3fb950;">CODIGO</strong> <span style="color: #f85149;">(obrigatorio)</span></li>
-                    <li><strong style="color: #79c0ff;">NOME</strong> → Descricao</li>
-                    <li><strong style="color: #79c0ff;">NOME / COR</strong> ou <strong style="color: #79c0ff;">COR</strong> → Cor</li>
-                    <li><strong style="color: #79c0ff;">GRUPO</strong> ou <strong style="color: #79c0ff;">CATEGORIA</strong> → Categoria</li>
-                    <li><strong style="color: #79c0ff;">SUBGRUPO</strong> → Subcategoria</li>
-                    <li><strong style="color: #79c0ff;">ENTRADA</strong> → Colecao</li>
+                    <li><strong style="color: #3fb950;">REFERENCIA E COR</strong> ou <strong style="color: #3fb950;">REFERENCIA NS + COR</strong> ou <strong style="color: #3fb950;">SKU</strong> <span style="color: #f85149;">(obrigatorio)</span></li>
+                    <li><strong style="color: #79c0ff;">NOME</strong> ou <strong style="color: #79c0ff;">NOME PRODUTO</strong> → Descricao</li>
+                    <li><strong style="color: #79c0ff;">GRUPO</strong> → Material (MALHA, TECIDO PLANO)</li>
+                    <li><strong style="color: #79c0ff;">SUBGRUPO</strong> → Tipo de Peca (Blusa, Calca)</li>
+                    <li><strong style="color: #79c0ff;">TOP/BOTTOM/INTEIRO</strong> → Posicao da Peca</li>
+                    <li><strong style="color: #79c0ff;">REFERENCIA ESTILO</strong> → Codigo Estilo</li>
+                    <li><strong style="color: #79c0ff;">ENTRADA</strong> → Colecao (ex: INVERNO 2026)</li>
                     <li><strong style="color: #79c0ff;">ESTILISTA</strong> → Estilista</li>
-                    <li><strong style="color: #79c0ff;">QUANDO</strong> → Shooting</li>
-                    <li><strong style="color: #79c0ff;">FOTO</strong> → Status (SIM/NAO)</li>
+                    <li><strong style="color: #79c0ff;">NACIONAL / IMPORTADO</strong> → Origem</li>
                 </ul>
             </div>
             <p style="font-size: 0.8rem; color: var(--text-secondary);">

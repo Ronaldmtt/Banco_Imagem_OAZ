@@ -7,3 +7,7 @@ python-dotenv
 openpyxl
 pandas
 google-cloud-storage
+google-auth
+replit-object-storage
+requests
+sift-stack-py

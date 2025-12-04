@@ -99,7 +99,7 @@ class Image(db.Model):
     def image_url(self):
         """Returns the URL to access the image (Object Storage or local fallback)"""
         if self.storage_path:
-            return f"/storage{self.storage_path}"
+            return self.storage_path
         return f"/static/uploads/{self.filename}"
 
 class ImageItem(db.Model):
@@ -669,16 +669,20 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-@app.route('/storage/<path:object_path>')
+@app.route('/storage/images/<path:object_path>')
 def serve_storage_image(object_path):
     """Serve images from Object Storage"""
     try:
         from object_storage import object_storage
         from flask import Response
         
-        full_path = f"/{object_path}"
+        object_name = f"images/{object_path}"
         
-        file_bytes = object_storage.download_file(full_path)
+        file_bytes = object_storage.download_file(object_name)
+        
+        if file_bytes is None:
+            print(f"[WARN] Image not found in storage: {object_name}")
+            return "Image not found", 404
         
         ext = object_path.split('.')[-1].lower()
         content_types = {

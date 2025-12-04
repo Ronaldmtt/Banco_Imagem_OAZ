@@ -669,19 +669,17 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-@app.route('/storage/images/<path:object_path>')
+@app.route('/storage/<path:object_path>')
 def serve_storage_image(object_path):
     """Serve images from Object Storage"""
     try:
         from object_storage import object_storage
         from flask import Response
         
-        object_name = f"images/{object_path}"
-        
-        file_bytes = object_storage.download_file(object_name)
+        file_bytes = object_storage.download_file(object_path)
         
         if file_bytes is None:
-            print(f"[WARN] Image not found in storage: {object_name}")
+            print(f"[WARN] Image not found in storage: {object_path}")
             return "Image not found", 404
         
         ext = object_path.split('.')[-1].lower()
@@ -702,7 +700,7 @@ def serve_storage_image(object_path):
             }
         )
     except Exception as e:
-        print(f"[ERROR] Failed to serve storage image: {e}")
+        print(f"[ERROR] Failed to serve storage image {object_path}: {e}")
         return "Image not found", 404
 
 @app.route('/dashboard')
@@ -806,7 +804,7 @@ def upload():
                     with open(temp_file_path, 'rb') as f:
                         content_type = file.content_type or 'image/jpeg'
                         result = object_storage.upload_file(f, unique_filename, content_type)
-                        storage_path = result['path']
+                        storage_path = result['storage_path']
                         print(f"[INFO] Image uploaded to Object Storage: {storage_path}")
                 except Exception as e:
                     print(f"[WARNING] Object Storage upload failed, using local: {e}")

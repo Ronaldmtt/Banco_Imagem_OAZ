@@ -122,11 +122,45 @@ The workflow "Flask App" is configured to run the application automatically. It 
 - Use `reset_admin.py` to reset admin credentials
 
 ### Static Files
-- Uploaded images are stored in `static/uploads/`
+- Uploaded images are stored in `static/uploads/` (local storage) or Object Storage (cloud)
 - Filenames are timestamped to prevent conflicts
 - Supported formats: PNG, JPG, JPEG, GIF
 
+### Object Storage (Optional)
+The application supports Replit Object Storage for scalable image storage:
+
+1. **Enable Object Storage**:
+   - Open the "App Storage" tab in Replit
+   - Create a new bucket (or use default)
+   - Copy the Bucket ID from Settings
+
+2. **Configure Environment Variable**:
+   - Add `OBJECT_STORAGE_BUCKET` with your bucket ID
+   - Example: `OBJECT_STORAGE_BUCKET=your-bucket-id`
+
+3. **How it works**:
+   - When `OBJECT_STORAGE_BUCKET` is set, new uploads go to cloud storage
+   - Images are served via `/storage/<object_path>` route
+   - Existing images in `static/uploads/` continue to work (fallback)
+   - Files stored in bucket under `images/` prefix
+
+4. **File Structure in Bucket**:
+   ```
+   images/
+     20251204123456_abc12345.jpg
+     20251204123457_def67890.png
+   ```
+
 ## Recent Changes
+- **2025-12-04**: Object Storage Integration
+  - Added replit-object-storage SDK for cloud image storage
+  - New object_storage.py service with upload/download/delete methods
+  - Route /storage/<path> serves images from Object Storage
+  - Image model has storage_path column for cloud storage paths
+  - Templates use image.image_url for transparent local/cloud URLs
+  - Fallback to local static/uploads/ when bucket not configured
+
+
 - **2025-12-02**: Auto-criação de Entidades na Importação
   - Auto-criação de Coleções: "INVERNO 2026" → cria coleção com ano=2026 e estação=Inverno
   - Auto-criação de Marcas: detecta coluna MARCA/BRAND e cria automaticamente

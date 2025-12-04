@@ -61,7 +61,7 @@ class ObjectStorageService:
         
         return {
             'object_name': object_name,
-            'path': f"/storage/images/{object_name}"
+            'storage_path': f"/storage/{object_name}"
         }
     
     def download_file(self, object_name):

@@ -2,7 +2,7 @@ import os
 import io
 import csv
 from datetime import datetime
-from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response
+from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash

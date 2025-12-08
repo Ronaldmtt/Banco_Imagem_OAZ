@@ -127,8 +127,8 @@ document.getElementById('modalDeletarTodas').addEventListener('click', function(
                         <i class="fas fa-trash"></i> Excluir
                     </button>
                 </form>
-                <a href="{{ url_for('catalog') }}?collection_id={{ collection.id }}" style="color: var(--accent-blue);">
-                    Ver imagens <i class="fas fa-arrow-right"></i>
+                <a href="{{ url_for('collection_detail', id=collection.id) }}" style="color: var(--accent-blue);">
+                    Ver detalhes <i class="fas fa-arrow-right"></i>
                 </a>
             </div>
         </div>

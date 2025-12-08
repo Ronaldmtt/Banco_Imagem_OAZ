@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}{{ collection.name }} - OAZ Smart Image Bank{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <nav style="margin-bottom: 0.5rem;">
+            <a href="{{ url_for('collections') }}" style="color: var(--text-secondary); text-decoration: none;">
+                <i class="fas fa-arrow-left"></i> Voltar para Coleções
+            </a>
+        </nav>
+        <h1 style="margin-bottom: 0.25rem;">{{ collection.name }}</h1>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            {% if collection.year %}
+            <span style="background: var(--accent-blue); color: white; padding: 4px 12px; border-radius: 6px; font-size: 0.85rem;">
+                {{ collection.year }}
+            </span>
+            {% endif %}
+            {% if collection.season %}
+            <span style="background: var(--bg-tertiary); padding: 4px 12px; border-radius: 6px; font-size: 0.85rem;">
+                {{ collection.season }}
+            </span>
+            {% endif %}
+            {% if collection.campanha %}
+            <span style="background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 4px 12px; border-radius: 6px; font-size: 0.85rem;">
+                {{ collection.campanha }}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+        <a href="{{ url_for('edit_collection', id=collection.id) }}" class="btn btn-secondary">
+            <i class="fas fa-edit"></i> Editar Coleção
+        </a>
+        <a href="{{ url_for('batch_new') }}?collection_id={{ collection.id }}" class="btn btn-primary">
+            <i class="fas fa-upload"></i> Upload em Lote
+        </a>
+    </div>
+</div>
+
+{% if collection.description %}
+<p style="color: var(--text-secondary); margin-bottom: 1.5rem;">{{ collection.description }}</p>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 2rem;">
+    <div class="stat-card" style="text-align: center; padding: 1rem;">
+        <div style="font-size: 2rem; font-weight: 700; color: var(--text-primary);">{{ stats.total }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">Total</div>
+    </div>
+    <div class="stat-card" style="text-align: center; padding: 1rem;">
+        <div style="font-size: 2rem; font-weight: 700; color: #fbbf24;">{{ stats.pendentes }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">Pendentes</div>
+    </div>
+    <div class="stat-card" style="text-align: center; padding: 1rem;">
+        <div style="font-size: 2rem; font-weight: 700; color: #10b981;">{{ stats.aprovadas }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">Aprovadas</div>
+    </div>
+    <div class="stat-card" style="text-align: center; padding: 1rem;">
+        <div style="font-size: 2rem; font-weight: 700; color: #f85149;">{{ stats.rejeitadas }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">Rejeitadas</div>
+    </div>
+    <div class="stat-card" style="text-align: center; padding: 1rem;">
+        <div style="font-size: 2rem; font-weight: 700; color: #8b5cf6;">{{ stats.pendente_ia }}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">Pendente IA</div>
+    </div>
+</div>
+
+<div class="stat-card" style="margin-bottom: 1.5rem; padding: 1rem 1.5rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <span style="font-weight: 600; color: var(--text-secondary); white-space: nowrap;">
+                <i class="fas fa-layer-group"></i> Subcoleções:
+            </span>
+            {% if subcolecoes %}
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <a href="{{ url_for('collection_detail', id=collection.id) }}" 
+                   class="subcol-chip {% if not subcolecao_id %}active{% endif %}">
+                    Todas
+                </a>
+                {% for sub in subcolecoes %}
+                <a href="{{ url_for('collection_detail', id=collection.id, subcolecao_id=sub.id) }}" 
+                   class="subcol-chip {% if subcolecao_id == sub.id %}active{% endif %}"
+                   title="{% if sub.tipo_campanha %}{{ sub.tipo_campanha }}{% endif %}{% if sub.data_inicio %} | {{ sub.data_inicio.strftime('%d/%m') }}{% endif %}{% if sub.data_fim %} - {{ sub.data_fim.strftime('%d/%m') }}{% endif %}">
+                    {{ sub.nome }}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <span style="color: var(--text-secondary); font-size: 0.9rem;">Nenhuma subcoleção cadastrada</span>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('new_subcolecao') }}?colecao_id={{ collection.id }}" class="btn btn-secondary" style="font-size: 0.85rem; padding: 6px 12px;">
+            <i class="fas fa-plus"></i> Nova Subcoleção
+        </a>
+    </div>
+</div>
+
+<div style="margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+    <form method="GET" action="{{ url_for('collection_detail', id=collection.id) }}" style="display: flex; gap: 1rem; flex: 1; flex-wrap: wrap;">
+        {% if subcolecao_id %}
+        <input type="hidden" name="subcolecao_id" value="{{ subcolecao_id }}">
+        {% endif %}
+        <div class="search-bar" style="flex: 1; min-width: 250px;">
+            <i class="fas fa-search"></i>
+            <input type="text" name="search" placeholder="Buscar por SKU ou descrição..." value="{{ request.args.get('search', '') }}">
+        </div>
+        <select name="status" class="form-control" style="width: 180px;" onchange="this.form.submit()">
+            <option value="">Todos os Status</option>
+            <option value="Pendente" {% if request.args.get('status') == 'Pendente' %}selected{% endif %}>Pendente</option>
+            <option value="Aprovado" {% if request.args.get('status') == 'Aprovado' %}selected{% endif %}>Aprovado</option>
+            <option value="Rejeitado" {% if request.args.get('status') == 'Rejeitado' %}selected{% endif %}>Rejeitado</option>
+            <option value="Pendente Análise IA" {% if request.args.get('status') == 'Pendente Análise IA' %}selected{% endif %}>Pendente Análise IA</option>
+        </select>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-search"></i> Buscar
+        </button>
+    </form>
+</div>
+
+{% if images %}
+<div class="images-grid">
+    {% for image in images %}
+    <div class="image-card">
+        <a href="{{ url_for('image_detail', image_id=image.id) }}">
+            <img src="{{ image.image_url }}" alt="{{ image.original_name }}" loading="lazy">
+        </a>
+        <div class="image-info">
+            <div class="image-sku">{{ image.sku or 'Sem SKU' }}</div>
+            {% if image.subcolecao %}
+            <span style="background: rgba(139, 92, 246, 0.2); color: #8b5cf6; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem;">
+                {{ image.subcolecao.nome }}
+            </span>
+            {% endif %}
+            <div class="image-status {{ image.status|lower|replace(' ', '-') }}">{{ image.status }}</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        <i class="fas fa-images"></i>
+    </div>
+    <h3>Nenhuma Imagem Encontrada</h3>
+    {% if subcolecao_id or request.args.get('status') or request.args.get('search') %}
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Tente ajustar os filtros para ver mais imagens.</p>
+    <a href="{{ url_for('collection_detail', id=collection.id) }}" class="btn btn-secondary">Limpar Filtros</a>
+    {% else %}
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Faça o upload de imagens para esta coleção.</p>
+    <a href="{{ url_for('batch_new') }}?collection_id={{ collection.id }}" class="btn btn-primary">
+        <i class="fas fa-upload"></i> Upload em Lote
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+<style>
+.subcol-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+.subcol-chip:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+}
+.subcol-chip.active {
+    background: #8b5cf6;
+    border-color: #8b5cf6;
+    color: white;
+}
+
+.images-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.25rem;
+}
+.image-card {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.image-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+.image-card img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+}
+.image-info {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.image-sku {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.image-status {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-align: center;
+    width: fit-content;
+}
+.image-status.pendente {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+}
+.image-status.aprovado {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+.image-status.rejeitado {
+    background: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+}
+.image-status.pendente-análise-ia {
+    background: rgba(139, 92, 246, 0.2);
+    color: #8b5cf6;
+}
+</style>
+{% endblock %}

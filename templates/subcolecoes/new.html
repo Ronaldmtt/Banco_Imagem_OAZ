@@ -3,9 +3,15 @@
 {% block content %}
 <div style="max-width: 600px; margin: 0 auto;">
     <div style="margin-bottom: 2rem;">
-        <a href="{{ url_for('subcolecoes') }}" style="color: var(--text-secondary);">
-            <i class="fas fa-arrow-left"></i> Voltar para Subcoleções
+        {% if colecao_id_preselect %}
+        <a href="{{ url_for('collection_detail', id=colecao_id_preselect) }}" style="color: var(--text-secondary);">
+            <i class="fas fa-arrow-left"></i> Voltar para Coleção
         </a>
+        {% else %}
+        <a href="{{ url_for('collections') }}" style="color: var(--text-secondary);">
+            <i class="fas fa-arrow-left"></i> Voltar para Coleções
+        </a>
+        {% endif %}
     </div>
 
     <div class="stat-card">
@@ -23,7 +29,7 @@
                 <select id="colecao_id" name="colecao_id" class="form-control" required>
                     <option value="">Selecione uma coleção...</option>
                     {% for colecao in colecoes %}
-                    <option value="{{ colecao.id }}">{{ colecao.name }}</option>
+                    <option value="{{ colecao.id }}" {% if colecao_id_preselect == colecao.id %}selected{% endif %}>{{ colecao.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -60,9 +66,15 @@
                 <button type="submit" class="btn btn-primary" style="flex: 1;">
                     <i class="fas fa-save"></i> Criar Subcoleção
                 </button>
-                <a href="{{ url_for('subcolecoes') }}" class="btn" style="flex: 1; text-align: center;">
+                {% if colecao_id_preselect %}
+                <a href="{{ url_for('collection_detail', id=colecao_id_preselect) }}" class="btn" style="flex: 1; text-align: center;">
                     Cancelar
                 </a>
+                {% else %}
+                <a href="{{ url_for('collections') }}" class="btn" style="flex: 1; text-align: center;">
+                    Cancelar
+                </a>
+                {% endif %}
             </div>
         </form>
     </div>

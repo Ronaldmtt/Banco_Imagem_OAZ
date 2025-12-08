@@ -11,6 +11,10 @@ packages = ["glibcLocales", "sqlite"]
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 34261
+externalPort = 3000
+
 [workflows]
 runButton = "Project"
 

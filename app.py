@@ -1206,6 +1206,52 @@ def collections():
     collections = query.order_by(Collection.created_at.desc()).all()
     return render_template('collections/list.html', collections=collections)
 
+@app.route('/collections/<int:id>')
+@login_required
+def collection_detail(id):
+    """Página de detalhes da coleção com filtros de subcoleção"""
+    collection = Collection.query.get_or_404(id)
+    
+    # Buscar subcoleções desta coleção
+    subcolecoes = Subcolecao.query.filter_by(colecao_id=id).order_by(Subcolecao.nome).all()
+    
+    # Filtros
+    subcolecao_id = request.args.get('subcolecao_id', type=int)
+    status = request.args.get('status', '')
+    search = request.args.get('search', '')
+    
+    # Query de imagens desta coleção
+    query = Image.query.filter_by(collection_id=id)
+    
+    if subcolecao_id:
+        query = query.filter_by(subcolecao_id=subcolecao_id)
+    if status:
+        query = query.filter_by(status=status)
+    if search:
+        query = query.filter(
+            (Image.sku.ilike(f'%{search}%')) |
+            (Image.description.ilike(f'%{search}%'))
+        )
+    
+    images = query.order_by(Image.upload_date.desc()).all()
+    
+    # Estatísticas
+    total_images = Image.query.filter_by(collection_id=id).count()
+    stats = {
+        'total': total_images,
+        'pendentes': Image.query.filter_by(collection_id=id, status='Pendente').count(),
+        'aprovadas': Image.query.filter_by(collection_id=id, status='Aprovado').count(),
+        'rejeitadas': Image.query.filter_by(collection_id=id, status='Rejeitado').count(),
+        'pendente_ia': Image.query.filter_by(collection_id=id, status='Pendente Análise IA').count(),
+    }
+    
+    return render_template('collections/detail.html', 
+                           collection=collection, 
+                           subcolecoes=subcolecoes,
+                           images=images,
+                           stats=stats,
+                           subcolecao_id=subcolecao_id)
+
 @app.route('/collections/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_collection(id):
@@ -1297,6 +1343,9 @@ def subcolecoes():
 @app.route('/subcolecoes/new', methods=['GET', 'POST'])
 @login_required
 def new_subcolecao():
+    # Pegar colecao_id da URL para pré-selecionar
+    colecao_id_preselect = request.args.get('colecao_id', type=int)
+    
     if request.method == 'POST':
         nome = request.form.get('nome', '').strip()
         colecao_id = request.form.get('colecao_id')
@@ -1306,7 +1355,7 @@ def new_subcolecao():
         
         if not nome or not colecao_id:
             flash('Nome e Coleção são obrigatórios', 'error')
-            return redirect(url_for('new_subcolecao'))
+            return redirect(url_for('new_subcolecao', colecao_id=colecao_id_preselect))
         
         # Criar slug
         import re
@@ -1324,15 +1373,17 @@ def new_subcolecao():
         db.session.commit()
         
         flash('Subcoleção criada com sucesso!', 'success')
-        return redirect(url_for('subcolecoes'))
+        # Redirecionar para página de detalhes da coleção
+        return redirect(url_for('collection_detail', id=int(colecao_id)))
     
     colecoes = Collection.query.order_by(Collection.name).all()
-    return render_template('subcolecoes/new.html', colecoes=colecoes)
+    return render_template('subcolecoes/new.html', colecoes=colecoes, colecao_id_preselect=colecao_id_preselect)
 
 @app.route('/subcolecoes/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_subcolecao(id):
     subcolecao = Subcolecao.query.get_or_404(id)
+    colecao_id_original = subcolecao.colecao_id
     
     if request.method == 'POST':
         subcolecao.nome = request.form.get('nome', '').strip()
@@ -1351,7 +1402,8 @@ def edit_subcolecao(id):
         
         db.session.commit()
         flash('Subcoleção atualizada com sucesso!', 'success')
-        return redirect(url_for('subcolecoes'))
+        # Redirecionar para página de detalhes da coleção
+        return redirect(url_for('collection_detail', id=subcolecao.colecao_id))
     
     colecoes = Collection.query.order_by(Collection.name).all()
     return render_template('subcolecoes/edit.html', subcolecao=subcolecao, colecoes=colecoes)
@@ -1360,10 +1412,11 @@ def edit_subcolecao(id):
 @login_required
 def delete_subcolecao(id):
     subcolecao = Subcolecao.query.get_or_404(id)
+    colecao_id = subcolecao.colecao_id
     db.session.delete(subcolecao)
     db.session.commit()
     flash('Subcoleção removida com sucesso!', 'success')
-    return redirect(url_for('subcolecoes'))
+    return redirect(url_for('collection_detail', id=colecao_id))
 
 
 @app.route('/image/<int:id>')

@@ -220,26 +220,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const dropZone = document.getElementById('drop-zone');
     const dropZoneZip = document.getElementById('drop-zone-zip');
     
+    // Tab switching
     tabBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
             tabBtns.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             
             const tab = this.dataset.tab;
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
             document.getElementById(tab + '-tab').classList.remove('hidden');
+            
+            // Clear the other input when switching tabs
+            if (tab === 'zip') {
+                filesInput.value = '';
+                fileList.innerHTML = '';
+            } else {
+                zipInput.value = '';
+                zipInfo.classList.remove('visible');
+                zipInfo.innerHTML = '';
+            }
         });
     });
     
     function formatSize(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
     }
     
     function updateFileList(files) {
         fileList.innerHTML = '';
-        if (files.length === 0) return;
+        if (!files || files.length === 0) return;
         
         let html = `<div class="file-count">${files.length} arquivo(s) selecionado(s)</div>`;
         
@@ -259,36 +272,97 @@ document.addEventListener('DOMContentLoaded', function() {
         fileList.innerHTML = html;
     }
     
-    filesInput.addEventListener('change', function() {
-        updateFileList(this.files);
-    });
-    
-    zipInput.addEventListener('change', function() {
-        if (this.files.length > 0) {
-            const file = this.files[0];
-            zipInfo.innerHTML = `
-                <i class="fas fa-check-circle" style="color: #28a745;"></i>
-                <strong>${file.name}</strong> (${formatSize(file.size)})
-                <br><small>As imagens serão extraídas e processadas automaticamente</small>
-            `;
-            zipInfo.classList.add('visible');
-        } else {
+    function updateZipInfo(files) {
+        if (!files || files.length === 0) {
             zipInfo.classList.remove('visible');
+            zipInfo.innerHTML = '';
+            return;
         }
-    });
+        
+        const file = files[0];
+        zipInfo.innerHTML = `
+            <i class="fas fa-check-circle" style="color: #28a745; margin-right: 10px;"></i>
+            <strong>${file.name}</strong> (${formatSize(file.size)})
+            <br><small style="margin-top: 5px; display: block;">As imagens serão extraídas e processadas automaticamente</small>
+        `;
+        zipInfo.style.display = 'block';
+        zipInfo.classList.add('visible');
+    }
     
+    // File input change event
+    if (filesInput) {
+        filesInput.addEventListener('change', function(e) {
+            console.log('Files selected:', this.files.length);
+            updateFileList(this.files);
+        });
+    }
+    
+    // ZIP input change event
+    if (zipInput) {
+        zipInput.addEventListener('change', function(e) {
+            console.log('ZIP file selected:', this.files.length, this.files[0]?.name);
+            updateZipInfo(this.files);
+        });
+        
+        // Also listen on input event for better compatibility
+        zipInput.addEventListener('input', function(e) {
+            console.log('ZIP input event:', this.files.length);
+            updateZipInfo(this.files);
+        });
+    }
+    
+    // Click on drop zone to trigger file input (backup for mobile/touch)
+    if (dropZoneZip) {
+        dropZoneZip.addEventListener('click', function(e) {
+            // Only trigger if not clicking directly on the input
+            if (e.target !== zipInput) {
+                zipInput.click();
+            }
+        });
+    }
+    
+    if (dropZone) {
+        dropZone.addEventListener('click', function(e) {
+            if (e.target !== filesInput) {
+                filesInput.click();
+            }
+        });
+    }
+    
+    // Drag and drop handlers
     [dropZone, dropZoneZip].forEach(zone => {
+        if (!zone) return;
+        
         zone.addEventListener('dragover', function(e) {
             e.preventDefault();
+            e.stopPropagation();
             this.classList.add('dragover');
         });
         
-        zone.addEventListener('dragleave', function() {
+        zone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
             this.classList.remove('dragover');
         });
         
-        zone.addEventListener('drop', function() {
+        zone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
             this.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (zone === dropZoneZip && files.length > 0) {
+                // For ZIP, create a new DataTransfer to set files
+                const dt = new DataTransfer();
+                dt.items.add(files[0]);
+                zipInput.files = dt.files;
+                updateZipInfo(zipInput.files);
+            } else if (zone === dropZone && files.length > 0) {
+                const dt = new DataTransfer();
+                Array.from(files).forEach(f => dt.items.add(f));
+                filesInput.files = dt.files;
+                updateFileList(filesInput.files);
+            }
         });
     });
 });

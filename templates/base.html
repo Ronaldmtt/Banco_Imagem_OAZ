@@ -56,14 +56,9 @@
                     <span>Carteira de Compras</span>
                 </a>
                 <a href="{{ url_for('collections') }}"
-                    class="nav-item {% if request.endpoint == 'collections' %}active{% endif %}">
+                    class="nav-item {% if request.endpoint in ['collections', 'collection_detail', 'new_collection', 'edit_collection'] %}active{% endif %}">
                     <i class="far fa-folder"></i>
                     <span>Coleções</span>
-                </a>
-                <a href="{{ url_for('subcolecoes') }}"
-                    class="nav-item {% if request.endpoint in ['subcolecoes', 'new_subcolecao', 'edit_subcolecao'] %}active{% endif %}">
-                    <i class="fas fa-layer-group"></i>
-                    <span>Subcoleções</span>
                 </a>
                 <a href="{{ url_for('brands') }}"
                     class="nav-item {% if request.endpoint == 'brands' %}active{% endif %}">

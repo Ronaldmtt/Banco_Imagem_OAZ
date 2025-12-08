@@ -21,6 +21,11 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
 -   **Image Upload**: Supports drag-and-drop, and batch uploads of 1M+ images with parallel processing (5 workers). Images are automatically matched with SKU data from purchase orders (Carteira de Compras).
 -   **SKU Grouping**: Intelligent extraction of SKU base from filenames with suffixes (_01, _02, -A, -B, _FRENTE, _COSTAS, etc.). Multiple images of the same product are grouped by `sku_base` while maintaining individual `sequencia` identifiers for each angle/variation.
 -   **AI Fallback**: Images without an automatic match are marked for future AI analysis, with contextualized analysis leveraging similar products.
+-   **Resilient Upload System**: Two-phase crash-proof upload architecture:
+    - Phase 1 (Reception): Files received via streaming to disk with SHA256 hash
+    - Phase 2 (Processing): Batches of 20 images processed in parallel with persistent state
+    - Watchdog thread detects stuck items (> 5 min) and resets for retry
+    - Resume capability after browser close or server restart via /batch/{id}/resume endpoint
 -   **Data Models**: Includes models for Users, Brands, Collections, Images, ImageItems (for multi-piece detection), Products, SKU History, and Shopping Cart (CarteiraCompras) imports.
 -   **Workflow**: Implements a status workflow for images: Pendente → Aprovado/Rejeitado → Pendente Análise IA.
 -   **Product Management**: Comprehensive CRUD operations for products, linking images to products, and tracking SKU changes with an audit trail.

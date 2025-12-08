@@ -295,22 +295,34 @@ class BatchUpload(db.Model):
         return round((self.processados / self.total_arquivos) * 100, 1)
 
 class BatchItem(db.Model):
-    """Item individual de um lote de upload"""
+    """Item individual de um lote de upload - Sistema resiliente a falhas"""
     id = db.Column(db.Integer, primary_key=True)
     batch_id = db.Column(db.Integer, db.ForeignKey('batch_upload.id'), nullable=False)
     
     # Identificação
     sku = db.Column(db.String(100), nullable=False)  # Nome do arquivo = SKU
     filename_original = db.Column(db.String(255))
+    file_size = db.Column(db.BigInteger)  # Tamanho do arquivo em bytes
+    file_hash = db.Column(db.String(64))  # SHA256 para dedupe
     
-    # Status do processamento
-    status = db.Column(db.String(30), default='Pendente')  # Pendente, Processando, Sucesso, Erro
-    erro_mensagem = db.Column(db.Text)
-    tentativas = db.Column(db.Integer, default=0)
+    # FASE 1: Recepção (Cliente → Servidor)
+    received_path = db.Column(db.String(500))  # Caminho temporário no servidor
+    reception_status = db.Column(db.String(30), default='pending')  # pending, receiving, received, failed
+    received_at = db.Column(db.DateTime)  # Quando foi recebido no servidor
     
-    # Resultado do upload
-    storage_path = db.Column(db.String(500))
+    # FASE 2: Processamento (Servidor → Object Storage)
+    processing_status = db.Column(db.String(30), default='pending')  # pending, processing, completed, failed, retry
+    storage_path = db.Column(db.String(500))  # Caminho final no Object Storage
     image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    
+    # Controle de erros e retries
+    status = db.Column(db.String(30), default='Pendente')  # Pendente, Processando, Sucesso, Erro (legado)
+    erro_mensagem = db.Column(db.Text)
+    retry_count = db.Column(db.Integer, default=0)
+    max_retries = db.Column(db.Integer, default=3)
+    next_retry_at = db.Column(db.DateTime)
+    last_error = db.Column(db.Text)
+    tentativas = db.Column(db.Integer, default=0)  # Legado
     
     # Resultado da análise IA
     ai_description = db.Column(db.Text)
@@ -319,16 +331,24 @@ class BatchItem(db.Model):
     
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     processed_at = db.Column(db.DateTime)
+    
+    # Heartbeat para detectar itens travados
+    heartbeat_at = db.Column(db.DateTime)  # Última vez que o worker atualizou
+    worker_id = db.Column(db.String(50))  # ID do worker processando
     
     # Relacionamento com imagem criada
     imagem = db.relationship('Image', backref='batch_item')
     
-    # Índice para busca rápida por SKU
+    # Índices para fila FIFO e busca rápida
     __table_args__ = (
         db.Index('idx_batch_item_sku', 'sku'),
         db.Index('idx_batch_item_status', 'status'),
         db.Index('idx_batch_item_batch_status', 'batch_id', 'status'),
+        db.Index('idx_batch_item_processing', 'batch_id', 'processing_status'),
+        db.Index('idx_batch_item_reception', 'batch_id', 'reception_status'),
+        db.Index('idx_batch_item_retry', 'next_retry_at', 'processing_status'),
     )
 
 @login_manager.user_loader
@@ -3137,8 +3157,19 @@ def batch_detail(batch_id):
 @app.route('/batch/<int:batch_id>/status')
 @login_required
 def batch_status(batch_id):
-    """API para obter status do lote (polling)"""
+    """API para obter status detalhado do lote (polling) - inclui fases de recepção e processamento"""
     batch = BatchUpload.query.get_or_404(batch_id)
+    
+    reception_pending = BatchItem.query.filter_by(batch_id=batch_id, reception_status='pending').count()
+    reception_receiving = BatchItem.query.filter_by(batch_id=batch_id, reception_status='receiving').count()
+    reception_received = BatchItem.query.filter_by(batch_id=batch_id, reception_status='received').count()
+    
+    processing_pending = BatchItem.query.filter_by(batch_id=batch_id, processing_status='pending').count()
+    processing_active = BatchItem.query.filter_by(batch_id=batch_id, processing_status='processing').count()
+    processing_completed = BatchItem.query.filter_by(batch_id=batch_id, processing_status='completed').count()
+    processing_failed = BatchItem.query.filter_by(batch_id=batch_id, processing_status='failed').count()
+    processing_retry = BatchItem.query.filter_by(batch_id=batch_id, processing_status='retry').count()
+    
     return {
         'id': batch.id,
         'status': batch.status,
@@ -3146,8 +3177,221 @@ def batch_status(batch_id):
         'processados': batch.processados,
         'sucesso': batch.sucesso,
         'falhas': batch.falhas,
-        'progresso': batch.progresso
+        'progresso': batch.progresso,
+        'fase1_recepcao': {
+            'pendente': reception_pending,
+            'recebendo': reception_receiving,
+            'recebido': reception_received
+        },
+        'fase2_processamento': {
+            'pendente': processing_pending,
+            'processando': processing_active,
+            'concluido': processing_completed,
+            'falha': processing_failed,
+            'retry': processing_retry
+        },
+        'resiliente': True,
+        'pode_retomar': processing_pending + processing_retry > 0
     }
+
+@app.route('/batch/streaming-upload', methods=['POST'])
+@login_required
+def batch_streaming_upload():
+    """
+    Endpoint de recepção com streaming real para arquivos grandes (até 3GB)
+    Salva arquivos em disco usando chunks de 20MB sem carregar na memória
+    """
+    import hashlib
+    
+    CHUNK_SIZE = 20 * 1024 * 1024  # 20MB chunks
+    TEMP_UPLOAD_DIR = '/tmp/batch_uploads'
+    os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+    
+    batch_id = request.form.get('batch_id')
+    collection_id = request.form.get('collection_id')
+    brand_id = request.form.get('brand_id')
+    batch_name = request.form.get('batch_name', f"Lote {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    
+    if not batch_id:
+        batch = BatchUpload(
+            nome=batch_name,
+            total_arquivos=0,
+            usuario_id=current_user.id,
+            colecao_id=int(collection_id) if collection_id else None,
+            marca_id=int(brand_id) if brand_id else None,
+            status='Recebendo'
+        )
+        db.session.add(batch)
+        db.session.commit()
+        batch_id = batch.id
+    else:
+        batch = BatchUpload.query.get(int(batch_id))
+        if not batch:
+            return {'error': 'Batch não encontrado'}, 404
+    
+    batch_temp_dir = os.path.join(TEMP_UPLOAD_DIR, f'batch_{batch_id}')
+    os.makedirs(batch_temp_dir, exist_ok=True)
+    
+    received_files = []
+    
+    for key in request.files:
+        file = request.files[key]
+        if file and file.filename:
+            original_filename = file.filename
+            ext = os.path.splitext(original_filename)[1].lower()
+            
+            if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                continue
+            
+            sku = extract_sku_from_filename(original_filename)
+            if not sku:
+                continue
+            
+            temp_filename = f"{sku}_{datetime.now().strftime('%H%M%S%f')}{ext}"
+            temp_path = os.path.join(batch_temp_dir, temp_filename)
+            
+            hasher = hashlib.sha256()
+            file_size = 0
+            
+            with open(temp_path, 'wb') as f:
+                while True:
+                    chunk = file.stream.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    hasher.update(chunk)
+                    file_size += len(chunk)
+            
+            file_hash = hasher.hexdigest()
+            
+            item = BatchItem(
+                batch_id=batch_id,
+                sku=sku,
+                filename_original=original_filename,
+                file_size=file_size,
+                file_hash=file_hash,
+                received_path=temp_path,
+                reception_status='received',
+                received_at=datetime.utcnow(),
+                processing_status='pending',
+                status='Pendente'
+            )
+            db.session.add(item)
+            db.session.flush()
+            
+            received_files.append({
+                'item_id': item.id,
+                'sku': sku,
+                'filename': original_filename,
+                'size': file_size,
+                'hash': file_hash[:16]
+            })
+    
+    batch.total_arquivos = BatchItem.query.filter_by(batch_id=batch_id).count()
+    db.session.commit()
+    
+    return {
+        'batch_id': batch_id,
+        'received_count': len(received_files),
+        'total_no_lote': batch.total_arquivos,
+        'files': received_files
+    }
+
+@app.route('/batch/<int:batch_id>/start-processing', methods=['POST'])
+@login_required
+def batch_start_processing(batch_id):
+    """Inicia o processamento de um lote após recepção completa"""
+    batch = BatchUpload.query.get_or_404(batch_id)
+    
+    if batch.status not in ['Recebendo', 'Pendente', 'Erro']:
+        return {'error': f'Lote já está em status: {batch.status}'}, 400
+    
+    pending_items = BatchItem.query.filter_by(
+        batch_id=batch_id,
+        reception_status='received',
+        processing_status='pending'
+    ).all()
+    
+    if not pending_items:
+        return {'error': 'Nenhum item pendente para processar'}, 400
+    
+    batch.status = 'Processando'
+    batch.started_at = datetime.utcnow()
+    db.session.commit()
+    
+    files_data = []
+    for item in pending_items:
+        if item.received_path and os.path.exists(item.received_path):
+            files_data.append({
+                'item_id': item.id,
+                'sku': item.sku,
+                'temp_path': item.received_path,
+                'filename': item.filename_original
+            })
+    
+    if files_data:
+        processor = get_batch_processor()
+        thread = threading.Thread(
+            target=processor.process_batch,
+            args=(batch_id, files_data)
+        )
+        thread.daemon = True
+        thread.start()
+    
+    return {
+        'batch_id': batch_id,
+        'status': 'Processando',
+        'items_to_process': len(files_data)
+    }
+
+@app.route('/batch/<int:batch_id>/resume', methods=['POST'])
+@login_required
+def batch_resume(batch_id):
+    """Retoma processamento de um lote após interrupção (crash recovery)"""
+    batch = BatchUpload.query.get_or_404(batch_id)
+    
+    pending_items = BatchItem.query.filter(
+        BatchItem.batch_id == batch_id,
+        BatchItem.processing_status.in_(['pending', 'retry']),
+        BatchItem.received_path.isnot(None)
+    ).all()
+    
+    if not pending_items:
+        return {'error': 'Nenhum item pendente para retomar', 'status': batch.status}, 400
+    
+    files_data = []
+    for item in pending_items:
+        if item.received_path and os.path.exists(item.received_path):
+            files_data.append({
+                'item_id': item.id,
+                'sku': item.sku,
+                'temp_path': item.received_path,
+                'filename': item.filename_original
+            })
+        else:
+            item.processing_status = 'failed'
+            item.last_error = 'Arquivo temporário não encontrado'
+    
+    if files_data:
+        batch.status = 'Processando'
+        db.session.commit()
+        
+        processor = get_batch_processor()
+        thread = threading.Thread(
+            target=processor.process_batch,
+            args=(batch_id, files_data)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return {
+            'batch_id': batch_id,
+            'status': 'Retomando',
+            'items_to_process': len(files_data)
+        }
+    else:
+        db.session.commit()
+        return {'error': 'Nenhum arquivo encontrado para retomar', 'status': batch.status}, 400
 
 @app.route('/batch/<int:batch_id>/retry-failed', methods=['POST'])
 @login_required

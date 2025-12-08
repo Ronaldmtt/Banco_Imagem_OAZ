@@ -83,8 +83,147 @@ class UploadOrchestrator:
         self.object_storage = object_storage
         
         if not self.workers_started:
+            self._recover_stuck_items()
             self._start_workers()
+            self._start_watchdog()
             self.workers_started = True
+    
+    def _recover_stuck_items(self):
+        """Recupera itens que estavam em 'processing' ou 'receiving' quando o servidor caiu"""
+        from datetime import timedelta
+        import shutil
+        
+        TEMP_UPLOAD_DIR = '/tmp/batch_uploads'
+        
+        with self.app.app_context():
+            self.db.session.remove()
+            from app import BatchItem, BatchUpload
+            
+            receiving_items = BatchItem.query.filter(
+                BatchItem.reception_status == 'receiving'
+            ).all()
+            
+            if receiving_items:
+                print(f"[WATCHDOG] Found {len(receiving_items)} items stuck in 'receiving', marking as failed...")
+                for item in receiving_items:
+                    item.reception_status = 'failed'
+                    item.status = 'Erro'
+                    item.last_error = 'Reception interrupted by server restart'
+                    if item.received_path and os.path.exists(item.received_path):
+                        try:
+                            os.remove(item.received_path)
+                        except:
+                            pass
+                self.db.session.commit()
+            
+            stuck_items = BatchItem.query.filter(
+                BatchItem.processing_status == 'processing'
+            ).all()
+            
+            if stuck_items:
+                print(f"[WATCHDOG] Found {len(stuck_items)} stuck items in 'processing', resetting to retry...")
+                for item in stuck_items:
+                    item.processing_status = 'retry'
+                    item.status = 'Pendente'
+                    item.retry_count = (item.retry_count or 0) + 1
+                    item.last_error = 'Recovered after server restart'
+                    item.worker_id = None
+                    item.heartbeat_at = None
+                self.db.session.commit()
+            
+            stuck_batches = BatchUpload.query.filter(
+                BatchUpload.status.in_(['Processando', 'Recebendo'])
+            ).all()
+            
+            if stuck_batches:
+                print(f"[WATCHDOG] Found {len(stuck_batches)} stuck batches, checking status...")
+                for batch in stuck_batches:
+                    pending_count = BatchItem.query.filter(
+                        BatchItem.batch_id == batch.id,
+                        BatchItem.processing_status.in_(['pending', 'retry'])
+                    ).count()
+                    
+                    completed_count = BatchItem.query.filter(
+                        BatchItem.batch_id == batch.id,
+                        BatchItem.processing_status == 'completed'
+                    ).count()
+                    
+                    failed_count = BatchItem.query.filter(
+                        BatchItem.batch_id == batch.id,
+                        BatchItem.processing_status == 'failed'
+                    ).count()
+                    
+                    if pending_count > 0:
+                        batch.status = 'Pendente'
+                        print(f"[WATCHDOG] Batch {batch.id} has {pending_count} pending items, marked as Pendente")
+                    elif failed_count > 0 and completed_count == 0:
+                        batch.status = 'Erro'
+                        batch.finished_at = datetime.utcnow()
+                    else:
+                        batch.status = 'Concluído'
+                        batch.finished_at = datetime.utcnow()
+                    
+                    batch.sucesso = completed_count
+                    batch.falhas = failed_count
+                    batch.processados = completed_count + failed_count
+                
+                self.db.session.commit()
+            
+            self.db.session.remove()
+    
+    def _start_watchdog(self):
+        """Inicia thread watchdog para detectar itens travados"""
+        watchdog = threading.Thread(
+            target=self._watchdog_loop,
+            name='UploadWatchdog',
+            daemon=True
+        )
+        watchdog.start()
+        print("[WATCHDOG] Started watchdog thread")
+    
+    def _watchdog_loop(self):
+        """Loop do watchdog - verifica itens travados a cada 60 segundos"""
+        from datetime import timedelta
+        
+        STUCK_TIMEOUT_SECONDS = 300  # 5 minutos sem heartbeat = travado
+        CHECK_INTERVAL = 60  # Verifica a cada 60 segundos
+        
+        while not self.shutdown_event.is_set():
+            try:
+                self.shutdown_event.wait(CHECK_INTERVAL)
+                if self.shutdown_event.is_set():
+                    break
+                
+                with self.app.app_context():
+                    self.db.session.remove()
+                    from app import BatchItem
+                    
+                    timeout_threshold = datetime.utcnow() - timedelta(seconds=STUCK_TIMEOUT_SECONDS)
+                    
+                    stuck_items = BatchItem.query.filter(
+                        BatchItem.processing_status == 'processing',
+                        BatchItem.heartbeat_at < timeout_threshold
+                    ).all()
+                    
+                    if stuck_items:
+                        print(f"[WATCHDOG] Found {len(stuck_items)} items stuck for > {STUCK_TIMEOUT_SECONDS}s")
+                        for item in stuck_items:
+                            if item.retry_count < item.max_retries:
+                                item.processing_status = 'retry'
+                                item.retry_count += 1
+                                item.last_error = f'Timeout after {STUCK_TIMEOUT_SECONDS}s'
+                                item.worker_id = None
+                            else:
+                                item.processing_status = 'failed'
+                                item.status = 'Erro'
+                                item.last_error = f'Max retries ({item.max_retries}) exceeded'
+                        
+                        self.db.session.commit()
+                    
+                    self.db.session.remove()
+                    
+            except Exception as e:
+                print(f"[WATCHDOG] Error: {e}")
     
     def _start_workers(self):
         """Inicia workers em background"""
@@ -228,11 +367,15 @@ class UploadOrchestrator:
         return cache
     
     def _process_files_parallel(self, job, files_data, carteira_cache):
-        """Processa arquivos em paralelo com workers internos e sessões isoladas"""
+        """Processa arquivos em LOTES DE 20 com sessões isoladas - resiliente a falhas"""
+        BATCH_SIZE = 20  # Processa 20 imagens por vez
         processed = 0
         successes = 0
         failures = 0
         progress_lock = Lock()
+        total_files = len(files_data)
+        
+        print(f"[BATCH] Processing {total_files} files in batches of {BATCH_SIZE}")
         
         def process_with_isolated_session(file_info):
             """Wrapper que garante sessão isolada por thread"""
@@ -273,26 +416,37 @@ class UploadOrchestrator:
                             pass
                     self.db.session.remove()
         
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(process_with_isolated_session, f) for f in files_data]
+        for batch_start in range(0, total_files, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_files)
+            batch_files = files_data[batch_start:batch_end]
+            batch_num = (batch_start // BATCH_SIZE) + 1
+            total_batches = (total_files + BATCH_SIZE - 1) // BATCH_SIZE
             
-            for i, future in enumerate(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"[ERROR] Future {i} failed: {e}")
+            print(f"[BATCH {batch_num}/{total_batches}] Processing files {batch_start+1}-{batch_end} of {total_files}")
+            
+            with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+                futures = [executor.submit(process_with_isolated_session, f) for f in batch_files]
                 
-                if (i + 1) % PROGRESS_UPDATE_INTERVAL == 0:
-                    with self.app.app_context():
-                        self.db.session.remove()
-                        from app import BatchUpload
-                        batch = self.db.session.get(BatchUpload, job.batch_id)
-                        if batch:
-                            batch.processados = processed
-                            batch.sucesso = successes
-                            batch.falhas = failures
-                            self.db.session.commit()
-                        self.db.session.remove()
+                for future in futures:
+                    try:
+                        future.result()
+                    except Exception as e:
+                        print(f"[ERROR] Future failed: {e}")
+            
+            with self.app.app_context():
+                self.db.session.remove()
+                from app import BatchUpload
+                batch = self.db.session.get(BatchUpload, job.batch_id)
+                if batch:
+                    batch.processados = processed
+                    batch.sucesso = successes
+                    batch.falhas = failures
+                    self.db.session.commit()
+                self.db.session.remove()
+            
+            print(f"[BATCH {batch_num}/{total_batches}] Completed. Progress: {processed}/{total_files} ({successes} success, {failures} failed)")
+            
+            gc.collect()
         
         with self.app.app_context():
             self.db.session.remove()
@@ -303,6 +457,8 @@ class UploadOrchestrator:
                 batch.sucesso = successes
                 batch.falhas = failures
                 self.db.session.commit()
+        
+        print(f"[BATCH] All batches completed: {processed}/{total_files} files processed")
     
     def _process_single_file_in_session(self, batch_id, file_info, carteira_cache):
         """Processa um único arquivo (já dentro de sessão isolada)"""
@@ -393,9 +549,11 @@ class UploadOrchestrator:
                 item = self.db.session.get(BatchItem, item_id)
                 if item:
                     item.status = 'Sucesso'
+                    item.processing_status = 'completed'
                     item.storage_path = storage_path
                     item.image_id = new_image.id
                     item.processed_at = datetime.utcnow()
+                    item.heartbeat_at = datetime.utcnow()
             
             self.db.session.commit()
             
@@ -409,7 +567,10 @@ class UploadOrchestrator:
                     item = self.db.session.get(BatchItem, item_id)
                     if item:
                         item.status = 'Erro'
+                        item.processing_status = 'failed'
                         item.erro_mensagem = str(e)[:500]
+                        item.last_error = str(e)[:500]
+                        item.retry_count = (item.retry_count or 0) + 1
                         self.db.session.commit()
                 except:
                     pass
@@ -417,19 +578,9 @@ class UploadOrchestrator:
             return {'success': False, 'error': str(e)}
     
     def _upload_file_streaming(self, file_path, original_filename):
-        """Upload de arquivo usando streaming (não carrega tudo na memória)"""
-        CHUNK_SIZE = 8 * 1024 * 1024
-        
-        object_name = self.object_storage.generate_object_name(original_filename)
-        
-        with open(file_path, 'rb') as f:
-            data = f.read()
-            self.object_storage.client.upload_from_bytes(object_name, data)
-        
-        return {
-            'object_name': object_name,
-            'storage_path': f"/storage/{object_name}"
-        }
+        """Upload de arquivo usando streaming real (20MB chunks)"""
+        result = self.object_storage.upload_file_streaming(file_path, original_filename)
+        return result
     
     def _cleanup_job(self, job):
         """Limpa todos os recursos de um job"""

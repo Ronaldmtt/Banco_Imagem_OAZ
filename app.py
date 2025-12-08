@@ -291,12 +291,18 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 def get_openai_client():
-    # First try to get from DB
+    # First try Replit AI Integrations (no API key needed)
+    base_url = os.getenv('AI_INTEGRATIONS_OPENAI_BASE_URL')
+    ai_key = os.getenv('AI_INTEGRATIONS_OPENAI_API_KEY')
+    if base_url and ai_key:
+        return OpenAI(api_key=ai_key, base_url=base_url)
+    
+    # Fallback to user-configured API key in DB
     config = SystemConfig.query.filter_by(key='OPENAI_API_KEY').first()
     if config:
         return OpenAI(api_key=config.value)
     
-    # Fallback to env var
+    # Last fallback to env var
     api_key = os.getenv('OPENAI_API_KEY')
     if api_key:
         return OpenAI(api_key=api_key)

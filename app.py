@@ -3137,6 +3137,86 @@ def batch_new():
     brands = Brand.query.order_by(Brand.name).all()
     return render_template('batch/new.html', collections=collections, brands=brands)
 
+@app.route('/batch/create-async', methods=['POST'])
+@login_required
+def batch_create_async():
+    """Cria um lote vazio para upload assíncrono de múltiplos arquivos"""
+    data = request.get_json()
+    
+    batch_name = data.get('batch_name', f"Lote {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    collection_id = data.get('collection_id')
+    brand_id = data.get('brand_id')
+    total_files = data.get('total_files', 0)
+    
+    batch = BatchUpload(
+        nome=batch_name,
+        total_arquivos=total_files,
+        usuario_id=current_user.id,
+        colecao_id=int(collection_id) if collection_id else None,
+        marca_id=int(brand_id) if brand_id else None,
+        status='Recebendo'
+    )
+    db.session.add(batch)
+    db.session.commit()
+    
+    return jsonify({
+        'batch_id': batch.id,
+        'status': 'created'
+    })
+
+@app.route('/batch/upload-file', methods=['POST'])
+@login_required
+def batch_upload_file():
+    """Upload de um único arquivo para um lote existente"""
+    TEMP_UPLOAD_DIR = '/tmp/batch_uploads'
+    os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+    
+    batch_id = request.form.get('batch_id')
+    file = request.files.get('file')
+    
+    if not batch_id or not file:
+        return jsonify({'error': 'Missing batch_id or file'}), 400
+    
+    batch = BatchUpload.query.get(batch_id)
+    if not batch:
+        return jsonify({'error': 'Batch not found'}), 404
+    
+    try:
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+            return jsonify({'error': 'Invalid file type'}), 400
+        
+        sku = extract_sku_from_filename(file.filename)
+        if not sku:
+            sku = os.path.splitext(file.filename)[0]
+        
+        safe_filename = f"{batch_id}_{sku}_{datetime.now().strftime('%H%M%S%f')}{ext}"
+        temp_path = os.path.join(TEMP_UPLOAD_DIR, safe_filename)
+        
+        file.save(temp_path)
+        
+        item = BatchItem(
+            batch_id=batch_id,
+            sku=sku,
+            filename_original=file.filename,
+            status='Pendente',
+            reception_status='received',
+            processing_status='pending',
+            received_path=temp_path,
+            file_size=os.path.getsize(temp_path)
+        )
+        db.session.add(item)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'item_id': item.id,
+            'sku': sku
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/batch/<int:batch_id>')
 @login_required
 def batch_detail(batch_id):

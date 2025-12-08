@@ -419,6 +419,89 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    // Upload multiple files function
+    async function uploadMultipleFiles(files, collectionId, brandId, batchName) {
+        const totalFiles = files.length;
+        const BATCH_SIZE = 10; // Upload 10 files at a time
+        
+        progressStatus.textContent = 'Criando lote...';
+        progressDetails.textContent = `Preparando ${totalFiles} arquivos...`;
+        
+        // 1. Create batch first
+        const createBatchResponse = await fetch('/batch/create-async', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                batch_name: batchName,
+                collection_id: collectionId,
+                brand_id: brandId,
+                total_files: totalFiles
+            })
+        });
+        
+        if (!createBatchResponse.ok) {
+            const errorData = await createBatchResponse.json();
+            throw new Error(errorData.error || 'Falha ao criar lote');
+        }
+        
+        const batchData = await createBatchResponse.json();
+        const batchId = batchData.batch_id;
+        
+        // 2. Upload files in batches
+        progressStatus.textContent = 'Enviando arquivos...';
+        let uploaded = 0;
+        let errors = 0;
+        
+        for (let i = 0; i < totalFiles; i += BATCH_SIZE) {
+            const batchFiles = Array.from(files).slice(i, Math.min(i + BATCH_SIZE, totalFiles));
+            
+            const uploadPromises = batchFiles.map(async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('batch_id', batchId);
+                
+                try {
+                    const response = await fetch('/batch/upload-file', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        return { success: true };
+                    } else {
+                        return { success: false };
+                    }
+                } catch (err) {
+                    return { success: false };
+                }
+            });
+            
+            const results = await Promise.all(uploadPromises);
+            
+            uploaded += results.filter(r => r.success).length;
+            errors += results.filter(r => !r.success).length;
+            
+            const percent = ((uploaded + errors) / totalFiles * 100).toFixed(1);
+            progressBar.style.width = percent + '%';
+            progressPercent.textContent = percent + '%';
+            progressDetails.textContent = `${uploaded} de ${totalFiles} arquivos enviados (${errors} erros)`;
+        }
+        
+        // 3. Start processing
+        progressStatus.textContent = 'Iniciando processamento...';
+        
+        const processResponse = await fetch(`/batch/${batchId}/start-processing`, {
+            method: 'POST'
+        });
+        
+        return {
+            batch_id: batchId,
+            total_files: uploaded,
+            errors: errors,
+            redirect: `/batch/${batchId}`
+        };
+    }
+    
     // Chunked upload function
     async function uploadFileChunked(file, collectionId, brandId, batchName) {
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -543,11 +626,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Regular form submission for individual files
+            // Async upload for multiple files
             if (filesInput && filesInput.files.length > 0) {
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
-                batchForm.submit();
+                uploadProgress.classList.remove('hidden');
+                progressBar.style.width = '0%';
+                progressPercent.textContent = '0%';
+                
+                try {
+                    const result = await uploadMultipleFiles(filesInput.files, collectionId, brandId, batchName);
+                    
+                    progressBar.style.width = '100%';
+                    progressPercent.textContent = '100%';
+                    progressStatus.textContent = 'Upload concluído!';
+                    progressDetails.textContent = `${result.total_files} imagens enviadas. Redirecionando...`;
+                    
+                    setTimeout(() => {
+                        window.location.href = result.redirect;
+                    }, 1500);
+                    
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    progressStatus.textContent = 'Erro no upload!';
+                    progressDetails.textContent = error.message;
+                    progressBar.style.background = '#dc3545';
+                    
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-rocket"></i> Tentar Novamente';
+                }
+                
                 return;
             }
             

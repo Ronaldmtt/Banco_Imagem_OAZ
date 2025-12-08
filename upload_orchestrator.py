@@ -309,6 +309,7 @@ class UploadOrchestrator:
         import json
         import uuid as uuid_lib
         from app import BatchUpload, BatchItem, Image, CarteiraCompras
+        from batch_processor import extract_sku_base_and_sequence
         
         temp_path = file_info.get('temp_path')
         sku = file_info.get('sku')
@@ -319,8 +320,14 @@ class UploadOrchestrator:
             if not temp_path or not os.path.exists(temp_path):
                 raise FileNotFoundError(f"File not found: {temp_path}")
             
+            sku_base, sequencia = extract_sku_base_and_sequence(sku)
+            
             sku_upper = sku.upper().strip()
+            sku_base_upper = sku_base.upper().strip() if sku_base else sku_upper
+            
             carteira_data = carteira_cache.get(sku_upper)
+            if not carteira_data and sku_base_upper != sku_upper:
+                carteira_data = carteira_cache.get(sku_base_upper)
             
             storage_result = self._upload_file_streaming(temp_path, original_filename)
             storage_path = storage_result.get('storage_path')
@@ -362,6 +369,8 @@ class UploadOrchestrator:
                 original_name=original_filename,
                 storage_path=storage_path,
                 sku=sku,
+                sku_base=sku_base,
+                sequencia=sequencia,
                 description=carteira_data.get('descricao', '') if carteira_data else '',
                 tags=json.dumps(tags_list),
                 ai_item_type=carteira_data.get('tipo_peca') if carteira_data else None,

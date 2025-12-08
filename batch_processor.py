@@ -80,12 +80,13 @@ class BatchProcessor:
         
         self._cleanup_temp_files(temp_file_paths)
     
-    def _match_carteira_compras_in_session(self, sku, db):
+    def _match_carteira_compras_in_session(self, sku_completo, db):
         """
-        Busca dados da CarteiraCompras pelo SKU usando a sessão atual
+        Busca dados da CarteiraCompras pelo SKU usando a sessão atual.
+        Tenta primeiro com SKU completo, depois com SKU base (sem sufixos).
         
         Args:
-            sku: Código SKU para buscar
+            sku_completo: Código SKU completo do arquivo (ex: ABC123_01)
             db: Instância do SQLAlchemy database
             
         Returns:
@@ -93,17 +94,30 @@ class BatchProcessor:
         """
         from app import CarteiraCompras
         
-        carteira = db.session.query(CarteiraCompras).filter_by(sku=sku).first()
+        sku_base, sequencia = extract_sku_base_and_sequence(sku_completo)
+        
+        carteira = db.session.query(CarteiraCompras).filter_by(sku=sku_completo).first()
         
         if not carteira:
-            sku_upper = sku.upper().strip()
+            sku_upper = sku_completo.upper().strip()
             carteira = db.session.query(CarteiraCompras).filter(
                 db.func.upper(db.func.trim(CarteiraCompras.sku)) == sku_upper
             ).first()
         
+        if not carteira and sku_base and sku_base != sku_completo:
+            carteira = db.session.query(CarteiraCompras).filter_by(sku=sku_base).first()
+            
+            if not carteira:
+                sku_base_upper = sku_base.upper().strip()
+                carteira = db.session.query(CarteiraCompras).filter(
+                    db.func.upper(db.func.trim(CarteiraCompras.sku)) == sku_base_upper
+                ).first()
+        
         if carteira:
             return {
                 'found': True,
+                'sku_base': sku_base,
+                'sequencia': sequencia,
                 'descricao': carteira.descricao or '',
                 'cor': carteira.cor or '',
                 'categoria': carteira.categoria or '',
@@ -124,7 +138,11 @@ class BatchProcessor:
                 'tipo_carteira': carteira.tipo_carteira or 'Moda'
             }
         
-        return None
+        return {
+            'found': False,
+            'sku_base': sku_base,
+            'sequencia': sequencia
+        }
     
     def _process_single_item_isolated(self, batch_id, item_id, sku, temp_path, original_filename):
         """Processa um único item com sessão de banco isolada"""
@@ -222,12 +240,17 @@ class BatchProcessor:
                     referencia_estilo = ''
                     match_source = 'sem_match'
                 
+                sku_base = carteira_data.get('sku_base', sku) if carteira_data else sku
+                sequencia = carteira_data.get('sequencia') if carteira_data else None
+                
                 ext = os.path.splitext(original_filename)[1] or '.jpg'
                 new_image = Image(
                     filename=f"{sku}{ext}",
                     original_name=original_filename,
                     storage_path=storage_path,
                     sku=sku,
+                    sku_base=sku_base,
+                    sequencia=sequencia,
                     description=description,
                     tags=json.dumps(tags_list),
                     ai_item_type=tipo_peca if tipo_peca else (categoria if carteira_data else None),

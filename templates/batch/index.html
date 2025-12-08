@@ -50,10 +50,13 @@
                     <td class="text-success">{{ batch.sucesso }}</td>
                     <td class="text-danger">{{ batch.falhas }}</td>
                     <td>{{ batch.created_at.strftime('%d/%m/%Y %H:%M') if batch.created_at else '-' }}</td>
-                    <td>
+                    <td class="actions-cell">
                         <a href="{{ url_for('batch_detail', batch_id=batch.id) }}" class="btn btn-sm btn-secondary">
-                            Ver Detalhes
+                            <i class="fas fa-eye"></i> Ver
                         </a>
+                        <button class="btn btn-sm btn-danger" onclick="deleteBatch({{ batch.id }}, '{{ batch.nome or 'Lote ' ~ batch.id }}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -117,5 +120,45 @@
 }
 .text-success { color: #28a745; }
 .text-danger { color: #dc3545; }
+.actions-cell {
+    display: flex;
+    gap: 8px;
+}
+.btn-danger {
+    background: rgba(220, 53, 69, 0.2);
+    color: #dc3545;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+.btn-danger:hover {
+    background: rgba(220, 53, 69, 0.4);
+}
+.status-recebendo {
+    background: rgba(23, 162, 184, 0.2);
+    color: #17a2b8;
+}
 </style>
+
+<script>
+async function deleteBatch(batchId, batchName) {
+    if (!confirm(`Tem certeza que deseja excluir "${batchName}"?\n\nTodos os itens do lote serão removidos permanentemente.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/batch/${batchId}/delete`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Erro ao excluir lote: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        alert('Erro ao excluir lote: ' + error.message);
+    }
+}
+</script>
 {% endblock %}

@@ -3217,6 +3217,34 @@ def batch_upload_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/batch/<int:batch_id>/delete', methods=['DELETE'])
+@login_required
+def batch_delete(batch_id):
+    """Exclui um lote e todos os seus itens"""
+    batch = BatchUpload.query.get_or_404(batch_id)
+    
+    if batch.usuario_id != current_user.id and not current_user.is_admin:
+        return jsonify({'error': 'Sem permissão para excluir este lote'}), 403
+    
+    try:
+        items = BatchItem.query.filter_by(batch_id=batch_id).all()
+        for item in items:
+            if item.received_path and os.path.exists(item.received_path):
+                try:
+                    os.remove(item.received_path)
+                except:
+                    pass
+        
+        BatchItem.query.filter_by(batch_id=batch_id).delete()
+        db.session.delete(batch)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Lote excluído com sucesso'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/batch/<int:batch_id>')
 @login_required
 def batch_detail(batch_id):

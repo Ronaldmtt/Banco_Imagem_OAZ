@@ -7,6 +7,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import RequestEntityTooLarge
 from openai import OpenAI
 from dotenv import load_dotenv
 import json
@@ -38,6 +39,13 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+# Error handler for large file uploads
+@app.errorhandler(413)
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(e):
+    flash('Arquivo muito grande! O limite máximo é 100MB por arquivo. Para lotes maiores, divida em arquivos ZIP menores.', 'error')
+    return redirect(request.referrer or url_for('batch_list'))
 
 # Models
 class User(UserMixin, db.Model):

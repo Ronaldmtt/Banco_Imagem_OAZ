@@ -350,10 +350,52 @@ class BatchProcessor:
 
 
 def extract_sku_from_filename(filename):
-    """Extrai o SKU do nome do arquivo (remove extensão)"""
+    """Extrai o SKU completo do nome do arquivo (remove extensão)"""
     name = os.path.basename(filename)
     sku = os.path.splitext(name)[0]
     return sku.strip()
+
+
+def extract_sku_base_and_sequence(sku_completo):
+    """
+    Extrai o SKU base e a sequência/ângulo de um SKU completo.
+    
+    Exemplos:
+        "ABC123_01" -> ("ABC123", "01")
+        "ABC123_02" -> ("ABC123", "02")
+        "ABC123-A" -> ("ABC123", "A")
+        "ABC123-B" -> ("ABC123", "B")
+        "ABC123_FRENTE" -> ("ABC123", "FRENTE")
+        "ABC123" -> ("ABC123", None)  # Sem sufixo = imagem principal
+    
+    Padrões reconhecidos:
+        - _01, _02, _03... (números com underscore)
+        - -01, -02, -03... (números com hífen)
+        - _A, _B, _C... (letras com underscore)
+        - -A, -B, -C... (letras com hífen)
+        - _FRENTE, _COSTAS, _LATERAL... (descritivos)
+    """
+    import re
+    
+    if not sku_completo:
+        return (None, None)
+    
+    sku = sku_completo.strip()
+    
+    patterns = [
+        r'^(.+?)[-_](\d{1,3})$',
+        r'^(.+?)[-_]([A-Za-z])$',
+        r'^(.+?)[-_](FRENTE|COSTAS|LATERAL|DETALHE|ZOOM|VERSO|CIMA|BAIXO|TOP|BOTTOM)$',
+    ]
+    
+    for pattern in patterns:
+        match = re.match(pattern, sku, re.IGNORECASE)
+        if match:
+            sku_base = match.group(1).strip()
+            sequencia = match.group(2).strip().upper()
+            return (sku_base, sequencia)
+    
+    return (sku, None)
 
 
 def extract_zip_to_temp(zip_path, temp_dir):

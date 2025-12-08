@@ -100,7 +100,9 @@ class Image(db.Model):
     original_name = db.Column(db.String(255), nullable=False)
     storage_path = db.Column(db.String(500))  # Path in Object Storage (e.g., /bucket/images/file.jpg)
     description = db.Column(db.Text)
-    sku = db.Column(db.String(50))
+    sku = db.Column(db.String(100))  # SKU completo do arquivo (ex: ABC123_01)
+    sku_base = db.Column(db.String(100), index=True)  # SKU base para agrupamento (ex: ABC123)
+    sequencia = db.Column(db.String(20))  # Sequência/ângulo (ex: 01, 02, A, B, FRENTE, COSTAS)
     brand_id = db.Column(db.Integer, db.ForeignKey('brand.id'))
     status = db.Column(db.String(20), default='Pendente')
     upload_date = db.Column(db.DateTime, default=datetime.utcnow)
@@ -132,6 +134,12 @@ class Image(db.Model):
     
     # Relationship with subcolecao
     subcolecao_rel = db.relationship('Subcolecao', backref='images', foreign_keys=[subcolecao_id])
+    
+    # Índices para agrupamento e busca
+    __table_args__ = (
+        db.Index('idx_image_sku_base', 'sku_base'),
+        db.Index('idx_image_sku_base_collection', 'sku_base', 'collection_id'),
+    )
     
     @property
     def image_url(self):

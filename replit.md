@@ -29,13 +29,13 @@ The project has been successfully configured to run in the Replit environment. T
 ```
 .
 ├── app.py                  # Main Flask application
+├── batch_processor.py      # Batch upload processor with parallel workers
+├── object_storage.py       # Replit Object Storage service
 ├── requirements.txt        # Python dependencies
-├── instance/
-│   └── oaz_img.db         # SQLite database
 ├── static/
 │   ├── css/
 │   │   └── style.css      # Premium dark-mode styles
-│   └── uploads/           # User-uploaded images
+│   └── uploads/           # Legacy uploaded images (migrated to cloud)
 ├── templates/
 │   ├── base.html          # Base template
 │   ├── auth/              # Login and registration
@@ -43,11 +43,12 @@ The project has been successfully configured to run in the Replit environment. T
 │   ├── images/            # Image catalog, upload, edit, detail
 │   ├── collections/       # Collection management
 │   ├── brands/            # Brand management
+│   ├── batch/             # Batch upload system
+│   ├── carteira/          # Carteira de Compras management
+│   ├── produtos/          # Product catalog
+│   ├── auditoria/         # Audit reports
 │   ├── reports/           # Reports and exports
-│   ├── analytics/         # Analytics views
-│   ├── integrations/      # Integration settings
 │   └── admin/             # Admin settings
-├── migrate_db.py          # Database migration utility
 └── reset_admin.py         # Admin user reset utility
 ```
 
@@ -120,8 +121,8 @@ The workflow "Flask App" is configured to run the application automatically. It 
 4. Listen on port 5000
 
 ### Database Management
-- Database auto-initializes on first run
-- Use `migrate_db.py` for schema migrations
+- PostgreSQL database auto-initializes on first run via DATABASE_URL
+- Schema migrations handled automatically by SQLAlchemy
 - Use `reset_admin.py` to reset admin credentials
 
 ### Static Files
@@ -260,5 +261,5 @@ Consulte o arquivo **TUTORIAL_COMPLETO.md** para um guia passo a passo detalhado
 ## Notes
 - The application uses Flask's built-in development server
 - For production, consider using a production WSGI server like Gunicorn
-- Database is SQLite (suitable for development; consider PostgreSQL for production)
+- Database is PostgreSQL (Neon-backed via Replit)
 - All file paths are relative to the project root

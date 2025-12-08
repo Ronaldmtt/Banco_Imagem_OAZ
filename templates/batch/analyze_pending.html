@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Análise IA Pendente - OAZ{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Análise IA Pendente</h1>
+    <p>Imagens sem match na Carteira de Compras - analisar com inteligência artificial</p>
+</div>
+
+<div class="content-card">
+    <div class="card-header">
+        <h2><i class="fas fa-robot"></i> Imagens Aguardando Análise IA</h2>
+        <span class="badge badge-warning">{{ pending_images|length }} pendente(s)</span>
+    </div>
+    
+    <div class="card-body">
+        {% if pending_images %}
+        <form method="POST">
+            <div class="mb-3" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <button type="button" onclick="toggleAll(true)" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-check-square"></i> Selecionar Todos
+                    </button>
+                    <button type="button" onclick="toggleAll(false)" class="btn btn-outline-secondary btn-sm">
+                        <i class="far fa-square"></i> Desmarcar Todos
+                    </button>
+                </div>
+                <div style="background: rgba(255,193,7,0.1); padding: 0.75rem 1rem; border-radius: 8px; border-left: 3px solid #ffc107;">
+                    <i class="fas fa-info-circle" style="color: #ffc107;"></i>
+                    <span style="font-size: 0.9rem;">Máximo de 10 imagens por vez para evitar timeout</span>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;"><input type="checkbox" id="selectAll" onchange="toggleAll(this.checked)"></th>
+                            <th style="width: 80px;">Preview</th>
+                            <th>SKU</th>
+                            <th>Coleção</th>
+                            <th>Marca</th>
+                            <th>Subcoleção</th>
+                            <th>Data</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for image in pending_images %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="image_ids" value="{{ image.id }}" class="image-checkbox">
+                            </td>
+                            <td>
+                                {% if image.image_url %}
+                                <img src="{{ image.image_url }}" alt="{{ image.sku }}" 
+                                     style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">
+                                {% else %}
+                                <div style="width: 60px; height: 60px; background: var(--bg-tertiary); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-image" style="color: var(--text-secondary);"></i>
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('image_detail', id=image.id) }}" style="color: var(--accent-primary); text-decoration: none;">
+                                    {{ image.sku or 'Sem SKU' }}
+                                </a>
+                            </td>
+                            <td>{{ image.collection.name if image.collection else '-' }}</td>
+                            <td>{{ image.brand.name if image.brand else '-' }}</td>
+                            <td>{{ image.subcolecao_rel.nome if image.subcolecao_rel else '-' }}</td>
+                            <td>{{ image.created_at.strftime('%d/%m/%Y') if image.created_at else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-4" style="display: flex; justify-content: flex-end; gap: 1rem;">
+                <a href="{{ url_for('catalog') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Voltar
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-robot"></i> Analisar Selecionadas com IA
+                </button>
+            </div>
+        </form>
+        {% else %}
+        <div class="empty-state" style="text-align: center; padding: 3rem;">
+            <i class="fas fa-check-circle" style="font-size: 4rem; color: var(--success-color); margin-bottom: 1rem;"></i>
+            <h3>Nenhuma imagem pendente!</h3>
+            <p style="color: var(--text-secondary);">Todas as imagens foram processadas ou encontraram match na Carteira de Compras.</p>
+            <a href="{{ url_for('batch_list') }}" class="btn btn-primary mt-3">
+                <i class="fas fa-cloud-upload-alt"></i> Fazer Novo Upload
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.content-card {
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.card-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.card-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.badge {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.badge-warning {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table th {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.data-table tr:hover {
+    background: rgba(var(--accent-primary-rgb), 0.05);
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    color: #000;
+}
+
+.btn-primary:hover {
+    background: var(--accent-secondary);
+    transform: translateY(-1px);
+}
+
+.btn-outline-primary {
+    background: transparent;
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.btn-outline-secondary {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+}
+
+.mb-3 { margin-bottom: 1rem; }
+.mt-3 { margin-top: 1rem; }
+.mt-4 { margin-top: 1.5rem; }
+</style>
+
+<script>
+function toggleAll(checked) {
+    document.querySelectorAll('.image-checkbox').forEach(cb => {
+        cb.checked = checked;
+    });
+    document.getElementById('selectAll').checked = checked;
+}
+
+document.querySelectorAll('.image-checkbox').forEach(cb => {
+    cb.addEventListener('change', function() {
+        const all = document.querySelectorAll('.image-checkbox');
+        const checked = document.querySelectorAll('.image-checkbox:checked');
+        document.getElementById('selectAll').checked = all.length === checked.length;
+    });
+});
+</script>
+{% endblock %}

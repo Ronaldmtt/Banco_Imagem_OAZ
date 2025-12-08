@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1>Subcoleções / Campanhas</h1>
+        <p style="color: var(--text-secondary);">Gerencie as campanhas dentro de cada coleção (Dia das Mães, Natal, Réveillon, etc.)</p>
+    </div>
+    <a href="{{ url_for('new_subcolecao') }}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Nova Subcoleção
+    </a>
+</div>
+
+<div style="margin-bottom: 1.5rem;">
+    <form method="get" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <select name="colecao_id" class="form-control" style="max-width: 200px;" onchange="this.form.submit()">
+            <option value="">Todas as Coleções</option>
+            {% for colecao in colecoes %}
+            <option value="{{ colecao.id }}" {% if request.args.get('colecao_id')|int == colecao.id %}selected{% endif %}>
+                {{ colecao.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+{% if subcolecoes %}
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem;">
+    {% for subcolecao in subcolecoes %}
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+            <div>
+                <h3 style="margin-bottom: 0.25rem;">{{ subcolecao.nome }}</h3>
+                <span style="color: var(--accent-purple); font-size: 0.8rem;">
+                    {{ subcolecao.colecao.name if subcolecao.colecao else 'Sem coleção' }}
+                </span>
+            </div>
+            {% if subcolecao.tipo_campanha %}
+            <span class="badge" style="background: var(--accent-blue); color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem;">
+                {{ subcolecao.tipo_campanha }}
+            </span>
+            {% endif %}
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <div>
+                <small style="color: var(--text-secondary);">Imagens</small>
+                <div style="font-size: 1.25rem; font-weight: 600; color: var(--accent-green);">{{ subcolecao.images|length }}</div>
+            </div>
+            <div>
+                <small style="color: var(--text-secondary);">Produtos</small>
+                <div style="font-size: 1.25rem; font-weight: 600; color: var(--accent-purple);">{{ subcolecao.produtos|length }}</div>
+            </div>
+            <div>
+                <small style="color: var(--text-secondary);">Carteira</small>
+                <div style="font-size: 1.25rem; font-weight: 600; color: var(--accent-blue);">{{ subcolecao.itens_carteira|length }}</div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <span>Criado em {{ subcolecao.created_at.strftime('%d/%m/%Y') }}</span>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="{{ url_for('edit_subcolecao', id=subcolecao.id) }}" class="btn btn-sm" style="padding: 0.3rem 0.6rem;">
+                    <i class="fas fa-edit"></i>
+                </a>
+                <a href="{{ url_for('catalog') }}?subcolecao_id={{ subcolecao.id }}" style="color: var(--accent-blue);">
+                    Ver imagens <i class="fas fa-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="stat-card" style="text-align: center; padding: 4rem;">
+    <div style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        <i class="fas fa-layer-group"></i>
+    </div>
+    <h3>Nenhuma Subcoleção Cadastrada</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">As subcoleções são criadas automaticamente ao importar a Carteira de Compras ou manualmente.</p>
+    <a href="{{ url_for('new_subcolecao') }}" class="btn btn-primary">Criar Nova Subcoleção</a>
+</div>
+{% endif %}
+{% endblock %}

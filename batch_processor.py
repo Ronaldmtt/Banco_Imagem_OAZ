@@ -110,6 +110,7 @@ class BatchProcessor:
                 'subcategoria': carteira.subcategoria or '',
                 'colecao_nome': carteira.colecao_nome or '',
                 'colecao_id': carteira.colecao_id,
+                'subcolecao_id': carteira.subcolecao_id,
                 'marca_id': carteira.marca_id,
                 'estilista': carteira.estilista or '',
                 'shooting': carteira.shooting or '',
@@ -192,7 +193,11 @@ class BatchProcessor:
                     image_status = 'Pendente'
                     
                     collection_id = carteira_data.get('colecao_id') if carteira_data.get('colecao_id') else (batch.colecao_id if batch else None)
+                    subcolecao_id = carteira_data.get('subcolecao_id') if carteira_data.get('subcolecao_id') else (batch.subcolecao_id if batch and hasattr(batch, 'subcolecao_id') else None)
                     brand_id = carteira_data.get('marca_id') if carteira_data.get('marca_id') else (batch.marca_id if batch else None)
+                    estilista = carteira_data.get('estilista', '')
+                    origem = carteira_data.get('origem', '')
+                    referencia_estilo = carteira_data.get('referencia_estilo', '')
                     
                     carteira = self.db.session.get(CarteiraCompras, carteira_data['carteira_id'])
                     if carteira:
@@ -210,7 +215,11 @@ class BatchProcessor:
                     tags_list = []
                     image_status = 'Pendente Análise IA'
                     collection_id = batch.colecao_id if batch else None
+                    subcolecao_id = batch.subcolecao_id if batch and hasattr(batch, 'subcolecao_id') else None
                     brand_id = batch.marca_id if batch else None
+                    estilista = ''
+                    origem = ''
+                    referencia_estilo = ''
                     match_source = 'sem_match'
                 
                 ext = os.path.splitext(original_filename)[1] or '.jpg'
@@ -228,9 +237,13 @@ class BatchProcessor:
                     ai_style=None,
                     uploader_id=batch.usuario_id if batch else None,
                     collection_id=collection_id,
+                    subcolecao_id=subcolecao_id,
                     brand_id=brand_id,
                     unique_code=unique_code,
-                    status=image_status
+                    status=image_status,
+                    estilista=estilista if estilista else None,
+                    origem=origem if origem else None,
+                    referencia_estilo=referencia_estilo if referencia_estilo else None
                 )
                 self.db.session.add(new_image)
                 self.db.session.flush()
@@ -269,7 +282,11 @@ class BatchProcessor:
                     'match_source': match_source,
                     'categoria': categoria,
                     'cor': cor,
-                    'carteira_id': carteira_data.get('carteira_id') if carteira_data else None
+                    'carteira_id': carteira_data.get('carteira_id') if carteira_data else None,
+                    'subcolecao_id': subcolecao_id,
+                    'estilista': estilista if estilista else None,
+                    'origem': origem if origem else None,
+                    'referencia_estilo': referencia_estilo if referencia_estilo else None
                 })
                 item.processed_at = datetime.utcnow()
                 item.erro_mensagem = None

@@ -25,8 +25,9 @@ class Config:
         "pool_pre_ping": True,
     }
     UPLOAD_FOLDER = 'static/uploads'
-    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'zip'}
     MAX_BATCH_WORKERS = 5  # Número de threads para processamento paralelo
+    MAX_CONTENT_LENGTH = 3 * 1024 * 1024 * 1024  # 3GB - suporta uploads grandes
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -69,9 +70,21 @@ class Collection(db.Model):
     description = db.Column(db.Text)
     season = db.Column(db.String(50))  # Estação: Primavera/Verão, Outono/Inverno
     year = db.Column(db.Integer)  # Ano da coleção
-    campanha = db.Column(db.String(100))  # Nome da campanha
+    campanha = db.Column(db.String(100))  # Nome da campanha (legado)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     images = db.relationship('Image', backref='collection', lazy=True)
+    subcolecoes = db.relationship('Subcolecao', backref='colecao', lazy=True)
+
+class Subcolecao(db.Model):
+    """Subcoleção/Campanha dentro de uma Coleção (Ex: Dia das Mães, Natal, Réveillon)"""
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    slug = db.Column(db.String(100))  # Nome normalizado para busca
+    tipo_campanha = db.Column(db.String(50))  # DDM, LANCAMENTO, COLECAO, PREVIEW, etc.
+    data_inicio = db.Column(db.Date)  # Data início da campanha (opcional)
+    data_fim = db.Column(db.Date)  # Data fim da campanha (opcional)
+    colecao_id = db.Column(db.Integer, db.ForeignKey('collection.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -87,8 +100,17 @@ class Image(db.Model):
     photographer = db.Column(db.String(100))
     unique_code = db.Column(db.String(50), unique=True)
     collection_id = db.Column(db.Integer, db.ForeignKey('collection.id'))
+    subcolecao_id = db.Column(db.Integer, db.ForeignKey('subcolecao.id'))  # Subcoleção/Campanha
     uploader_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     tags = db.Column(db.Text)
+    
+    # Campos extras da Carteira (preenchidos no cruzamento SKU)
+    categoria = db.Column(db.String(100))  # GRUPO
+    subcategoria = db.Column(db.String(100))  # SUBGRUPO
+    tipo_peca = db.Column(db.String(50))  # TOP/BOTTOM/INTEIRO
+    estilista = db.Column(db.String(255))
+    origem = db.Column(db.String(50))  # NACIONAL/IMPORTADO
+    referencia_estilo = db.Column(db.String(50))  # Código de estilo
     
     # AI-extracted attributes (legacy - mantido para retrocompatibilidade)
     ai_item_type = db.Column(db.String(100))
@@ -99,6 +121,9 @@ class Image(db.Model):
     
     # Relationship with individual items detected in image
     items = db.relationship('ImageItem', backref='image', lazy=True, cascade='all, delete-orphan')
+    
+    # Relationship with subcolecao
+    subcolecao_rel = db.relationship('Subcolecao', backref='images', foreign_keys=[subcolecao_id])
     
     @property
     def image_url(self):
@@ -139,6 +164,7 @@ class Produto(db.Model):
     # Relacionamentos
     marca_id = db.Column(db.Integer, db.ForeignKey('brand.id'))
     colecao_id = db.Column(db.Integer, db.ForeignKey('collection.id'))
+    subcolecao_id = db.Column(db.Integer, db.ForeignKey('subcolecao.id'))  # Subcoleção/Campanha
     
     # Metadados
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -151,6 +177,7 @@ class Produto(db.Model):
     # Relationships
     marca = db.relationship('Brand', backref='produtos')
     colecao = db.relationship('Collection', backref='produtos')
+    subcolecao = db.relationship('Subcolecao', backref='produtos')
     imagens = db.relationship('ImagemProduto', backref='produto', lazy=True, cascade='all, delete-orphan')
     historico_skus = db.relationship('HistoricoSKU', backref='produto', lazy=True)
 
@@ -205,6 +232,7 @@ class CarteiraCompras(db.Model):
     
     # Relacionamentos com entidades auto-criadas
     colecao_id = db.Column(db.Integer, db.ForeignKey('collection.id'))  # Coleção associada
+    subcolecao_id = db.Column(db.Integer, db.ForeignKey('subcolecao.id'))  # Subcoleção/Campanha
     marca_id = db.Column(db.Integer, db.ForeignKey('brand.id'))  # Marca associada
     
     # Metadados de importação
@@ -215,6 +243,7 @@ class CarteiraCompras(db.Model):
     # Relacionamentos
     produto = db.relationship('Produto', backref='itens_carteira')
     colecao = db.relationship('Collection', backref='itens_carteira')
+    subcolecao = db.relationship('Subcolecao', backref='itens_carteira')
     marca = db.relationship('Brand', backref='itens_carteira')
 
 class BatchUpload(db.Model):
@@ -705,6 +734,183 @@ def analyze_image_with_ai(image_path):
         print(f"AI Analysis Error: {e}")
         return f"Erro ao analisar imagem: {str(e)}"
 
+
+def analyze_image_with_context(image_path, sku=None, collection_id=None, brand_id=None, subcolecao_id=None):
+    """
+    Analisa imagem com contexto das carteiras de compras importadas.
+    Busca produtos similares para dar contexto ao GPT.
+    """
+    client = get_openai_client()
+    if not client:
+        return "AI Configuration missing. Please configure OpenAI API Key in Settings."
+    
+    try:
+        context_products = []
+        
+        query = CarteiraCompras.query.filter(
+            CarteiraCompras.descricao.isnot(None),
+            CarteiraCompras.descricao != ''
+        )
+        
+        if collection_id:
+            query = query.filter_by(colecao_id=collection_id)
+        if brand_id:
+            query = query.filter_by(marca_id=brand_id)
+        if subcolecao_id:
+            query = query.filter_by(subcolecao_id=subcolecao_id)
+        
+        produtos_referencia = query.order_by(db.func.random()).limit(10).all()
+        
+        for prod in produtos_referencia:
+            context_products.append({
+                'sku': prod.sku,
+                'descricao': prod.descricao,
+                'categoria': prod.categoria,
+                'cor': prod.cor,
+                'material': prod.material,
+                'tipo_peca': prod.tipo_peca
+            })
+        
+        context_text = ""
+        if context_products:
+            context_text = """
+═══════════════════════════════════════════════════════════════════
+CONTEXTO DA COLEÇÃO (produtos similares no catálogo):
+═══════════════════════════════════════════════════════════════════
+
+Use estas referências para entender o padrão de nomenclatura e categorização:
+
+"""
+            for i, p in enumerate(context_products[:5], 1):
+                context_text += f"""
+Produto {i}:
+- SKU: {p.get('sku', 'N/A')}
+- Descrição: {p.get('descricao', 'N/A')}
+- Categoria: {p.get('categoria', 'N/A')}
+- Cor: {p.get('cor', 'N/A')}
+- Material: {p.get('material', 'N/A')}
+- Tipo: {p.get('tipo_peca', 'N/A')}
+"""
+            context_text += """
+
+IMPORTANTE: Mantenha a CONSISTÊNCIA com o estilo de descrição e categorização acima.
+Use terminologia e padrões similares aos produtos de referência.
+
+"""
+        
+        base64_image = encode_image(image_path)
+        
+        prompt = f"""
+        Você é um especialista em moda analisando imagens para o banco de imagens OAZ.
+        
+        {context_text}
+        
+        RESPONDA TUDO EM PORTUGUÊS DO BRASIL.
+        
+        Analise a imagem e identifique:
+        
+        1. TIPO DE ITEM: Identifique com precisão (vestido tubinho, blusa ciganinha, calça skinny, etc.)
+        2. COR: Seja específico (Azul Marinho, Rosa Blush, Preto, Bege Areia)
+        3. MATERIAL: Identifique o tecido (Algodão, Linho, Crepe, Malha, Jeans, Cetim)
+        4. ESTAMPA: Liso, Listrado, Floral, Animal Print, Geométrico
+        5. ESTILO: Festa, Social/Trabalho, Dia a Dia, Streetwear, Praia
+        6. DESCRIÇÃO DETALHADA: Inclua modelagem, comprimento, decote, mangas, detalhes
+        
+        FORMATO DE RESPOSTA (JSON):
+        {{
+            "item_count": 1,
+            "items": [
+                {{
+                    "position_ref": "Peça Superior/Inferior/Única",
+                    "description": "Descrição ultra-detalhada...",
+                    "attributes": {{
+                        "item_type": "Tipo + Modelagem",
+                        "color": "Cor específica",
+                        "material": "Material",
+                        "pattern": "Estampa ou Liso",
+                        "style": "Estilo"
+                    }},
+                    "seo_keywords": ["keyword1", "keyword2", "keyword3"]
+                }}
+            ]
+        }}
+        
+        NÃO use tags genéricas como "casual", "moda", "fashion", "look".
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            },
+                        },
+                    ],
+                }
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1200,
+        )
+        
+        content = response.choices[0].message.content
+        data = json.loads(content)
+        
+        generic_tags = ['casual', 'moda casual', 'roupa feminina', 'fashion', 'moda', 'look', 'outfit']
+        
+        def filter_tags(attributes, keywords):
+            tags = []
+            for key, value in attributes.items():
+                if value and value.lower() != 'none' and value.lower() != 'n/a':
+                    if value.lower() not in generic_tags:
+                        tags.append(value)
+            for keyword in keywords:
+                if keyword.lower() not in generic_tags:
+                    tags.append(keyword)
+            return list(set(tags))
+        
+        if 'items' in data and isinstance(data['items'], list):
+            items_data = []
+            for idx, item in enumerate(data['items']):
+                item_attributes = item.get('attributes', {})
+                item_keywords = item.get('seo_keywords', [])
+                item_tags = filter_tags(item_attributes, item_keywords)
+                
+                items_data.append({
+                    'order': idx + 1,
+                    'position_ref': item.get('position_ref', f'Peça {idx + 1}'),
+                    'description': item.get('description', ''),
+                    'tags': item_tags,
+                    'attributes': item_attributes,
+                    'analyzed_with_context': len(context_products) > 0
+                })
+            
+            return items_data
+        
+        description = data.get('description', '')
+        attributes = data.get('attributes', {})
+        keywords = data.get('seo_keywords', [])
+        tags = filter_tags(attributes, keywords)
+        
+        return [{
+            'order': 1,
+            'position_ref': 'Peça Única',
+            'description': description,
+            'tags': tags,
+            'attributes': attributes,
+            'analyzed_with_context': len(context_products) > 0
+        }]
+        
+    except Exception as e:
+        print(f"AI Context Analysis Error: {e}")
+        return f"Erro ao analisar imagem: {str(e)}"
+
+
 # Routes
 @app.route('/')
 def index():
@@ -1071,6 +1277,94 @@ def new_collection():
     years = list(range(current_year - 2, current_year + 3))
     return render_template('collections/new.html', years=years)
 
+# ==================== SUBCOLEÇÕES / CAMPANHAS ====================
+
+@app.route('/subcolecoes')
+@login_required
+def subcolecoes():
+    colecao_id = request.args.get('colecao_id', '')
+    
+    query = Subcolecao.query
+    
+    if colecao_id:
+        query = query.filter_by(colecao_id=int(colecao_id))
+    
+    subcolecoes = query.order_by(Subcolecao.created_at.desc()).all()
+    colecoes = Collection.query.order_by(Collection.name).all()
+    
+    return render_template('subcolecoes/list.html', subcolecoes=subcolecoes, colecoes=colecoes)
+
+@app.route('/subcolecoes/new', methods=['GET', 'POST'])
+@login_required
+def new_subcolecao():
+    if request.method == 'POST':
+        nome = request.form.get('nome', '').strip()
+        colecao_id = request.form.get('colecao_id')
+        tipo_campanha = request.form.get('tipo_campanha', '').strip() or None
+        data_inicio = request.form.get('data_inicio')
+        data_fim = request.form.get('data_fim')
+        
+        if not nome or not colecao_id:
+            flash('Nome e Coleção são obrigatórios', 'error')
+            return redirect(url_for('new_subcolecao'))
+        
+        # Criar slug
+        import re
+        slug = re.sub(r'[^a-zA-Z0-9]', '_', nome.upper()).strip('_').lower()
+        
+        subcolecao = Subcolecao(
+            nome=nome,
+            slug=slug,
+            colecao_id=int(colecao_id),
+            tipo_campanha=tipo_campanha,
+            data_inicio=datetime.strptime(data_inicio, '%Y-%m-%d').date() if data_inicio else None,
+            data_fim=datetime.strptime(data_fim, '%Y-%m-%d').date() if data_fim else None
+        )
+        db.session.add(subcolecao)
+        db.session.commit()
+        
+        flash('Subcoleção criada com sucesso!', 'success')
+        return redirect(url_for('subcolecoes'))
+    
+    colecoes = Collection.query.order_by(Collection.name).all()
+    return render_template('subcolecoes/new.html', colecoes=colecoes)
+
+@app.route('/subcolecoes/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_subcolecao(id):
+    subcolecao = Subcolecao.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        subcolecao.nome = request.form.get('nome', '').strip()
+        colecao_id = request.form.get('colecao_id')
+        subcolecao.colecao_id = int(colecao_id) if colecao_id else subcolecao.colecao_id
+        subcolecao.tipo_campanha = request.form.get('tipo_campanha', '').strip() or None
+        
+        data_inicio = request.form.get('data_inicio')
+        data_fim = request.form.get('data_fim')
+        subcolecao.data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d').date() if data_inicio else None
+        subcolecao.data_fim = datetime.strptime(data_fim, '%Y-%m-%d').date() if data_fim else None
+        
+        # Atualizar slug
+        import re
+        subcolecao.slug = re.sub(r'[^a-zA-Z0-9]', '_', subcolecao.nome.upper()).strip('_').lower()
+        
+        db.session.commit()
+        flash('Subcoleção atualizada com sucesso!', 'success')
+        return redirect(url_for('subcolecoes'))
+    
+    colecoes = Collection.query.order_by(Collection.name).all()
+    return render_template('subcolecoes/edit.html', subcolecao=subcolecao, colecoes=colecoes)
+
+@app.route('/subcolecoes/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_subcolecao(id):
+    subcolecao = Subcolecao.query.get_or_404(id)
+    db.session.delete(subcolecao)
+    db.session.commit()
+    flash('Subcoleção removida com sucesso!', 'success')
+    return redirect(url_for('subcolecoes'))
+
 
 @app.route('/image/<int:id>')
 @login_required
@@ -1126,14 +1420,36 @@ def update_image_status(id, status):
 def reanalyze_image(id):
     image = Image.query.get_or_404(id)
     
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
+    temp_file_path = None
+    file_path = None
+    
+    if image.storage_path:
+        from object_storage import object_storage
+        import tempfile
+        
+        file_bytes = object_storage.download_file(image.storage_path)
+        if file_bytes:
+            ext = os.path.splitext(image.filename)[1] or '.jpg'
+            fd, temp_file_path = tempfile.mkstemp(suffix=ext)
+            os.write(fd, file_bytes)
+            os.close(fd)
+            file_path = temp_file_path
+    
+    if not file_path:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
     
     if not os.path.exists(file_path):
         flash('Arquivo de imagem não encontrado')
         return redirect(url_for('image_detail', id=id))
     
     try:
-        ai_result = analyze_image_with_ai(file_path)
+        ai_result = analyze_image_with_context(
+            file_path, 
+            sku=image.sku,
+            collection_id=image.collection_id,
+            brand_id=image.brand_id,
+            subcolecao_id=image.subcolecao_id
+        )
         
         # Check if analysis failed (returned error message string)
         if isinstance(ai_result, str):
@@ -1187,6 +1503,13 @@ def reanalyze_image(id):
     except Exception as e:
         print(f"[ERROR] Re-analysis failed: {e}")
         flash(f'Erro ao re-analisar: {str(e)}')
+    
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except Exception:
+                pass
     
     return redirect(url_for('image_detail', id=id))
 
@@ -1827,7 +2150,8 @@ def normalizar_carteira_dataframe(df):
     mapeamento_cor = ['nome / cor', 'nome/cor', 'cor', 'cor produto']
     mapeamento_categoria = ['grupo', 'categoria', 'departamento', 'tipo']
     mapeamento_subcategoria = ['subgrupo', 'subcategoria', 'sub categoria', 'subtipo']
-    mapeamento_colecao = ['entrada', 'colecao', 'coleção', 'temporada']
+    mapeamento_subcolecao_campanha = ['entrada', 'campanha', 'subcoleção', 'subcolecao']  # Subcoleção/Campanha
+    mapeamento_colecao = ['colecao', 'coleção', 'temporada', 'season']  # Coleção (normalmente vem da aba)
     mapeamento_marca = ['marca', 'brand', 'grife', 'fabricante']
     mapeamento_estilista = ['estilista', 'designer', 'criador']
     mapeamento_shooting = ['quando', 'shooting', 'data shooting', 'foto quando']
@@ -1854,6 +2178,7 @@ def normalizar_carteira_dataframe(df):
     col_cor = encontrar_coluna(mapeamento_cor)
     col_categoria = encontrar_coluna(mapeamento_categoria)
     col_subcategoria = encontrar_coluna(mapeamento_subcategoria)
+    col_subcolecao_campanha = encontrar_coluna(mapeamento_subcolecao_campanha)  # ENTRADA = Subcoleção
     col_colecao = encontrar_coluna(mapeamento_colecao)
     col_marca = encontrar_coluna(mapeamento_marca)
     col_estilista = encontrar_coluna(mapeamento_estilista)
@@ -1876,6 +2201,8 @@ def normalizar_carteira_dataframe(df):
         novo_mapeamento[col_categoria] = 'categoria'
     if col_subcategoria:
         novo_mapeamento[col_subcategoria] = 'subcategoria'
+    if col_subcolecao_campanha:
+        novo_mapeamento[col_subcolecao_campanha] = 'subcolecao_nome'  # ENTRADA = Subcoleção/Campanha
     if col_colecao:
         novo_mapeamento[col_colecao] = 'colecao_nome'
     if col_marca:
@@ -1988,7 +2315,71 @@ def obter_ou_criar_marca(nome_marca, contadores):
     contadores['marcas_criadas'] += 1
     return nova_marca.id
 
-def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_id=None, cache_produtos=None):
+def obter_ou_criar_subcolecao(nome_subcolecao, colecao_id, contadores):
+    """
+    Busca ou cria uma subcoleção/campanha pelo nome dentro de uma coleção.
+    Retorna o ID da subcoleção.
+    """
+    if not nome_subcolecao or not str(nome_subcolecao).strip():
+        return None
+    if not colecao_id:
+        return None
+    
+    nome_str = str(nome_subcolecao).strip()
+    nome_normalizado = nome_str.upper()
+    
+    # Ignorar valores inválidos
+    if nome_normalizado in ['-', '0', 'NAN', 'NONE', '']:
+        return None
+    
+    # Criar slug para busca
+    import re
+    slug = re.sub(r'[^a-zA-Z0-9]', '_', nome_normalizado.lower()).strip('_')
+    
+    # Buscar subcoleção existente na mesma coleção
+    subcolecao = Subcolecao.query.filter(
+        db.func.upper(Subcolecao.nome) == nome_normalizado,
+        Subcolecao.colecao_id == colecao_id
+    ).first()
+    
+    if subcolecao:
+        return subcolecao.id
+    
+    # Determinar tipo de campanha baseado no nome
+    tipo_campanha = None
+    if 'DDM' in nome_normalizado or 'DIA DAS M' in nome_normalizado:
+        tipo_campanha = 'Dia das Mães'
+    elif 'NATAL' in nome_normalizado:
+        tipo_campanha = 'Natal'
+    elif 'REVEILLON' in nome_normalizado or 'ANO NOVO' in nome_normalizado:
+        tipo_campanha = 'Réveillon'
+    elif 'LANCAMENTO' in nome_normalizado or 'LANÇAMENTO' in nome_normalizado:
+        tipo_campanha = 'Lançamento'
+    elif 'COLECAO' in nome_normalizado or 'COLEÇÃO' in nome_normalizado:
+        tipo_campanha = 'Coleção Principal'
+    elif 'PREVIEW' in nome_normalizado:
+        tipo_campanha = 'Preview'
+    elif 'DROP' in nome_normalizado:
+        tipo_campanha = 'Drop'
+    elif 'PERENE' in nome_normalizado:
+        tipo_campanha = 'Perene'
+    elif 'ATACADO' in nome_normalizado:
+        tipo_campanha = 'Atacado'
+    elif 'ALTO VERAO' in nome_normalizado or 'ALTO VERÃO' in nome_normalizado:
+        tipo_campanha = 'Alto Verão'
+    
+    nova_subcolecao = Subcolecao(
+        nome=nome_str.title(),
+        slug=slug,
+        tipo_campanha=tipo_campanha,
+        colecao_id=colecao_id
+    )
+    db.session.add(nova_subcolecao)
+    db.session.flush()
+    contadores['subcolecoes_criadas'] = contadores.get('subcolecoes_criadas', 0) + 1
+    return nova_subcolecao.id
+
+def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_id=None, subcolecao_id=None, cache_produtos=None):
     """Busca ou cria um produto pelo SKU. Retorna o ID do produto."""
     import pandas as pd
     import json
@@ -2011,11 +2402,13 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
             produto.ativo = True
             contadores['produtos_criados'] += 1
         
-        # Atualizar marca e coleção se ainda não tiver
+        # Atualizar marca, coleção e subcoleção se ainda não tiver
         if marca_id and not produto.marca_id:
             produto.marca_id = marca_id
         if colecao_id and not produto.colecao_id:
             produto.colecao_id = colecao_id
+        if subcolecao_id and not produto.subcolecao_id:
+            produto.subcolecao_id = subcolecao_id
         
         db.session.flush()
         
@@ -2043,6 +2436,7 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
         categoria=categoria,
         marca_id=marca_id,
         colecao_id=colecao_id,
+        subcolecao_id=subcolecao_id,
         atributos_tecnicos=json.dumps(atributos_extras) if atributos_extras else None,
         tem_foto=False
     )
@@ -2059,12 +2453,16 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
 def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None, tipo_carteira='Moda'):
     """
     Processa linhas do DataFrame e insere/atualiza na CarteiraCompras.
-    Auto-cria Coleções, Marcas e Produtos quando dados válidos são encontrados.
+    Auto-cria Coleções (baseado no nome da ABA), Subcoleções (baseado em ENTRADA), Marcas e Produtos.
+    
+    IMPORTANTE:
+    - aba_origem = Nome da ABA do Excel = COLEÇÃO (ex: "Verão 24-25", "Inverno 26")
+    - coluna ENTRADA = SUBCOLEÇÃO/CAMPANHA (ex: "Lançamento", "DDM", "Natal")
     
     Args:
         df: DataFrame normalizado
         lote_id: ID do lote de importação
-        aba_origem: Nome da aba de origem
+        aba_origem: Nome da aba de origem (será usado como COLEÇÃO)
         contadores: Dicionário para rastrear entidades criadas
         cache_produtos: Cache de produtos já criados nesta importação
         tipo_carteira: Tipo de carteira (Moda, Acessórios, Home)
@@ -2077,6 +2475,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     if contadores is None:
         contadores = {
             'colecoes_criadas': 0,
+            'subcolecoes_criadas': 0,
             'marcas_criadas': 0,
             'produtos_criados': 0
         }
@@ -2084,8 +2483,15 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     if cache_produtos is None:
         cache_produtos = {}
     
+    # Cache de subcoleções para evitar duplicatas
+    cache_subcolecoes = {}
+    
     count = 0
     skus_invalidos = 0
+    
+    # IMPORTANTE: A Coleção é baseada no NOME DA ABA, não em coluna do Excel
+    # Criar/obter a Coleção baseada no nome da aba
+    colecao_id = obter_ou_criar_colecao(aba_origem, contadores) if aba_origem and aba_origem != 'CSV' else None
     
     for idx, row in df.iterrows():
         sku = str(row.get('sku', '')).strip() if pd.notna(row.get('sku', '')) else ''
@@ -2096,12 +2502,22 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
         
         sku = sku.rstrip('.00').rstrip('.0').strip()
         
-        nome_colecao = str(row.get('colecao_nome', '')).strip() if pd.notna(row.get('colecao_nome', '')) else None
+        # Subcoleção vem da coluna ENTRADA (mapeada como 'subcolecao_nome')
+        nome_subcolecao = str(row.get('subcolecao_nome', '')).strip() if pd.notna(row.get('subcolecao_nome', '')) else None
         nome_marca = str(row.get('marca_nome', '')).strip() if pd.notna(row.get('marca_nome', '')) else None
         
-        colecao_id = obter_ou_criar_colecao(nome_colecao, contadores) if nome_colecao else None
+        # Criar/obter subcoleção (requer colecao_id)
+        subcolecao_id = None
+        if nome_subcolecao and colecao_id:
+            cache_key = f"{colecao_id}:{nome_subcolecao.upper()}"
+            if cache_key in cache_subcolecoes:
+                subcolecao_id = cache_subcolecoes[cache_key]
+            else:
+                subcolecao_id = obter_ou_criar_subcolecao(nome_subcolecao, colecao_id, contadores)
+                cache_subcolecoes[cache_key] = subcolecao_id
+        
         marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else None
-        produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id, cache_produtos=cache_produtos)
+        produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id, subcolecao_id=subcolecao_id, cache_produtos=cache_produtos)
         
         existing = CarteiraCompras.query.filter_by(sku=sku).first()
         if existing:
@@ -2109,10 +2525,14 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
             existing.aba_origem = aba_origem
             if colecao_id:
                 existing.colecao_id = colecao_id
+            if subcolecao_id:
+                existing.subcolecao_id = subcolecao_id
             if marca_id:
                 existing.marca_id = marca_id
             if produto_id:
                 existing.produto_id = produto_id
+            # Atualizar colecao_nome com o nome da aba para referência
+            existing.colecao_nome = aba_origem
         else:
             status_foto_original = str(row.get('status_foto_original', '')).upper() if pd.notna(row.get('status_foto_original', '')) else ''
             if 'SIM' in status_foto_original or 'YES' in status_foto_original or 'S' == status_foto_original:
@@ -2138,8 +2558,9 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
                 cor=str(row.get('cor', ''))[:100] if pd.notna(row.get('cor', '')) else None,
                 categoria=categoria_val,
                 subcategoria=subcategoria_val,
-                colecao_nome=nome_colecao[:100] if nome_colecao else None,
+                colecao_nome=aba_origem[:100] if aba_origem else None,  # Coleção = nome da aba
                 colecao_id=colecao_id,
+                subcolecao_id=subcolecao_id,  # Subcoleção = ENTRADA
                 marca_id=marca_id,
                 estilista=str(row.get('estilista', ''))[:255] if pd.notna(row.get('estilista', '')) else None,
                 shooting=str(row.get('shooting', ''))[:100] if pd.notna(row.get('shooting', '')) else None,
@@ -2279,6 +2700,8 @@ def importar_carteira():
             entidades_criadas = []
             if contadores['colecoes_criadas'] > 0:
                 entidades_criadas.append(f"{contadores['colecoes_criadas']} coleção(ões)")
+            if contadores.get('subcolecoes_criadas', 0) > 0:
+                entidades_criadas.append(f"{contadores['subcolecoes_criadas']} subcoleção(ões)/campanha(s)")
             if contadores['marcas_criadas'] > 0:
                 entidades_criadas.append(f"{contadores['marcas_criadas']} marca(s)")
             if contadores['produtos_criados'] > 0:
@@ -2703,6 +3126,119 @@ def batch_retry_failed(batch_id):
         flash(f'Reprocessando {len(files_data)} itens com falha.')
     
     return redirect(url_for('batch_detail', batch_id=batch_id))
+
+
+@app.route('/analyze-pending-ai', methods=['GET', 'POST'])
+@login_required
+def analyze_pending_ai():
+    """Página para analisar imagens pendentes de análise IA"""
+    
+    pending_images = Image.query.filter_by(status='Pendente Análise IA').order_by(Image.created_at.desc()).all()
+    
+    if request.method == 'POST':
+        image_ids = request.form.getlist('image_ids')
+        
+        if not image_ids:
+            flash('Selecione pelo menos uma imagem para analisar.')
+            return redirect(url_for('analyze_pending_ai'))
+        
+        processed = 0
+        errors = 0
+        
+        for img_id in image_ids[:10]:
+            image = Image.query.get(int(img_id))
+            if not image:
+                continue
+            
+            temp_file_path = None
+            file_path = None
+            
+            try:
+                if image.storage_path:
+                    from object_storage import object_storage
+                    import tempfile
+                    
+                    file_bytes = object_storage.download_file(image.storage_path)
+                    if file_bytes:
+                        ext = os.path.splitext(image.filename)[1] or '.jpg'
+                        fd, temp_file_path = tempfile.mkstemp(suffix=ext)
+                        os.write(fd, file_bytes)
+                        os.close(fd)
+                        file_path = temp_file_path
+                
+                if not file_path:
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
+                
+                if not os.path.exists(file_path):
+                    errors += 1
+                    continue
+                
+                ai_result = analyze_image_with_context(
+                    file_path, 
+                    sku=image.sku,
+                    collection_id=image.collection_id,
+                    brand_id=image.brand_id,
+                    subcolecao_id=image.subcolecao_id
+                )
+                
+                if isinstance(ai_result, str):
+                    errors += 1
+                    continue
+                
+                ai_items = ai_result
+                first_item = ai_items[0] if ai_items else {}
+                first_attrs = first_item.get('attributes', {}) if first_item else {}
+                
+                image.description = first_item.get('description', '')
+                image.tags = json.dumps(first_item.get('tags', [])) if first_item else json.dumps([])
+                image.ai_item_type = first_attrs.get('item_type')
+                image.ai_color = first_attrs.get('color')
+                image.ai_material = first_attrs.get('material')
+                image.ai_pattern = first_attrs.get('pattern')
+                image.ai_style = first_attrs.get('style')
+                image.status = 'Pendente'
+                
+                ImageItem.query.filter_by(image_id=image.id).delete()
+                
+                for item_data in ai_items:
+                    attrs = item_data.get('attributes', {})
+                    new_item = ImageItem(
+                        image_id=image.id,
+                        item_order=item_data.get('order', 1),
+                        position_ref=item_data.get('position_ref', 'Peça Única'),
+                        description=item_data.get('description', ''),
+                        tags=json.dumps(item_data.get('tags', [])),
+                        ai_item_type=attrs.get('item_type'),
+                        ai_color=attrs.get('color'),
+                        ai_material=attrs.get('material'),
+                        ai_pattern=attrs.get('pattern'),
+                        ai_style=attrs.get('style')
+                    )
+                    db.session.add(new_item)
+                
+                db.session.commit()
+                processed += 1
+                
+            except Exception as e:
+                print(f"[ERROR] Analysis failed for image {img_id}: {e}")
+                errors += 1
+            
+            finally:
+                if temp_file_path and os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except Exception:
+                        pass
+        
+        if processed > 0:
+            flash(f'Análise concluída! {processed} imagens analisadas com sucesso.')
+        if errors > 0:
+            flash(f'{errors} imagens não puderam ser analisadas.', 'warning')
+        
+        return redirect(url_for('analyze_pending_ai'))
+    
+    return render_template('batch/analyze_pending.html', pending_images=pending_images)
+
 
 # Initialize DB
 with app.app_context():

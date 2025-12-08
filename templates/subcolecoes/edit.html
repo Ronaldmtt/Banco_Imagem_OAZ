@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 0 auto;">
+    <div style="margin-bottom: 2rem;">
+        <a href="{{ url_for('subcolecoes') }}" style="color: var(--text-secondary);">
+            <i class="fas fa-arrow-left"></i> Voltar para Subcoleções
+        </a>
+    </div>
+
+    <div class="stat-card">
+        <h2 style="margin-bottom: 1.5rem;">Editar Subcoleção</h2>
+        
+        <form method="post">
+            <div class="form-group">
+                <label for="nome">Nome da Subcoleção *</label>
+                <input type="text" id="nome" name="nome" class="form-control" required 
+                       value="{{ subcolecao.nome }}">
+            </div>
+
+            <div class="form-group">
+                <label for="colecao_id">Coleção *</label>
+                <select id="colecao_id" name="colecao_id" class="form-control" required>
+                    <option value="">Selecione uma coleção...</option>
+                    {% for colecao in colecoes %}
+                    <option value="{{ colecao.id }}" {% if subcolecao.colecao_id == colecao.id %}selected{% endif %}>
+                        {{ colecao.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="tipo_campanha">Tipo de Campanha</label>
+                <select id="tipo_campanha" name="tipo_campanha" class="form-control">
+                    <option value="">Selecione...</option>
+                    <option value="Lançamento" {% if subcolecao.tipo_campanha == 'Lançamento' %}selected{% endif %}>Lançamento</option>
+                    <option value="Coleção Principal" {% if subcolecao.tipo_campanha == 'Coleção Principal' %}selected{% endif %}>Coleção Principal</option>
+                    <option value="Preview" {% if subcolecao.tipo_campanha == 'Preview' %}selected{% endif %}>Preview</option>
+                    <option value="Drop" {% if subcolecao.tipo_campanha == 'Drop' %}selected{% endif %}>Drop</option>
+                    <option value="Dia das Mães" {% if subcolecao.tipo_campanha == 'Dia das Mães' %}selected{% endif %}>Dia das Mães</option>
+                    <option value="Natal" {% if subcolecao.tipo_campanha == 'Natal' %}selected{% endif %}>Natal</option>
+                    <option value="Réveillon" {% if subcolecao.tipo_campanha == 'Réveillon' %}selected{% endif %}>Réveillon</option>
+                    <option value="Alto Verão" {% if subcolecao.tipo_campanha == 'Alto Verão' %}selected{% endif %}>Alto Verão</option>
+                    <option value="Perene" {% if subcolecao.tipo_campanha == 'Perene' %}selected{% endif %}>Perene</option>
+                    <option value="Atacado" {% if subcolecao.tipo_campanha == 'Atacado' %}selected{% endif %}>Atacado</option>
+                </select>
+            </div>
+
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="data_inicio">Data Início (opcional)</label>
+                    <input type="date" id="data_inicio" name="data_inicio" class="form-control"
+                           value="{{ subcolecao.data_inicio.strftime('%Y-%m-%d') if subcolecao.data_inicio else '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="data_fim">Data Fim (opcional)</label>
+                    <input type="date" id="data_fim" name="data_fim" class="form-control"
+                           value="{{ subcolecao.data_fim.strftime('%Y-%m-%d') if subcolecao.data_fim else '' }}">
+                </div>
+            </div>
+
+            <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h4 style="margin-bottom: 0.5rem;">Estatísticas</h4>
+                <div style="display: flex; gap: 2rem;">
+                    <div>
+                        <span style="color: var(--text-secondary);">Imagens:</span>
+                        <strong>{{ subcolecao.images|length }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: var(--text-secondary);">Produtos:</span>
+                        <strong>{{ subcolecao.produtos|length }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: var(--text-secondary);">Carteira:</span>
+                        <strong>{{ subcolecao.itens_carteira|length }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">
+                    <i class="fas fa-save"></i> Salvar Alterações
+                </button>
+                <a href="{{ url_for('subcolecoes') }}" class="btn" style="flex: 1; text-align: center;">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

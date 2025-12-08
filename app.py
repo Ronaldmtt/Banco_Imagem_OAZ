@@ -3382,7 +3382,7 @@ def upload_chunk():
 @app.route('/upload/complete', methods=['POST'])
 @login_required
 def upload_complete():
-    """Finaliza o upload chunked e processa o arquivo"""
+    """Finaliza o upload chunked e enfileira para processamento assíncrono"""
     data = request.get_json()
     upload_id = data.get('upload_id')
     collection_id = data.get('collection_id')
@@ -3397,7 +3397,6 @@ def upload_complete():
     if upload_info['user_id'] != current_user.id:
         return {'error': 'Não autorizado'}, 403
     
-    # Verificar se todos os chunks foram recebidos
     if len(upload_info['received_chunks']) != upload_info['total_chunks']:
         missing = upload_info['total_chunks'] - len(upload_info['received_chunks'])
         return {'error': f'Faltam {missing} partes do arquivo'}, 400
@@ -3407,7 +3406,6 @@ def upload_complete():
     chunk_dir = upload_info.get('upload_dir')
     
     try:
-        # Juntar todos os chunks em um arquivo
         temp_dir = tempfile.mkdtemp(prefix='batch_final_')
         final_path = os.path.join(temp_dir, upload_info['filename'])
         
@@ -3417,71 +3415,56 @@ def upload_complete():
                 with open(chunk_path, 'rb') as chunk:
                     outfile.write(chunk.read())
         
-        # Limpar diretório de chunks após sucesso
         shutil.rmtree(chunk_dir, ignore_errors=True)
         if upload_id in active_uploads:
             del active_uploads[upload_id]
         
-        # Processar o arquivo ZIP
-        temp_file_paths = extract_zip_to_temp(final_path, temp_dir)
-        os.remove(final_path)
-        
-        if not temp_file_paths:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return {'error': 'Nenhuma imagem válida encontrada no ZIP'}, 400
-        
-        # Criar o batch
         batch = BatchUpload(
             nome=batch_name,
-            total_arquivos=len(temp_file_paths),
+            total_arquivos=0,
             usuario_id=current_user.id,
             colecao_id=int(collection_id) if collection_id else None,
             marca_id=int(brand_id) if brand_id else None,
-            status='Pendente'
+            status='Na Fila'
         )
         db.session.add(batch)
-        db.session.flush()
-        
-        for i, file_info in enumerate(temp_file_paths):
-            item = BatchItem(
-                batch_id=batch.id,
-                sku=file_info['sku'],
-                filename_original=file_info['filename'],
-                status='Pendente'
-            )
-            db.session.add(item)
-            db.session.flush()
-            file_info['item_id'] = item.id
-        
         db.session.commit()
         
-        # Iniciar processamento em background
-        processor = get_batch_processor()
-        thread = threading.Thread(
-            target=processor.process_batch,
-            args=(batch.id, temp_file_paths)
+        from upload_orchestrator import get_upload_orchestrator
+        from object_storage import object_storage
+        orchestrator = get_upload_orchestrator(app, db, object_storage)
+        
+        orchestrator.enqueue(
+            batch_id=batch.id,
+            archive_path=final_path,
+            temp_dir=temp_dir,
+            metadata={
+                'collection_id': collection_id,
+                'brand_id': brand_id,
+                'batch_name': batch_name
+            }
         )
-        thread.daemon = True
-        thread.start()
         
         return {
             'success': True,
             'batch_id': batch.id,
-            'total_files': len(temp_file_paths),
+            'status': 'queued',
+            'message': 'Upload enfileirado para processamento',
             'redirect': url_for('batch_detail', batch_id=batch.id)
         }
         
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {'error': f'Erro ao processar: {str(e)}'}, 500
-    
-    finally:
-        # Cleanup em caso de erro
+        
         if chunk_dir and os.path.exists(chunk_dir):
             shutil.rmtree(chunk_dir, ignore_errors=True)
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
         if upload_id in active_uploads:
             del active_uploads[upload_id]
+        
+        return {'error': f'Erro ao processar: {str(e)}'}, 500
 
 @app.route('/upload/status/<upload_id>')
 @login_required
@@ -3501,6 +3484,15 @@ def upload_status(upload_id):
         'total': info['total_chunks'],
         'progress': round((len(info['received_chunks']) / info['total_chunks']) * 100, 1)
     }
+
+@app.route('/upload/queue-status')
+@login_required
+def upload_queue_status():
+    """Retorna status da fila de uploads"""
+    from upload_orchestrator import get_upload_orchestrator
+    from object_storage import object_storage
+    orchestrator = get_upload_orchestrator(app, db, object_storage)
+    return orchestrator.get_status()
 
 
 # Initialize DB

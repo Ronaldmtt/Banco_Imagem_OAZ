@@ -310,7 +310,7 @@ def encode_image(image_path):
 def analyze_image_with_ai(image_path):
     client = get_openai_client()
     if not client:
-        return "AI Configuration missing. Please configure OpenAI API Key in Settings.", []
+        return "AI Configuration missing. Please configure OpenAI API Key in Settings."
     
     try:
         base64_image = encode_image(image_path)

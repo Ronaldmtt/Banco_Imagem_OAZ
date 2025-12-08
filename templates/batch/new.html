@@ -219,6 +219,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const zipInfo = document.getElementById('zip-info');
     const dropZone = document.getElementById('drop-zone');
     const dropZoneZip = document.getElementById('drop-zone-zip');
+    const batchForm = document.getElementById('batch-form');
+    const submitBtn = document.getElementById('submit-btn');
+    
+    const MAX_FILES = 100;  // Máximo de arquivos por upload individual
+    const MAX_ZIP_SIZE = 100 * 1024 * 1024;  // 100MB para ZIP
     
     // Tab switching
     tabBtns.forEach(btn => {
@@ -365,6 +370,35 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    
+    // Form validation and submission
+    if (batchForm) {
+        batchForm.addEventListener('submit', function(e) {
+            // Validate file count for individual files
+            if (filesInput && filesInput.files.length > 0) {
+                if (filesInput.files.length > MAX_FILES) {
+                    e.preventDefault();
+                    alert(`Limite de ${MAX_FILES} arquivos por upload.\n\nVocê selecionou ${filesInput.files.length} arquivos.\n\nPara uploads maiores, use um arquivo ZIP.`);
+                    return false;
+                }
+            }
+            
+            // Validate ZIP file size
+            if (zipInput && zipInput.files.length > 0) {
+                const zipFile = zipInput.files[0];
+                if (zipFile.size > MAX_ZIP_SIZE) {
+                    e.preventDefault();
+                    const sizeMB = (zipFile.size / (1024 * 1024)).toFixed(1);
+                    alert(`Arquivo ZIP muito grande: ${sizeMB} MB\n\nLimite máximo: 100 MB\n\nDivida o ZIP em partes menores.`);
+                    return false;
+                }
+            }
+            
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando... Por favor aguarde';
+        });
+    }
 });
 </script>
 {% endblock %}

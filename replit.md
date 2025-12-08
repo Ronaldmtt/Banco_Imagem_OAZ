@@ -19,6 +19,7 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
 -   **Frontend**: Built with Vanilla HTML, CSS, and JavaScript, employing a custom design system.
 -   **Storage**: Replit Object Storage is used for scalable cloud-based image storage.
 -   **Image Upload**: Supports drag-and-drop, and batch uploads of 1M+ images with parallel processing (5 workers). Images are automatically matched with SKU data from purchase orders (Carteira de Compras).
+-   **SKU Grouping**: Intelligent extraction of SKU base from filenames with suffixes (_01, _02, -A, -B, _FRENTE, _COSTAS, etc.). Multiple images of the same product are grouped by `sku_base` while maintaining individual `sequencia` identifiers for each angle/variation.
 -   **AI Fallback**: Images without an automatic match are marked for future AI analysis, with contextualized analysis leveraging similar products.
 -   **Data Models**: Includes models for Users, Brands, Collections, Images, ImageItems (for multi-piece detection), Products, SKU History, and Shopping Cart (CarteiraCompras) imports.
 -   **Workflow**: Implements a status workflow for images: Pendente → Aprovado/Rejeitado → Pendente Análise IA.

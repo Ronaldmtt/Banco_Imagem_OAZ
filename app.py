@@ -3301,6 +3301,208 @@ def analyze_pending_ai():
     return render_template('batch/analyze_pending.html', pending_images=pending_images)
 
 
+# ==================== CHUNKED UPLOAD (UPLOAD DE ARQUIVOS GRANDES) ====================
+import uuid
+import hashlib
+
+# Diretório para chunks temporários
+CHUNK_UPLOAD_DIR = os.path.join(tempfile.gettempdir(), 'oaz_chunks')
+os.makedirs(CHUNK_UPLOAD_DIR, exist_ok=True)
+
+# Armazenar informações de uploads em andamento
+active_uploads = {}
+
+@app.route('/upload/init', methods=['POST'])
+@login_required
+def upload_init():
+    """Inicializa um upload chunked - retorna upload_id"""
+    data = request.get_json()
+    filename = data.get('filename', 'upload.zip')
+    file_size = data.get('file_size', 0)
+    chunk_size = data.get('chunk_size', 5 * 1024 * 1024)  # 5MB default
+    
+    upload_id = str(uuid.uuid4())
+    upload_dir = os.path.join(CHUNK_UPLOAD_DIR, upload_id)
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    total_chunks = (file_size + chunk_size - 1) // chunk_size
+    
+    active_uploads[upload_id] = {
+        'filename': filename,
+        'file_size': file_size,
+        'chunk_size': chunk_size,
+        'total_chunks': total_chunks,
+        'received_chunks': set(),
+        'upload_dir': upload_dir,
+        'user_id': current_user.id,
+        'created_at': datetime.utcnow()
+    }
+    
+    return {
+        'upload_id': upload_id,
+        'chunk_size': chunk_size,
+        'total_chunks': total_chunks
+    }
+
+@app.route('/upload/chunk', methods=['POST'])
+@login_required
+def upload_chunk():
+    """Recebe um chunk do arquivo"""
+    upload_id = request.form.get('upload_id')
+    chunk_index = int(request.form.get('chunk_index', 0))
+    chunk_file = request.files.get('chunk')
+    
+    if not upload_id or upload_id not in active_uploads:
+        return {'error': 'Upload inválido'}, 400
+    
+    upload_info = active_uploads[upload_id]
+    
+    if upload_info['user_id'] != current_user.id:
+        return {'error': 'Não autorizado'}, 403
+    
+    if not chunk_file:
+        return {'error': 'Chunk não recebido'}, 400
+    
+    # Salvar chunk
+    chunk_path = os.path.join(upload_info['upload_dir'], f'chunk_{chunk_index:06d}')
+    chunk_file.save(chunk_path)
+    upload_info['received_chunks'].add(chunk_index)
+    
+    received = len(upload_info['received_chunks'])
+    total = upload_info['total_chunks']
+    
+    return {
+        'success': True,
+        'chunk_index': chunk_index,
+        'received': received,
+        'total': total,
+        'progress': round((received / total) * 100, 1)
+    }
+
+@app.route('/upload/complete', methods=['POST'])
+@login_required
+def upload_complete():
+    """Finaliza o upload chunked e processa o arquivo"""
+    data = request.get_json()
+    upload_id = data.get('upload_id')
+    collection_id = data.get('collection_id')
+    brand_id = data.get('brand_id')
+    batch_name = data.get('batch_name', f"Lote {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    
+    if not upload_id or upload_id not in active_uploads:
+        return {'error': 'Upload inválido'}, 400
+    
+    upload_info = active_uploads[upload_id]
+    
+    if upload_info['user_id'] != current_user.id:
+        return {'error': 'Não autorizado'}, 403
+    
+    # Verificar se todos os chunks foram recebidos
+    if len(upload_info['received_chunks']) != upload_info['total_chunks']:
+        missing = upload_info['total_chunks'] - len(upload_info['received_chunks'])
+        return {'error': f'Faltam {missing} partes do arquivo'}, 400
+    
+    import shutil
+    temp_dir = None
+    chunk_dir = upload_info.get('upload_dir')
+    
+    try:
+        # Juntar todos os chunks em um arquivo
+        temp_dir = tempfile.mkdtemp(prefix='batch_final_')
+        final_path = os.path.join(temp_dir, upload_info['filename'])
+        
+        with open(final_path, 'wb') as outfile:
+            for i in range(upload_info['total_chunks']):
+                chunk_path = os.path.join(chunk_dir, f'chunk_{i:06d}')
+                with open(chunk_path, 'rb') as chunk:
+                    outfile.write(chunk.read())
+        
+        # Limpar diretório de chunks após sucesso
+        shutil.rmtree(chunk_dir, ignore_errors=True)
+        if upload_id in active_uploads:
+            del active_uploads[upload_id]
+        
+        # Processar o arquivo ZIP
+        temp_file_paths = extract_zip_to_temp(final_path, temp_dir)
+        os.remove(final_path)
+        
+        if not temp_file_paths:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return {'error': 'Nenhuma imagem válida encontrada no ZIP'}, 400
+        
+        # Criar o batch
+        batch = BatchUpload(
+            nome=batch_name,
+            total_arquivos=len(temp_file_paths),
+            usuario_id=current_user.id,
+            colecao_id=int(collection_id) if collection_id else None,
+            marca_id=int(brand_id) if brand_id else None,
+            status='Pendente'
+        )
+        db.session.add(batch)
+        db.session.flush()
+        
+        for i, file_info in enumerate(temp_file_paths):
+            item = BatchItem(
+                batch_id=batch.id,
+                sku=file_info['sku'],
+                filename_original=file_info['filename'],
+                status='Pendente'
+            )
+            db.session.add(item)
+            db.session.flush()
+            file_info['item_id'] = item.id
+        
+        db.session.commit()
+        
+        # Iniciar processamento em background
+        processor = get_batch_processor()
+        thread = threading.Thread(
+            target=processor.process_batch,
+            args=(batch.id, temp_file_paths)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return {
+            'success': True,
+            'batch_id': batch.id,
+            'total_files': len(temp_file_paths),
+            'redirect': url_for('batch_detail', batch_id=batch.id)
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': f'Erro ao processar: {str(e)}'}, 500
+    
+    finally:
+        # Cleanup em caso de erro
+        if chunk_dir and os.path.exists(chunk_dir):
+            shutil.rmtree(chunk_dir, ignore_errors=True)
+        if upload_id in active_uploads:
+            del active_uploads[upload_id]
+
+@app.route('/upload/status/<upload_id>')
+@login_required
+def upload_status(upload_id):
+    """Verifica status de um upload em andamento"""
+    if upload_id not in active_uploads:
+        return {'error': 'Upload não encontrado'}, 404
+    
+    info = active_uploads[upload_id]
+    if info['user_id'] != current_user.id:
+        return {'error': 'Não autorizado'}, 403
+    
+    return {
+        'upload_id': upload_id,
+        'filename': info['filename'],
+        'received': len(info['received_chunks']),
+        'total': info['total_chunks'],
+        'progress': round((len(info['received_chunks']) / info['total_chunks']) * 100, 1)
+    }
+
+
 # Initialize DB
 with app.app_context():
     db.create_all()

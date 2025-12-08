@@ -47,7 +47,7 @@
                     <i class="fas fa-images"></i> Múltiplos Arquivos
                 </button>
                 <button type="button" class="tab-btn" data-tab="zip">
-                    <i class="fas fa-file-archive"></i> Arquivo ZIP
+                    <i class="fas fa-file-archive"></i> Arquivo ZIP (até 3GB)
                 </button>
             </div>
             
@@ -70,18 +70,32 @@
                     <p>ou clique para selecionar</p>
                     <input type="file" id="zip_file" name="zip_file" 
                            accept=".zip" class="file-input">
-                    <small>O ZIP deve conter imagens com nomes = SKUs</small>
+                    <small>Suporta arquivos de até 3GB - Upload em partes automático</small>
                 </div>
                 <div id="zip-info" class="zip-info"></div>
+            </div>
+            
+            <!-- Progress Container (hidden by default) -->
+            <div id="upload-progress" class="upload-progress hidden">
+                <div class="progress-header">
+                    <span id="progress-status">Preparando upload...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <div class="progress-details">
+                    <span id="progress-details-text">Iniciando...</span>
+                </div>
             </div>
             
             <div class="info-box">
                 <h4><i class="fas fa-info-circle"></i> Como funciona</h4>
                 <ul>
                     <li><strong>SKU = Nome do Arquivo:</strong> O nome de cada arquivo (sem extensão) será usado como código SKU do produto</li>
+                    <li><strong>Upload Robusto:</strong> Arquivos grandes são enviados em partes (até 3GB suportados)</li>
                     <li><strong>Processamento Paralelo:</strong> 5 imagens são processadas simultaneamente</li>
                     <li><strong>Análise de IA:</strong> Cada imagem recebe descrição detalhada automática via OpenAI</li>
-                    <li><strong>Retry Automático:</strong> Falhas são automaticamente reprocessadas até 3 vezes</li>
                 </ul>
             </div>
             
@@ -208,6 +222,40 @@
 .zip-info.visible {
     display: block;
 }
+.upload-progress {
+    margin: 30px 0;
+    padding: 25px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+.upload-progress.hidden {
+    display: none;
+}
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+}
+.progress-bar-container {
+    height: 24px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), #ff9f43);
+    border-radius: 12px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+.progress-details {
+    margin-top: 10px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
 </style>
 
 <script>
@@ -221,9 +269,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const dropZoneZip = document.getElementById('drop-zone-zip');
     const batchForm = document.getElementById('batch-form');
     const submitBtn = document.getElementById('submit-btn');
+    const uploadProgress = document.getElementById('upload-progress');
+    const progressBar = document.getElementById('progress-bar');
+    const progressStatus = document.getElementById('progress-status');
+    const progressPercent = document.getElementById('progress-percent');
+    const progressDetails = document.getElementById('progress-details-text');
     
-    const MAX_FILES = 100;  // Máximo de arquivos por upload individual
-    const MAX_ZIP_SIZE = 100 * 1024 * 1024;  // 100MB para ZIP
+    const CHUNK_SIZE = 5 * 1024 * 1024;  // 5MB por chunk
     
     // Tab switching
     tabBtns.forEach(btn => {
@@ -236,7 +288,6 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
             document.getElementById(tab + '-tab').classList.remove('hidden');
             
-            // Clear the other input when switching tabs
             if (tab === 'zip') {
                 filesInput.value = '';
                 fileList.innerHTML = '';
@@ -261,7 +312,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         let html = `<div class="file-count">${files.length} arquivo(s) selecionado(s)</div>`;
         
-        Array.from(files).forEach(file => {
+        Array.from(files).slice(0, 50).forEach(file => {
             const sku = file.name.replace(/\.[^/.]+$/, '');
             html += `
                 <div class="file-item">
@@ -273,6 +324,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `;
         });
+        
+        if (files.length > 50) {
+            html += `<div class="file-item" style="justify-content: center; color: var(--text-secondary);">
+                ... e mais ${files.length - 50} arquivos
+            </div>`;
+        }
         
         fileList.innerHTML = html;
     }
@@ -288,13 +345,13 @@ document.addEventListener('DOMContentLoaded', function() {
         zipInfo.innerHTML = `
             <i class="fas fa-check-circle" style="color: #28a745; margin-right: 10px;"></i>
             <strong>${file.name}</strong> (${formatSize(file.size)})
-            <br><small style="margin-top: 5px; display: block;">As imagens serão extraídas e processadas automaticamente</small>
+            <br><small style="margin-top: 5px; display: block;">Upload em partes - suporta arquivos grandes</small>
         `;
         zipInfo.style.display = 'block';
         zipInfo.classList.add('visible');
     }
     
-    // File input change event
+    // File input change events
     if (filesInput) {
         filesInput.addEventListener('change', function(e) {
             console.log('Files selected:', this.files.length);
@@ -302,24 +359,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // ZIP input change event
     if (zipInput) {
         zipInput.addEventListener('change', function(e) {
             console.log('ZIP file selected:', this.files.length, this.files[0]?.name);
             updateZipInfo(this.files);
         });
-        
-        // Also listen on input event for better compatibility
-        zipInput.addEventListener('input', function(e) {
-            console.log('ZIP input event:', this.files.length);
-            updateZipInfo(this.files);
-        });
     }
     
-    // Click on drop zone to trigger file input (backup for mobile/touch)
+    // Click handlers for drop zones
     if (dropZoneZip) {
         dropZoneZip.addEventListener('click', function(e) {
-            // Only trigger if not clicking directly on the input
             if (e.target !== zipInput) {
                 zipInput.click();
             }
@@ -357,7 +406,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const files = e.dataTransfer.files;
             if (zone === dropZoneZip && files.length > 0) {
-                // For ZIP, create a new DataTransfer to set files
                 const dt = new DataTransfer();
                 dt.items.add(files[0]);
                 zipInput.files = dt.files;
@@ -371,32 +419,139 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Form validation and submission
-    if (batchForm) {
-        batchForm.addEventListener('submit', function(e) {
-            // Validate file count for individual files
-            if (filesInput && filesInput.files.length > 0) {
-                if (filesInput.files.length > MAX_FILES) {
-                    e.preventDefault();
-                    alert(`Limite de ${MAX_FILES} arquivos por upload.\n\nVocê selecionou ${filesInput.files.length} arquivos.\n\nPara uploads maiores, use um arquivo ZIP.`);
-                    return false;
-                }
+    // Chunked upload function
+    async function uploadFileChunked(file, collectionId, brandId, batchName) {
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        
+        // 1. Initialize upload
+        progressStatus.textContent = 'Iniciando upload...';
+        progressDetails.textContent = `Arquivo: ${file.name} (${formatSize(file.size)})`;
+        
+        const initResponse = await fetch('/upload/init', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filename: file.name,
+                file_size: file.size,
+                chunk_size: CHUNK_SIZE
+            })
+        });
+        
+        if (!initResponse.ok) {
+            throw new Error('Falha ao iniciar upload');
+        }
+        
+        const initData = await initResponse.json();
+        const uploadId = initData.upload_id;
+        
+        // 2. Upload chunks
+        progressStatus.textContent = 'Enviando arquivo...';
+        
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            const chunk = file.slice(start, end);
+            
+            const formData = new FormData();
+            formData.append('upload_id', uploadId);
+            formData.append('chunk_index', i);
+            formData.append('chunk', chunk);
+            
+            const chunkResponse = await fetch('/upload/chunk', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!chunkResponse.ok) {
+                throw new Error(`Falha ao enviar parte ${i + 1}`);
             }
             
-            // Validate ZIP file size
+            const chunkData = await chunkResponse.json();
+            const percent = chunkData.progress;
+            
+            progressBar.style.width = percent + '%';
+            progressPercent.textContent = percent.toFixed(1) + '%';
+            progressDetails.textContent = `Parte ${i + 1} de ${totalChunks} - ${formatSize(end)} de ${formatSize(file.size)}`;
+        }
+        
+        // 3. Complete upload and process
+        progressStatus.textContent = 'Processando arquivo ZIP...';
+        progressDetails.textContent = 'Extraindo imagens e criando lote...';
+        
+        const completeResponse = await fetch('/upload/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                upload_id: uploadId,
+                collection_id: collectionId,
+                brand_id: brandId,
+                batch_name: batchName
+            })
+        });
+        
+        const completeData = await completeResponse.json();
+        
+        if (!completeResponse.ok) {
+            throw new Error(completeData.error || 'Falha ao processar arquivo');
+        }
+        
+        return completeData;
+    }
+    
+    // Form submission
+    if (batchForm) {
+        batchForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const collectionId = document.getElementById('collection_id').value;
+            const brandId = document.getElementById('brand_id').value;
+            const batchName = document.getElementById('batch_name').value || 
+                              `Lote ${new Date().toLocaleString('pt-BR')}`;
+            
+            // Check if ZIP file is selected (use chunked upload)
             if (zipInput && zipInput.files.length > 0) {
                 const zipFile = zipInput.files[0];
-                if (zipFile.size > MAX_ZIP_SIZE) {
-                    e.preventDefault();
-                    const sizeMB = (zipFile.size / (1024 * 1024)).toFixed(1);
-                    alert(`Arquivo ZIP muito grande: ${sizeMB} MB\n\nLimite máximo: 100 MB\n\nDivida o ZIP em partes menores.`);
-                    return false;
+                
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+                uploadProgress.classList.remove('hidden');
+                progressBar.style.width = '0%';
+                progressPercent.textContent = '0%';
+                
+                try {
+                    const result = await uploadFileChunked(zipFile, collectionId, brandId, batchName);
+                    
+                    progressBar.style.width = '100%';
+                    progressPercent.textContent = '100%';
+                    progressStatus.textContent = 'Upload concluído!';
+                    progressDetails.textContent = `${result.total_files} imagens encontradas. Redirecionando...`;
+                    
+                    setTimeout(() => {
+                        window.location.href = result.redirect;
+                    }, 1500);
+                    
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    progressStatus.textContent = 'Erro no upload!';
+                    progressDetails.textContent = error.message;
+                    progressBar.style.background = '#dc3545';
+                    
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-rocket"></i> Tentar Novamente';
                 }
+                
+                return;
             }
             
-            // Show loading state
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando... Por favor aguarde';
+            // Regular form submission for individual files
+            if (filesInput && filesInput.files.length > 0) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+                batchForm.submit();
+                return;
+            }
+            
+            alert('Selecione arquivos ou um arquivo ZIP para fazer upload.');
         });
     }
 });

@@ -1672,14 +1672,37 @@ def image_detail(id):
     except:
         image.tag_list = []
     
-    # Process tags for each item
     for item in image.items:
         try:
             item.tag_list = json.loads(item.tags) if item.tags else []
         except:
             item.tag_list = []
     
-    return render_template('images/detail.html', image=image)
+    sku_key = image.sku_base or image.sku
+    group_images = []
+    if sku_key:
+        group_images = Image.query.filter(
+            db.or_(Image.sku_base == sku_key, Image.sku == sku_key)
+        ).order_by(Image.sequencia, Image.upload_date).all()
+    
+    if len(group_images) <= 1:
+        group_images = []
+    
+    current_index = 0
+    for i, img in enumerate(group_images):
+        if img.id == image.id:
+            current_index = i
+            break
+    
+    prev_image = group_images[current_index - 1] if group_images and current_index > 0 else None
+    next_image = group_images[current_index + 1] if group_images and current_index < len(group_images) - 1 else None
+    
+    return render_template('images/detail.html', 
+                          image=image, 
+                          group_images=group_images,
+                          current_index=current_index,
+                          prev_image=prev_image,
+                          next_image=next_image)
 
 @app.route('/image/<int:id>/delete', methods=['POST'])
 @login_required

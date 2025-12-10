@@ -986,6 +986,10 @@ Produto {i}:
         }}
         
         NÃO use tags genéricas como "casual", "moda", "fashion", "look".
+        
+        IMPORTANTE: Foque na PEÇA PRINCIPAL da imagem. Se houver uma modelo usando a roupa, analise APENAS a roupa principal sendo mostrada.
+        NÃO inclua peças secundárias como calças básicas ou acessórios comuns, a menos que sejam o foco da imagem.
+        Na maioria dos casos, detecte apenas 1 peça principal.
         """
         
         response = client.chat.completions.create(
@@ -1006,18 +1010,35 @@ Produto {i}:
         content = response.choices[0].message.content
         data = json.loads(content)
         
-        generic_tags = ['casual', 'moda casual', 'roupa feminina', 'fashion', 'moda', 'look', 'outfit']
+        generic_tags = ['casual', 'moda casual', 'roupa feminina', 'fashion', 'moda', 'look', 'outfit', 
+                        'elegante', 'moderno', 'feminino', 'masculino', 'roupa', 'peça', 'ideal para']
         
-        def filter_tags(attributes, keywords):
+        def filter_tags(attributes, keywords, max_tags=5):
+            """Filtra e simplifica tags para máximo de 5 tags curtas"""
             tags = []
-            for key, value in attributes.items():
-                if value and value.lower() != 'none' and value.lower() != 'n/a':
-                    if value.lower() not in generic_tags:
-                        tags.append(value)
-            for keyword in keywords:
-                if keyword.lower() not in generic_tags:
-                    tags.append(keyword)
-            return list(set(tags))
+            
+            priority_keys = ['item_type', 'color', 'material', 'pattern']
+            for key in priority_keys:
+                value = attributes.get(key)
+                if value and value.lower() not in ['none', 'n/a', 'liso']:
+                    simple_value = value.split()[0] if len(value.split()) > 3 else value
+                    if simple_value.lower() not in generic_tags and len(simple_value) < 30:
+                        tags.append(simple_value)
+            
+            for keyword in keywords[:3]:
+                if keyword.lower() not in generic_tags and len(keyword) < 20:
+                    if keyword not in tags:
+                        tags.append(keyword)
+            
+            unique_tags = []
+            seen_lower = set()
+            for tag in tags:
+                tag_lower = tag.lower()
+                if tag_lower not in seen_lower and len(tag) > 2:
+                    seen_lower.add(tag_lower)
+                    unique_tags.append(tag)
+            
+            return unique_tags[:max_tags]
         
         if 'items' in data and isinstance(data['items'], list):
             items_data = []
@@ -2011,6 +2032,20 @@ def reanalyze_image(id):
             flash(f'Análise parcial: {success_count} sucesso, {error_count} erro(s).')
     
     return redirect(url_for('image_detail', id=id))
+
+
+@app.route('/image/<int:image_id>/item/<int:item_id>/delete', methods=['POST'])
+@login_required
+def delete_image_item(image_id, item_id):
+    """Deletar uma peça individual detectada pela IA"""
+    item = ImageItem.query.filter_by(id=item_id, image_id=image_id).first_or_404()
+    
+    db.session.delete(item)
+    db.session.commit()
+    
+    flash('Peça removida com sucesso!')
+    return redirect(url_for('image_detail', id=image_id))
+
 
 @app.route('/image/<int:id>/edit', methods=['GET', 'POST'])
 @login_required

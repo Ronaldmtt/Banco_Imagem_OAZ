@@ -184,7 +184,18 @@
                     <span style="font-weight: 600; color: var(--accent-blue); font-size: 0.9rem;">
                         <i class="fas fa-tshirt"></i> {{ item.position_ref or 'Peça ' ~ item.item_order }}
                     </span>
-                    <span style="font-size: 0.75rem; color: var(--text-secondary);">#{{ item.item_order }}</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.75rem; color: var(--text-secondary);">#{{ item.item_order }}</span>
+                        {% if image.items|length > 1 %}
+                        <form action="{{ url_for('delete_image_item', image_id=image.id, item_id=item.id) }}" method="POST" style="margin: 0;"
+                            onsubmit="return confirm('Remover esta peça?');">
+                            <button type="submit" style="background: rgba(220, 53, 69, 0.1); color: #dc3545; border: 1px solid rgba(220, 53, 69, 0.3); 
+                                font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; cursor: pointer;" title="Remover peça">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
                 </div>
                 
                 {% if item.tag_list %}

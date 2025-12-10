@@ -3004,8 +3004,10 @@ def obter_ou_criar_colecao(nome_colecao, contadores):
 def extrair_marca_do_nome_arquivo(nome_arquivo):
     """
     Extrai a marca do nome do arquivo usando padrões comuns.
+    Prioriza a ÚLTIMA palavra totalmente em maiúsculas (geralmente é a marca).
     Ex: "Carteira diversas coleção SOUQ.xlsx" -> "SOUQ"
-    Ex: "Carteira ANIMALE Inverno 26.xlsx" -> "ANIMALE"
+    Ex: "Carteira MKT ANIMALE Inverno 26.xlsx" -> "ANIMALE"
+    Ex: "SOUQ Inverno 2025.xlsx" -> "SOUQ"
     """
     import re
     
@@ -3016,18 +3018,23 @@ def extrair_marca_do_nome_arquivo(nome_arquivo):
     
     palavras_ignorar = ['carteira', 'diversas', 'coleção', 'colecao', 'inverno', 'verao', 'verão', 
                         'primavera', 'outono', 'alto', 'preview', 'lancamento', 'lançamento',
-                        '2024', '2025', '2026', '24', '25', '26', '24-25', '25-26', '26-27']
+                        '2024', '2025', '2026', '24', '25', '26', '24-25', '25-26', '26-27',
+                        'mkt', 'marketing', 'xlsx', 'csv', 'planilha', 'dados', 'lista']
     
     palavras = re.findall(r'[A-Za-zÀ-ÿ]+', nome)
     
-    for palavra in reversed(palavras):
-        if len(palavra) >= 3 and palavra.lower() not in palavras_ignorar:
-            if palavra.isupper() or (len(palavra) >= 4 and palavra[0].isupper()):
-                return palavra.upper()
-    
+    palavras_maiusculas = []
     for palavra in palavras:
-        if len(palavra) >= 3 and palavra.lower() not in palavras_ignorar:
-            return palavra.upper()
+        if len(palavra) >= 3 and palavra.isupper() and palavra.lower() not in palavras_ignorar:
+            palavras_maiusculas.append(palavra)
+    
+    if palavras_maiusculas:
+        return palavras_maiusculas[-1].upper()
+    
+    for palavra in reversed(palavras):
+        if len(palavra) >= 4 and palavra.lower() not in palavras_ignorar:
+            if palavra[0].isupper():
+                return palavra.upper()
     
     return None
 

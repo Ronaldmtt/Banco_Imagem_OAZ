@@ -1744,27 +1744,41 @@ def update_image_status(id, status):
         flash('Status inválido')
     return redirect(url_for('image_detail', id=id))
 
-@app.route('/image/<int:id>/reanalyze', methods=['POST'])
-@login_required
-def reanalyze_image(id):
-    image = Image.query.get_or_404(id)
-    
+def analyze_single_image(image):
+    """Analyze a single image and update its AI fields. Returns (success, error_message)"""
     temp_file_path = None
     file_path = None
     image_url = None
     
-    if image.storage_path:
-        from object_storage import object_storage
-        import tempfile
+    try:
+        if image.storage_path:
+            from object_storage import object_storage
+            import tempfile
+            
+            file_bytes = object_storage.download_file(image.storage_path)
+            if file_bytes:
+                ext = os.path.splitext(image.filename)[1] or '.jpg'
+                fd, temp_file_path = tempfile.mkstemp(suffix=ext)
+                os.write(fd, file_bytes)
+                os.close(fd)
+                file_path = temp_file_path
+            else:
+                domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
+                storage_key = image.storage_path.lstrip('/')
+                if storage_key.startswith('storage/'):
+                    storage_key = storage_key[8:]
+                if domain:
+                    image_url = f"https://{domain}/storage/{storage_key}"
+                else:
+                    image_url = url_for('serve_storage_image', object_path=storage_key, _external=True)
         
-        file_bytes = object_storage.download_file(image.storage_path)
-        if file_bytes:
-            ext = os.path.splitext(image.filename)[1] or '.jpg'
-            fd, temp_file_path = tempfile.mkstemp(suffix=ext)
-            os.write(fd, file_bytes)
-            os.close(fd)
-            file_path = temp_file_path
-        else:
+        if not file_path and not image_url:
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
+        
+        if not file_path and not image_url:
+            return False, 'Arquivo não encontrado'
+        
+        if file_path and not os.path.exists(file_path) and not image_url:
             if image.storage_path:
                 domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
                 storage_key = image.storage_path.lstrip('/')
@@ -1774,33 +1788,13 @@ def reanalyze_image(id):
                     image_url = f"https://{domain}/storage/{storage_key}"
                 else:
                     image_url = url_for('serve_storage_image', object_path=storage_key, _external=True)
-    
-    if not file_path and not image_url:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
-    
-    if not file_path and not image_url:
-        flash('Arquivo de imagem não encontrado')
-        return redirect(url_for('image_detail', id=id))
-    
-    if file_path and not os.path.exists(file_path) and not image_url:
-        if image.storage_path:
-            domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
-            storage_key = image.storage_path.lstrip('/')
-            if storage_key.startswith('storage/'):
-                storage_key = storage_key[8:]
-            if domain:
-                image_url = f"https://{domain}/storage/{storage_key}"
-            else:
-                image_url = url_for('serve_storage_image', object_path=storage_key, _external=True)
-    
-    use_url = image_url is not None
-    image_source = image_url if use_url else file_path
-    
-    if not image_source:
-        flash('Arquivo de imagem não encontrado')
-        return redirect(url_for('image_detail', id=id))
-    
-    try:
+        
+        use_url = image_url is not None
+        image_source = image_url if use_url else file_path
+        
+        if not image_source:
+            return False, 'Arquivo não encontrado'
+        
         ai_result = analyze_image_with_context(
             image_source, 
             sku=image.sku,
@@ -1810,17 +1804,10 @@ def reanalyze_image(id):
             is_url=use_url
         )
         
-        # Check if analysis failed (returned error message string)
         if isinstance(ai_result, str):
-            if ai_result.startswith("AI Configuration missing"):
-                flash('Chave OpenAI não configurada. Acesse Configurações para adicionar.')
-            else:
-                flash(f'Erro na análise: {ai_result}')
-            return redirect(url_for('image_detail', id=id))
+            return False, ai_result
         
-        ai_items = ai_result  # Lista de itens detectados
-        
-        # Update legacy fields from first item (for backward compatibility)
+        ai_items = ai_result
         first_item = ai_items[0] if ai_items else {}
         first_attrs = first_item.get('attributes', {}) if first_item else {}
         
@@ -1832,7 +1819,6 @@ def reanalyze_image(id):
         image.ai_pattern = first_attrs.get('pattern')
         image.ai_style = first_attrs.get('style')
         
-        # Remove existing items and create new ones
         ImageItem.query.filter_by(image_id=image.id).delete()
         
         for item_data in ai_items:
@@ -1852,16 +1838,11 @@ def reanalyze_image(id):
             db.session.add(new_item)
         
         db.session.commit()
-        
-        item_count = len(ai_items)
-        if item_count > 1:
-            flash(f'Re-análise concluída! {item_count} peças detectadas e analisadas.')
-        else:
-            flash('Imagem re-analisada com sucesso! Atributos atualizados.')
+        return True, None
         
     except Exception as e:
-        print(f"[ERROR] Re-analysis failed: {e}")
-        flash(f'Erro ao re-analisar: {str(e)}')
+        print(f"[ERROR] Analysis failed for image {image.id}: {e}")
+        return False, str(e)
     
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
@@ -1869,6 +1850,56 @@ def reanalyze_image(id):
                 os.remove(temp_file_path)
             except Exception:
                 pass
+
+
+@app.route('/image/<int:id>/reanalyze', methods=['POST'])
+@login_required
+def reanalyze_image(id):
+    image = Image.query.get_or_404(id)
+    
+    images_to_analyze = [image]
+    if image.sku_base:
+        group_images = Image.query.filter(
+            Image.sku_base == image.sku_base,
+            Image.id != image.id
+        ).order_by(Image.sequencia).all()
+        images_to_analyze.extend(group_images)
+    
+    total = len(images_to_analyze)
+    success_count = 0
+    error_count = 0
+    first_error = None
+    
+    print(f"[AI] Starting group analysis for {total} images (sku_base: {image.sku_base})")
+    
+    for idx, img in enumerate(images_to_analyze, 1):
+        print(f"[AI] Analyzing image {idx}/{total}: {img.filename}")
+        success, error = analyze_single_image(img)
+        if success:
+            success_count += 1
+        else:
+            error_count += 1
+            if not first_error:
+                first_error = error
+    
+    if total == 1:
+        if success_count == 1:
+            flash('Imagem analisada com sucesso!')
+        else:
+            if first_error and first_error.startswith("AI Configuration missing"):
+                flash('Chave OpenAI não configurada. Acesse Configurações para adicionar.')
+            else:
+                flash(f'Erro na análise: {first_error}')
+    else:
+        if error_count == 0:
+            flash(f'Grupo analisado com sucesso! {success_count} imagens processadas.')
+        elif success_count == 0:
+            if first_error and first_error.startswith("AI Configuration missing"):
+                flash('Chave OpenAI não configurada. Acesse Configurações para adicionar.')
+            else:
+                flash(f'Erro ao analisar grupo: {first_error}')
+        else:
+            flash(f'Análise parcial: {success_count} sucesso, {error_count} erro(s).')
     
     return redirect(url_for('image_detail', id=id))
 

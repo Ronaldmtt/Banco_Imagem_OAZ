@@ -3688,7 +3688,7 @@ def batch_retry_failed(batch_id):
 def analyze_pending_ai():
     """Página para analisar imagens pendentes de análise IA"""
     
-    pending_images = Image.query.filter_by(status='Pendente Análise IA').order_by(Image.created_at.desc()).all()
+    pending_images = Image.query.filter_by(status='Pendente Análise IA').order_by(Image.upload_date.desc()).all()
     
     if request.method == 'POST':
         image_ids = request.form.getlist('image_ids')

@@ -322,6 +322,15 @@ class BatchProcessor:
                         carteira.status_foto = 'Com Foto'
                         self.db.session.add(carteira)
                     
+                    from app import Produto
+                    produto = self.db.session.query(Produto).filter_by(sku=carteira_data.get('sku_base', sku)).first()
+                    if not produto:
+                        produto = self.db.session.query(Produto).filter_by(sku=sku).first()
+                    if produto:
+                        produto.tem_foto = True
+                        self.db.session.add(produto)
+                        log_batch(f"[{sku}] ✓ Produto atualizado: tem_foto=True")
+                    
                     match_source = 'carteira'
                 else:
                     description = ''

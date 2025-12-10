@@ -87,6 +87,11 @@
                 <div class="progress-details">
                     <span id="progress-details-text">Iniciando...</span>
                 </div>
+                <div class="progress-actions" style="margin-top: 15px; text-align: center;">
+                    <button type="button" class="btn btn-danger" id="cancel-btn">
+                        <i class="fas fa-times"></i> Cancelar Upload
+                    </button>
+                </div>
             </div>
             
             <div class="info-box">
@@ -276,6 +281,30 @@ document.addEventListener('DOMContentLoaded', function() {
     const progressDetails = document.getElementById('progress-details-text');
     
     const CHUNK_SIZE = 5 * 1024 * 1024;  // 5MB por chunk
+    const cancelBtn = document.getElementById('cancel-btn');
+    let uploadCancelled = false;
+    let currentBatchId = null;
+    
+    // Cancel button handler
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', async function() {
+            uploadCancelled = true;
+            progressStatus.textContent = 'Cancelando...';
+            progressBar.style.background = '#dc3545';
+            
+            if (currentBatchId) {
+                try {
+                    await fetch(`/batch/${currentBatchId}/delete`, { method: 'DELETE' });
+                } catch (e) {
+                    console.error('Erro ao deletar batch:', e);
+                }
+            }
+            
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        });
+    }
     
     // Tab switching
     tabBtns.forEach(btn => {
@@ -476,6 +505,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const batchData = await createBatchResponse.json();
         const batchId = batchData.batch_id;
+        currentBatchId = batchId;
+        
+        if (uploadCancelled) {
+            throw new Error('Upload cancelado pelo usuário');
+        }
         
         // 2. Upload files in smaller batches with retry
         progressStatus.textContent = 'Enviando arquivos...';
@@ -486,6 +520,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const fileArray = Array.from(files);
         
         for (let i = 0; i < totalFiles; i += BATCH_SIZE) {
+            if (uploadCancelled) {
+                throw new Error('Upload cancelado pelo usuário');
+            }
+            
             const batchFiles = fileArray.slice(i, Math.min(i + BATCH_SIZE, totalFiles));
             
             const uploadPromises = batchFiles.map(file => uploadSingleFile(file, batchId, MAX_RETRIES));

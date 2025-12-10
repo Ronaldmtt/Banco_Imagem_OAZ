@@ -26,6 +26,16 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
     - Phase 2 (Processing): Batches of 20 images processed in parallel with persistent state
     - Watchdog thread detects stuck items (> 5 min) and resets for retry
     - Resume capability after browser close or server restart via /batch/{id}/resume endpoint
+-   **Thumbnail System**: Automatic thumbnail generation using Pillow:
+    - Thumbnails stored in PostgreSQL (BYTEA) for fast retrieval
+    - 300px max width, JPEG quality 75% (~5-50KB each)
+    - Endpoint `/thumbnail/<image_id>` serves thumbnails with fallback generation
+    - Catalog listing uses thumbnails for fast page loads
+-   **Logging System**: Extensive console logging for monitoring:
+    - Timestamps with milliseconds for all batch operations
+    - Progress tracking with rate (img/s) and ETA
+    - Individual image processing logs with SKU and status
+    - Carteira match status visible in real-time
 -   **Data Models**: Includes models for Users, Brands, Collections, Images, ImageItems (for multi-piece detection), Products, SKU History, and Shopping Cart (CarteiraCompras) imports.
 -   **Workflow**: Implements a status workflow for images: Pendente → Aprovado/Rejeitado → Pendente Análise IA.
 -   **Product Management**: Comprehensive CRUD operations for products, linking images to products, and tracking SKU changes with an audit trail.

@@ -1864,8 +1864,14 @@ def update_image_status(id, status):
         flash('Status inválido')
     return redirect(url_for('image_detail', id=id))
 
-def analyze_single_image(image):
-    """Analyze a single image and update its AI fields. Returns (success, error_message)"""
+def analyze_single_image(image, selected_fields=None):
+    """Analyze a single image and update its AI fields. Returns (success, error_message)
+    
+    selected_fields: Lista de campos a atualizar. Opções: descricao, tags, cor, tipo, material
+    Se None ou vazio, atualiza todos os campos.
+    """
+    if selected_fields is None:
+        selected_fields = ['descricao', 'tags', 'cor', 'tipo', 'material']
     temp_file_path = None
     file_path = None
     image_url = None
@@ -1932,11 +1938,21 @@ def analyze_single_image(image):
         first_attrs = first_item.get('attributes', {}) if first_item else {}
         first_carteira = first_item.get('carteira', {}) if first_item else {}
         
-        image.description = first_item.get('description', '')
-        image.tags = json.dumps(first_item.get('tags', [])) if first_item else json.dumps([])
-        image.ai_item_type = first_attrs.get('item_type')
-        image.ai_color = first_attrs.get('color')
-        image.ai_material = first_attrs.get('material')
+        if 'descricao' in selected_fields:
+            image.description = first_item.get('description', '')
+        
+        if 'tags' in selected_fields:
+            image.tags = json.dumps(first_item.get('tags', [])) if first_item else json.dumps([])
+        
+        if 'tipo' in selected_fields:
+            image.ai_item_type = first_attrs.get('item_type')
+        
+        if 'cor' in selected_fields:
+            image.ai_color = first_attrs.get('color')
+        
+        if 'material' in selected_fields:
+            image.ai_material = first_attrs.get('material')
+        
         image.ai_pattern = first_attrs.get('pattern')
         image.ai_style = first_attrs.get('style')
         
@@ -1958,11 +1974,11 @@ def analyze_single_image(image):
                 image_id=image.id,
                 item_order=item_data.get('order', 1),
                 position_ref=item_data.get('position_ref', 'Peça Única'),
-                description=item_data.get('description', ''),
-                tags=json.dumps(item_data.get('tags', [])),
-                ai_item_type=attrs.get('item_type'),
-                ai_color=attrs.get('color'),
-                ai_material=attrs.get('material'),
+                description=item_data.get('description', '') if 'descricao' in selected_fields else '',
+                tags=json.dumps(item_data.get('tags', [])) if 'tags' in selected_fields else json.dumps([]),
+                ai_item_type=attrs.get('item_type') if 'tipo' in selected_fields else None,
+                ai_color=attrs.get('color') if 'cor' in selected_fields else None,
+                ai_material=attrs.get('material') if 'material' in selected_fields else None,
                 ai_pattern=attrs.get('pattern'),
                 ai_style=attrs.get('style')
             )
@@ -1988,6 +2004,14 @@ def analyze_single_image(image):
 def reanalyze_image(id):
     image = Image.query.get_or_404(id)
     
+    selected_fields = request.form.getlist('fields')
+    all_fields = request.form.get('all_fields') == 'on'
+    
+    if all_fields or not selected_fields:
+        selected_fields = ['descricao', 'tags', 'cor', 'tipo', 'material']
+    
+    print(f"[AI] Selected fields for analysis: {selected_fields}")
+    
     images_to_analyze = [image]
     if image.sku_base:
         group_images = Image.query.filter(
@@ -2005,7 +2029,7 @@ def reanalyze_image(id):
     
     for idx, img in enumerate(images_to_analyze, 1):
         print(f"[AI] Analyzing image {idx}/{total}: {img.filename}")
-        success, error = analyze_single_image(img)
+        success, error = analyze_single_image(img, selected_fields)
         if success:
             success_count += 1
         else:

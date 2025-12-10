@@ -1169,6 +1169,7 @@ def serve_thumbnail(image_id):
 def dashboard():
     total_images = Image.query.count()
     pending_images = Image.query.filter_by(status='Pendente').count()
+    pending_ia_images = Image.query.filter_by(status='Pendente Análise IA').count()
     approved_images = Image.query.filter_by(status='Aprovado').count()
     rejected_images = Image.query.filter_by(status='Rejeitado').count()
     total_collections = Collection.query.count()
@@ -1178,6 +1179,7 @@ def dashboard():
     return render_template('dashboard/index.html',
                           total_images=total_images,
                           pending_images=pending_images,
+                          pending_ia_images=pending_ia_images,
                           approved_images=approved_images,
                           rejected_images=rejected_images,
                           total_collections=total_collections,

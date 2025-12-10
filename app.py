@@ -1655,11 +1655,49 @@ def delete_collection(id):
     flash('Coleção removida com sucesso!')
     return redirect(url_for('collections'))
 
+def normalizar_sku(sku):
+    """Normaliza SKU removendo zeros à esquerda de cada bloco para comparação"""
+    if not sku:
+        return ''
+    sku = str(sku).strip().upper()
+    partes = sku.split('.')
+    normalizadas = []
+    for parte in partes:
+        if parte.isdigit():
+            normalizadas.append(str(int(parte)))
+        else:
+            normalizadas.append(parte)
+    return '.'.join(normalizadas)
+
+def buscar_carteira_por_sku(sku_base):
+    """Busca na Carteira com normalização de SKU"""
+    if not sku_base:
+        return None
+    
+    carteira = CarteiraCompras.query.filter_by(sku=sku_base).first()
+    if carteira:
+        return carteira
+    
+    sku_normalizado = normalizar_sku(sku_base)
+    
+    carteiras = CarteiraCompras.query.all()
+    for c in carteiras:
+        if normalizar_sku(c.sku) == sku_normalizado:
+            return c
+    
+    return None
+
 @app.route('/collections/<int:id>/reprocessar', methods=['POST'])
 @login_required
 def reprocessar_colecao(id):
     """Reprocessa todas as imagens de uma coleção, tentando match com Carteira"""
     collection = Collection.query.get_or_404(id)
+    
+    carteiras_cache = {}
+    for c in CarteiraCompras.query.all():
+        sku_norm = normalizar_sku(c.sku)
+        if sku_norm not in carteiras_cache:
+            carteiras_cache[sku_norm] = c
     
     images = Image.query.filter_by(collection_id=id).all()
     reprocessadas = 0
@@ -1669,7 +1707,8 @@ def reprocessar_colecao(id):
         if not img.sku_base:
             continue
         
-        carteira = CarteiraCompras.query.filter_by(sku=img.sku_base).first()
+        sku_norm = normalizar_sku(img.sku_base)
+        carteira = carteiras_cache.get(sku_norm)
         
         if carteira:
             img.nome_peca = carteira.descricao

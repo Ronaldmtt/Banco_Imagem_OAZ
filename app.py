@@ -4118,6 +4118,81 @@ def upload_queue_status():
     orchestrator = get_upload_orchestrator(app, db, object_storage)
     return orchestrator.get_status()
 
+@app.route('/batch/diagnose-zip', methods=['POST'])
+@login_required
+def diagnose_zip():
+    """Diagnóstico de ZIP - mostra quais arquivos serão processados e quais serão ignorados"""
+    import zipfile
+    
+    if 'file' not in request.files:
+        return {'error': 'Nenhum arquivo enviado'}, 400
+    
+    zip_file = request.files['file']
+    if not zip_file.filename.lower().endswith('.zip'):
+        return {'error': 'Envie um arquivo ZIP'}, 400
+    
+    temp_path = os.path.join('/tmp', f'diag_{datetime.now().strftime("%H%M%S")}.zip')
+    zip_file.save(temp_path)
+    
+    try:
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'}
+        result = {
+            'total_arquivos': 0,
+            'imagens_validas': 0,
+            'ignorados': {
+                'sistema': [],
+                'extensao_invalida': [],
+                'ocultos': [],
+                'sem_sku': []
+            }
+        }
+        
+        with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+            for file_info in zip_ref.infolist():
+                if file_info.is_dir():
+                    continue
+                
+                result['total_arquivos'] += 1
+                full_path = file_info.filename
+                filename = os.path.basename(full_path)
+                
+                if '__MACOSX' in full_path or '.DS_Store' in full_path or 'Thumbs.db' in filename:
+                    result['ignorados']['sistema'].append(full_path)
+                    continue
+                
+                ext = os.path.splitext(filename)[1].lower()
+                
+                if ext not in allowed_extensions:
+                    result['ignorados']['extensao_invalida'].append({'arquivo': full_path, 'extensao': ext})
+                    continue
+                
+                if filename.startswith('.') or filename.startswith('__'):
+                    result['ignorados']['ocultos'].append(full_path)
+                    continue
+                
+                sku = extract_sku_from_filename(filename)
+                if not sku:
+                    result['ignorados']['sem_sku'].append(full_path)
+                    continue
+                
+                result['imagens_validas'] += 1
+        
+        result['resumo'] = {
+            'total_no_zip': result['total_arquivos'],
+            'serao_processados': result['imagens_validas'],
+            'serao_ignorados': sum(len(v) for v in result['ignorados'].values()),
+            'sistema': len(result['ignorados']['sistema']),
+            'extensao_invalida': len(result['ignorados']['extensao_invalida']),
+            'ocultos': len(result['ignorados']['ocultos']),
+            'sem_sku': len(result['ignorados']['sem_sku'])
+        }
+        
+        return result
+        
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
 
 # Initialize DB
 with app.app_context():

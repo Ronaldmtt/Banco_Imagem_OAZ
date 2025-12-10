@@ -85,7 +85,7 @@ class Collection(db.Model):
     campanha = db.Column(db.String(100))  # Nome da campanha (legado)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     images = db.relationship('Image', backref='collection', lazy=True)
-    subcolecoes = db.relationship('Subcolecao', backref='colecao', lazy=True)
+    subcolecoes = db.relationship('Subcolecao', backref='colecao', lazy=True, cascade='all, delete-orphan')
 
 class Subcolecao(db.Model):
     """Subcoleção/Campanha dentro de uma Coleção (Ex: Dia das Mães, Natal, Réveillon)"""

@@ -1693,22 +1693,35 @@ def reprocessar_colecao(id):
     """Reprocessa todas as imagens de uma coleção, tentando match com Carteira"""
     collection = Collection.query.get_or_404(id)
     
-    carteiras_cache = {}
+    carteiras_mesma_colecao = {}
+    carteiras_global = {}
+    
+    for c in CarteiraCompras.query.filter_by(colecao_id=id).all():
+        sku_norm = normalizar_sku(c.sku)
+        if sku_norm not in carteiras_mesma_colecao:
+            carteiras_mesma_colecao[sku_norm] = c
+    
     for c in CarteiraCompras.query.all():
         sku_norm = normalizar_sku(c.sku)
-        if sku_norm not in carteiras_cache:
-            carteiras_cache[sku_norm] = c
+        if sku_norm not in carteiras_global:
+            carteiras_global[sku_norm] = c
     
     images = Image.query.filter_by(collection_id=id).all()
     reprocessadas = 0
     matched = 0
+    matched_mesma_colecao = 0
     
     for img in images:
         if not img.sku_base:
             continue
         
         sku_norm = normalizar_sku(img.sku_base)
-        carteira = carteiras_cache.get(sku_norm)
+        
+        carteira = carteiras_mesma_colecao.get(sku_norm)
+        if carteira:
+            matched_mesma_colecao += 1
+        else:
+            carteira = carteiras_global.get(sku_norm)
         
         if carteira:
             img.nome_peca = carteira.descricao
@@ -1743,7 +1756,8 @@ def reprocessar_colecao(id):
     
     db.session.commit()
     
-    flash(f'Reprocessadas {reprocessadas} imagens da coleção "{collection.name}". {matched} tiveram match com a Carteira.')
+    total_carteira_colecao = CarteiraCompras.query.filter_by(colecao_id=id).count()
+    flash(f'Reprocessadas {reprocessadas} imagens. {matched} com match ({matched_mesma_colecao} da mesma coleção). Carteira desta coleção: {total_carteira_colecao} itens.')
     return redirect(url_for('collection_detail', id=id))
 
 @app.route('/collections/delete-all', methods=['POST'])

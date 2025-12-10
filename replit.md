@@ -21,6 +21,8 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
 -   **Image Upload**: Supports drag-and-drop, and batch uploads of 1M+ images with parallel processing (5 workers). Images are automatically matched with SKU data from purchase orders (Carteira de Compras).
 -   **SKU Grouping**: Intelligent extraction of SKU base from filenames with suffixes (_01, _02, -A, -B, _FRENTE, _COSTAS, etc.). Multiple images of the same product are grouped by `sku_base` while maintaining individual `sequencia` identifiers for each angle/variation.
 -   **AI Fallback**: Images without an automatic match are marked for future AI analysis, with contextualized analysis leveraging similar products.
+-   **Field Separation**: Clear separation between Carteira data (nome_peca, categoria, subcategoria, tipo_peca, origem) and AI-generated data (description, tags, cor, material). Carteira fields are never overwritten by AI analysis.
+-   **Reconciliation System**: Button to re-match images with Carteira when new products are imported. Updates Carteira-derived fields while preserving AI-generated observations.
 -   **Resilient Upload System**: Two-phase crash-proof upload architecture:
     - Phase 1 (Reception): Files received via streaming to disk with SHA256 hash
     - Phase 2 (Processing): Batches of 20 images processed in parallel with persistent state

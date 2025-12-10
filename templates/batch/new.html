@@ -419,15 +419,45 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Upload multiple files function
+    // Upload single file with retry
+    async function uploadSingleFile(file, batchId, maxRetries = 3) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('batch_id', batchId);
+                
+                const response = await fetch('/batch/upload-file', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    return { success: true, filename: file.name };
+                }
+                
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 500 * attempt));
+                }
+            } catch (err) {
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 500 * attempt));
+                }
+            }
+        }
+        return { success: false, filename: file.name };
+    }
+    
+    // Upload multiple files function with retry
     async function uploadMultipleFiles(files, collectionId, brandId, batchName) {
         const totalFiles = files.length;
-        const BATCH_SIZE = 10; // Upload 10 files at a time
+        const BATCH_SIZE = 5; // Upload 5 files at a time (more stable)
+        const MAX_RETRIES = 3;
         
         progressStatus.textContent = 'Criando lote...';
         progressDetails.textContent = `Preparando ${totalFiles} arquivos...`;
         
-        // 1. Create batch first
+        // 1. Create batch first (total will be updated after all uploads)
         const createBatchResponse = await fetch('/batch/create-async', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -435,7 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 batch_name: batchName,
                 collection_id: collectionId,
                 brand_id: brandId,
-                total_files: totalFiles
+                total_files: 0  // Will be updated based on actual uploads
             })
         });
         
@@ -447,57 +477,54 @@ document.addEventListener('DOMContentLoaded', function() {
         const batchData = await createBatchResponse.json();
         const batchId = batchData.batch_id;
         
-        // 2. Upload files in batches
+        // 2. Upload files in smaller batches with retry
         progressStatus.textContent = 'Enviando arquivos...';
         let uploaded = 0;
-        let errors = 0;
+        let processed = 0;
+        let failedFiles = [];
+        
+        const fileArray = Array.from(files);
         
         for (let i = 0; i < totalFiles; i += BATCH_SIZE) {
-            const batchFiles = Array.from(files).slice(i, Math.min(i + BATCH_SIZE, totalFiles));
+            const batchFiles = fileArray.slice(i, Math.min(i + BATCH_SIZE, totalFiles));
             
-            const uploadPromises = batchFiles.map(async (file) => {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('batch_id', batchId);
-                
-                try {
-                    const response = await fetch('/batch/upload-file', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    if (response.ok) {
-                        return { success: true };
-                    } else {
-                        return { success: false };
-                    }
-                } catch (err) {
-                    return { success: false };
-                }
-            });
-            
+            const uploadPromises = batchFiles.map(file => uploadSingleFile(file, batchId, MAX_RETRIES));
             const results = await Promise.all(uploadPromises);
             
-            uploaded += results.filter(r => r.success).length;
-            errors += results.filter(r => !r.success).length;
+            for (const result of results) {
+                processed++;
+                if (result.success) {
+                    uploaded++;
+                } else {
+                    failedFiles.push(result.filename);
+                }
+            }
             
-            const percent = ((uploaded + errors) / totalFiles * 100).toFixed(1);
+            const percent = (processed / totalFiles * 100).toFixed(1);
             progressBar.style.width = percent + '%';
             progressPercent.textContent = percent + '%';
-            progressDetails.textContent = `${uploaded} de ${totalFiles} arquivos enviados (${errors} erros)`;
+            progressDetails.textContent = `${uploaded} de ${totalFiles} enviados com sucesso (${failedFiles.length} falhas)`;
         }
         
-        // 3. Start processing
+        // 3. Update batch total to reflect actual uploads
+        await fetch(`/batch/${batchId}/sync-total`, { method: 'POST' });
+        
+        // 4. Start processing
         progressStatus.textContent = 'Iniciando processamento...';
         
         const processResponse = await fetch(`/batch/${batchId}/start-processing`, {
             method: 'POST'
         });
         
+        if (failedFiles.length > 0) {
+            console.warn('Arquivos que falharam:', failedFiles);
+        }
+        
         return {
             batch_id: batchId,
             total_files: uploaded,
-            errors: errors,
+            errors: failedFiles.length,
+            failed_files: failedFiles.slice(0, 10),
             redirect: `/batch/${batchId}`
         };
     }

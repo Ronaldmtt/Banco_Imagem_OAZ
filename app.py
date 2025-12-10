@@ -3481,6 +3481,22 @@ def batch_upload_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/batch/<int:batch_id>/sync-total', methods=['POST'])
+@login_required
+def batch_sync_total(batch_id):
+    """Sincroniza total_arquivos com o número real de BatchItems recebidos"""
+    batch = BatchUpload.query.get_or_404(batch_id)
+    
+    actual_count = BatchItem.query.filter_by(batch_id=batch_id).count()
+    batch.total_arquivos = actual_count
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'batch_id': batch_id,
+        'total_arquivos': actual_count
+    })
+
 @app.route('/batch/<int:batch_id>/delete', methods=['DELETE'])
 @login_required
 def batch_delete(batch_id):

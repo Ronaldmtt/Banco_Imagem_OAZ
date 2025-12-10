@@ -1966,23 +1966,47 @@ def analyze_single_image(image, selected_fields=None):
             if first_carteira.get('origem') and not image.origem:
                 image.origem = first_carteira.get('origem')
         
-        ImageItem.query.filter_by(image_id=image.id).delete()
+        existing_items = ImageItem.query.filter_by(image_id=image.id).order_by(ImageItem.item_order).all()
         
-        for item_data in ai_items:
-            attrs = item_data.get('attributes', {})
-            new_item = ImageItem(
-                image_id=image.id,
-                item_order=item_data.get('order', 1),
-                position_ref=item_data.get('position_ref', 'Peça Única'),
-                description=item_data.get('description', '') if 'descricao' in selected_fields else '',
-                tags=json.dumps(item_data.get('tags', [])) if 'tags' in selected_fields else json.dumps([]),
-                ai_item_type=attrs.get('item_type') if 'tipo' in selected_fields else None,
-                ai_color=attrs.get('color') if 'cor' in selected_fields else None,
-                ai_material=attrs.get('material') if 'material' in selected_fields else None,
-                ai_pattern=attrs.get('pattern'),
-                ai_style=attrs.get('style')
-            )
-            db.session.add(new_item)
+        all_fields_selected = set(selected_fields) == {'descricao', 'tags', 'cor', 'tipo', 'material'}
+        
+        if all_fields_selected or not existing_items:
+            ImageItem.query.filter_by(image_id=image.id).delete()
+            
+            for item_data in ai_items:
+                attrs = item_data.get('attributes', {})
+                new_item = ImageItem(
+                    image_id=image.id,
+                    item_order=item_data.get('order', 1),
+                    position_ref=item_data.get('position_ref', 'Peça Única'),
+                    description=item_data.get('description', ''),
+                    tags=json.dumps(item_data.get('tags', [])),
+                    ai_item_type=attrs.get('item_type'),
+                    ai_color=attrs.get('color'),
+                    ai_material=attrs.get('material'),
+                    ai_pattern=attrs.get('pattern'),
+                    ai_style=attrs.get('style')
+                )
+                db.session.add(new_item)
+        else:
+            for existing_item in existing_items:
+                if ai_items:
+                    ai_data = ai_items[0]
+                    attrs = ai_data.get('attributes', {})
+                    
+                    if 'descricao' in selected_fields:
+                        existing_item.description = ai_data.get('description', '')
+                    if 'tags' in selected_fields:
+                        existing_item.tags = json.dumps(ai_data.get('tags', []))
+                    if 'tipo' in selected_fields:
+                        existing_item.ai_item_type = attrs.get('item_type')
+                    if 'cor' in selected_fields:
+                        existing_item.ai_color = attrs.get('color')
+                    if 'material' in selected_fields:
+                        existing_item.ai_material = attrs.get('material')
+                    
+                    existing_item.ai_pattern = attrs.get('pattern')
+                    existing_item.ai_style = attrs.get('style')
         
         db.session.commit()
         return True, None

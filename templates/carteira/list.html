@@ -13,6 +13,12 @@
         <a href="{{ url_for('cruzar_carteira') }}" class="btn" style="background: rgba(63, 185, 80, 0.2); border: 1px solid #3fb950; color: #3fb950;">
             <i class="fas fa-sync-alt"></i> Executar Cruzamento
         </a>
+        <form action="{{ url_for('reconciliar_carteira') }}" method="POST" style="display: inline;">
+            <button type="submit" class="btn" style="background: rgba(130, 80, 223, 0.2); border: 1px solid #a371f7; color: #a371f7;"
+                title="Busca match na Carteira para imagens que não tiveram match anteriormente">
+                <i class="fas fa-link"></i> Reconciliar Imagens
+            </button>
+        </form>
         <a href="{{ url_for('export_carteira') }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
             <i class="fas fa-file-export"></i> Exportar CSV
         </a>

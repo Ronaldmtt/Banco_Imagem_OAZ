@@ -1945,6 +1945,10 @@ def analyze_single_image(image, selected_fields=None):
             new_tags = first_item.get('tags', []) if first_item else []
             if image.nome_peca and image.nome_peca not in new_tags:
                 new_tags.insert(0, image.nome_peca)
+            if image.subcolecao_rel and image.subcolecao_rel.nome and image.subcolecao_rel.nome not in new_tags:
+                new_tags.append(image.subcolecao_rel.nome)
+            if image.collection and image.collection.name and image.collection.name not in new_tags:
+                new_tags.append(image.collection.name)
             image.tags = json.dumps(new_tags)
         
         if 'tipo' in selected_fields:
@@ -1981,6 +1985,10 @@ def analyze_single_image(image, selected_fields=None):
                 item_tags = item_data.get('tags', [])
                 if image.nome_peca and image.nome_peca not in item_tags:
                     item_tags.insert(0, image.nome_peca)
+                if image.subcolecao_rel and image.subcolecao_rel.nome and image.subcolecao_rel.nome not in item_tags:
+                    item_tags.append(image.subcolecao_rel.nome)
+                if image.collection and image.collection.name and image.collection.name not in item_tags:
+                    item_tags.append(image.collection.name)
                 new_item = ImageItem(
                     image_id=image.id,
                     item_order=item_data.get('order', 1),
@@ -2006,6 +2014,10 @@ def analyze_single_image(image, selected_fields=None):
                         item_tags = ai_data.get('tags', [])
                         if image.nome_peca and image.nome_peca not in item_tags:
                             item_tags.insert(0, image.nome_peca)
+                        if image.subcolecao_rel and image.subcolecao_rel.nome and image.subcolecao_rel.nome not in item_tags:
+                            item_tags.append(image.subcolecao_rel.nome)
+                        if image.collection and image.collection.name and image.collection.name not in item_tags:
+                            item_tags.append(image.collection.name)
                         existing_item.tags = json.dumps(item_tags)
                     if 'tipo' in selected_fields:
                         existing_item.ai_item_type = attrs.get('item_type')
@@ -3212,6 +3224,87 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
             count += 1
     
     return count, skus_invalidos
+
+def reconciliar_imagens_com_carteira():
+    """Busca match na Carteira para imagens que não tiveram match anteriormente.
+    Sobrescreve dados da IA pelos dados da Carteira quando encontra match.
+    Retorna quantidade de imagens reconciliadas."""
+    
+    imagens_sem_match = Image.query.filter(
+        db.or_(
+            Image.nome_peca.is_(None),
+            Image.nome_peca == ''
+        )
+    ).all()
+    
+    reconciliadas = 0
+    
+    for img in imagens_sem_match:
+        if not img.sku_base:
+            continue
+        
+        carteira = CarteiraCompras.query.filter_by(sku=img.sku_base).first()
+        
+        if carteira:
+            img.nome_peca = carteira.descricao
+            
+            if carteira.categoria:
+                img.categoria = carteira.categoria
+            if carteira.subcategoria:
+                img.subcategoria = carteira.subcategoria
+            if carteira.tipo_peca:
+                img.tipo_peca = carteira.tipo_peca
+            if carteira.origem:
+                img.origem = carteira.origem
+            if carteira.material:
+                img.ai_material = carteira.material
+            if carteira.estilista:
+                img.estilista = carteira.estilista
+            if carteira.referencia_estilo:
+                img.referencia_estilo = carteira.referencia_estilo
+            
+            if carteira.colecao_id:
+                img.collection_id = carteira.colecao_id
+            if carteira.subcolecao_id:
+                img.subcolecao_id = carteira.subcolecao_id
+            if carteira.marca_id:
+                img.brand_id = carteira.marca_id
+            
+            if img.status == 'Pendente Análise IA':
+                img.status = 'Pendente'
+            
+            carteira.status_foto = 'Com Foto'
+            
+            for item in img.items:
+                if not item.description or item.description == '':
+                    item.description = carteira.descricao
+                if carteira.tipo_peca:
+                    item.ai_item_type = carteira.tipo_peca
+                if carteira.material:
+                    item.ai_material = carteira.material
+            
+            reconciliadas += 1
+            print(f"[RECONCILE] Image {img.id} ({img.sku_base}) matched with Carteira: {carteira.descricao[:50]}...")
+    
+    if reconciliadas > 0:
+        db.session.commit()
+    
+    return reconciliadas
+
+
+@app.route('/carteira/reconciliar', methods=['POST'])
+@login_required
+def reconciliar_carteira():
+    """Endpoint para reconciliar imagens com a Carteira."""
+    reconciliadas = reconciliar_imagens_com_carteira()
+    
+    if reconciliadas > 0:
+        flash(f'{reconciliadas} imagem(ns) reconciliada(s) com a Carteira!')
+    else:
+        flash('Nenhuma imagem para reconciliar.')
+    
+    return redirect(url_for('listar_carteira'))
+
 
 @app.route('/carteira/importar', methods=['GET', 'POST'])
 @login_required

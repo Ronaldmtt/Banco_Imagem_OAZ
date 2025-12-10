@@ -1767,10 +1767,13 @@ def reanalyze_image(id):
         else:
             if image.storage_path:
                 domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
+                storage_key = image.storage_path.lstrip('/')
+                if storage_key.startswith('storage/'):
+                    storage_key = storage_key[8:]
                 if domain:
-                    image_url = f"https://{domain}/storage/{image.storage_path}"
+                    image_url = f"https://{domain}/storage/{storage_key}"
                 else:
-                    image_url = url_for('serve_storage', path=image.storage_path, _external=True)
+                    image_url = url_for('serve_storage_image', object_path=storage_key, _external=True)
     
     if not file_path and not image_url:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
@@ -1782,10 +1785,13 @@ def reanalyze_image(id):
     if file_path and not os.path.exists(file_path) and not image_url:
         if image.storage_path:
             domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
+            storage_key = image.storage_path.lstrip('/')
+            if storage_key.startswith('storage/'):
+                storage_key = storage_key[8:]
             if domain:
-                image_url = f"https://{domain}/storage/{image.storage_path}"
+                image_url = f"https://{domain}/storage/{storage_key}"
             else:
-                image_url = url_for('serve_storage', path=image.storage_path, _external=True)
+                image_url = url_for('serve_storage_image', object_path=storage_key, _external=True)
     
     use_url = image_url is not None
     image_source = image_url if use_url else file_path

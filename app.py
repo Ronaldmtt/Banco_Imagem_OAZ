@@ -1942,7 +1942,10 @@ def analyze_single_image(image, selected_fields=None):
             image.description = first_item.get('description', '')
         
         if 'tags' in selected_fields:
-            image.tags = json.dumps(first_item.get('tags', [])) if first_item else json.dumps([])
+            new_tags = first_item.get('tags', []) if first_item else []
+            if image.nome_peca and image.nome_peca not in new_tags:
+                new_tags.insert(0, image.nome_peca)
+            image.tags = json.dumps(new_tags)
         
         if 'tipo' in selected_fields:
             image.ai_item_type = first_attrs.get('item_type')
@@ -1975,12 +1978,15 @@ def analyze_single_image(image, selected_fields=None):
             
             for item_data in ai_items:
                 attrs = item_data.get('attributes', {})
+                item_tags = item_data.get('tags', [])
+                if image.nome_peca and image.nome_peca not in item_tags:
+                    item_tags.insert(0, image.nome_peca)
                 new_item = ImageItem(
                     image_id=image.id,
                     item_order=item_data.get('order', 1),
                     position_ref=item_data.get('position_ref', 'Peça Única'),
                     description=item_data.get('description', ''),
-                    tags=json.dumps(item_data.get('tags', [])),
+                    tags=json.dumps(item_tags),
                     ai_item_type=attrs.get('item_type'),
                     ai_color=attrs.get('color'),
                     ai_material=attrs.get('material'),
@@ -1997,7 +2003,10 @@ def analyze_single_image(image, selected_fields=None):
                     if 'descricao' in selected_fields:
                         existing_item.description = ai_data.get('description', '')
                     if 'tags' in selected_fields:
-                        existing_item.tags = json.dumps(ai_data.get('tags', []))
+                        item_tags = ai_data.get('tags', [])
+                        if image.nome_peca and image.nome_peca not in item_tags:
+                            item_tags.insert(0, image.nome_peca)
+                        existing_item.tags = json.dumps(item_tags)
                     if 'tipo' in selected_fields:
                         existing_item.ai_item_type = attrs.get('item_type')
                     if 'cor' in selected_fields:

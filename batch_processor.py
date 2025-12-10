@@ -286,7 +286,7 @@ class BatchProcessor:
                 batch = self.db.session.get(BatchUpload, batch_id)
                 
                 if carteira_data and carteira_data.get('found'):
-                    description = carteira_data.get('descricao', '')
+                    nome_peca = carteira_data.get('descricao', '')  # Nome da peça vai para campo separado
                     cor = carteira_data.get('cor', '')
                     categoria = carteira_data.get('categoria', '')
                     subcategoria = carteira_data.get('subcategoria', '')
@@ -333,7 +333,7 @@ class BatchProcessor:
                     
                     match_source = 'carteira'
                 else:
-                    description = ''
+                    nome_peca = ''  # Sem match, nome_peca vazio
                     cor = ''
                     categoria = ''
                     material = ''
@@ -360,7 +360,8 @@ class BatchProcessor:
                     sku=sku,
                     sku_base=sku_base,
                     sequencia=sequencia,
-                    description=description,
+                    nome_peca=nome_peca,  # Nome da peça da Carteira
+                    description=None,  # Descrição será preenchida pela IA
                     tags=json.dumps(tags_list),
                     ai_item_type=tipo_peca if tipo_peca else (categoria if carteira_data else None),
                     ai_color=cor if carteira_data else None,
@@ -394,7 +395,7 @@ class BatchProcessor:
                         image_id=new_image.id,
                         item_order=1,
                         position_ref=position_ref,
-                        description=description,
+                        description=nome_peca,  # ImageItem recebe o nome da peça
                         tags=json.dumps(tags_list),
                         ai_item_type=tipo_peca if tipo_peca else categoria,
                         ai_color=cor,

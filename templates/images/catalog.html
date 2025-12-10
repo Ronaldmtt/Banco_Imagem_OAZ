@@ -4,7 +4,7 @@
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
     <div>
         <h1>Busca & Catálogo de Imagens</h1>
-        <p style="color: var(--text-secondary);">Mostrando {{ images|length }} resultados</p>
+        <p style="color: var(--text-secondary);">Mostrando {{ sku_groups|length }} de {{ total_skus }} SKUs únicos (página {{ page }} de {{ total_pages }})</p>
     </div>
     <div style="display: flex; gap: 1rem;">
         <a href="{{ url_for('upload') }}" class="btn btn-primary">
@@ -62,6 +62,9 @@
                         <input type="checkbox" name="status" value="Pendente" {% if 'Pendente' in request.args.getlist('status') %}checked{% endif %}> Pendente
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem;">
+                        <input type="checkbox" name="status" value="Pendente Análise IA" {% if 'Pendente Análise IA' in request.args.getlist('status') %}checked{% endif %}> Pendente Análise IA
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem;">
                         <input type="checkbox" name="status" value="Rejeitado" {% if 'Rejeitado' in request.args.getlist('status') %}checked{% endif %}> Rejeitado
                     </label>
                 </div>
@@ -75,40 +78,68 @@
     <!-- Image Grid -->
     <div style="flex: 1;">
         <div class="image-grid">
-            {% for image in images %}
-            <div class="image-card">
-                <div style="position: relative;">
-                    <a href="{{ url_for('image_detail', id=image.id) }}">
-                        <img src="{{ url_for('serve_thumbnail', image_id=image.id) }}" 
-                             class="image-preview"
-                             alt="{{ image.original_name }}"
-                             loading="lazy"
-                             onerror="this.src='{{ image.image_url }}'">
-                    </a>
+            {% for group in sku_groups %}
+            <div class="image-card sku-card" data-sku="{{ group.sku_base }}">
+                <div class="carousel-container">
+                    <div class="carousel-track" data-index="0">
+                        {% for img in group.images %}
+                        <div class="carousel-slide {% if loop.first %}active{% endif %}">
+                            <a href="{{ url_for('image_detail', id=img.id) }}">
+                                <img data-src="{{ url_for('serve_thumbnail', image_id=img.id) }}" 
+                                     {% if loop.first %}src="{{ url_for('serve_thumbnail', image_id=img.id) }}"{% endif %}
+                                     class="image-preview carousel-image"
+                                     alt="{{ img.original_name }}"
+                                     loading="lazy">
+                            </a>
+                            <div class="carousel-image-status status-badge status-{{ img.status.lower().replace(' ', '-') }}">
+                                {{ img.sequencia or loop.index }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    {% if group.images|length > 1 %}
+                    <button class="carousel-nav carousel-prev" onclick="carouselNav(this, -1)" aria-label="Anterior">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button class="carousel-nav carousel-next" onclick="carouselNav(this, 1)" aria-label="Próximo">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    
+                    <div class="carousel-dots">
+                        {% for img in group.images %}
+                        <span class="carousel-dot {% if loop.first %}active{% endif %}" data-index="{{ loop.index0 }}"></span>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="carousel-counter">
+                        <span class="current-index">1</span> / {{ group.images|length }}
+                    </div>
+                    {% endif %}
+                    
                     <div style="position: absolute; top: 8px; left: 8px;">
                         <input type="checkbox" style="transform: scale(1.2);">
                     </div>
-                    <div style="position: absolute; top: 8px; right: 8px;">
-                        <form action="{{ url_for('delete_image', id=image.id) }}" method="POST"
-                            onsubmit="return confirm('Deletar esta imagem?');">
-                            <button type="submit"
-                                style="background: rgba(0,0,0,0.5); border: none; color: #f85149; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                                <i class="fas fa-trash-alt" style="font-size: 0.8rem;"></i>
-                            </button>
-                        </form>
-                    </div>
                 </div>
+                
                 <div class="image-info">
-                    <div class="image-title">{{ image.sku or 'Sem SKU' }}</div>
-                    <div class="image-meta">{{ image.brand_ref.name if image.brand_ref else 'Sem Marca' }}</div>
-                    <div class="status-badge status-{{ image.status.lower() }}">
-                        {{ image.status }}
+                    <div class="image-title">{{ group.sku_base }}</div>
+                    <div class="image-meta">{{ group.brand }}</div>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;">
+                        {% if group.has_approved %}
+                        <span class="status-indicator status-approved" title="Aprovado"></span>
+                        {% endif %}
+                        {% if group.has_pending %}
+                        <span class="status-indicator status-pending" title="Pendente"></span>
+                        {% endif %}
+                        {% if group.has_rejected %}
+                        <span class="status-indicator status-rejected" title="Rejeitado"></span>
+                        {% endif %}
+                        <span style="font-size: 0.75rem; color: var(--text-secondary);">{{ group.images|length }} foto{% if group.images|length > 1 %}s{% endif %}</span>
                     </div>
                     <div style="margin-top: 0.5rem; display: flex; gap: 4px; flex-wrap: wrap;">
-                        {% for tag in image.tag_list[:3] %}
-                        <span
-                            style="font-size: 0.7rem; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;">{{
-                            tag }}</span>
+                        {% for tag in group.tag_list[:3] %}
+                        <span style="font-size: 0.7rem; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;">{{ tag }}</span>
                         {% endfor %}
                     </div>
                 </div>
@@ -120,6 +151,243 @@
             </div>
             {% endfor %}
         </div>
+        
+        {% if total_pages > 1 %}
+        <div class="pagination" style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 2rem;">
+            {% if page > 1 %}
+            <a href="{{ url_for('catalog', page=page-1, q=search_query, collection_id=request.args.get('collection_id'), brand_id=request.args.get('brand_id'), status=request.args.getlist('status')) }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color);">
+                <i class="fas fa-chevron-left"></i> Anterior
+            </a>
+            {% endif %}
+            
+            <span style="display: flex; align-items: center; padding: 0 1rem; color: var(--text-secondary);">
+                Página {{ page }} de {{ total_pages }}
+            </span>
+            
+            {% if page < total_pages %}
+            <a href="{{ url_for('catalog', page=page+1, q=search_query, collection_id=request.args.get('collection_id'), brand_id=request.args.get('brand_id'), status=request.args.getlist('status')) }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color);">
+                Próxima <i class="fas fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
 </div>
+
+<style>
+.carousel-container {
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px 8px 0 0;
+}
+
+.carousel-track {
+    display: flex;
+    transition: transform 0.3s ease;
+}
+
+.carousel-slide {
+    min-width: 100%;
+    position: relative;
+}
+
+.carousel-slide:not(.active) {
+    display: none;
+}
+
+.carousel-image {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+}
+
+.carousel-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s;
+    z-index: 10;
+}
+
+.carousel-container:hover .carousel-nav {
+    opacity: 1;
+}
+
+.carousel-nav:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.carousel-prev {
+    left: 8px;
+}
+
+.carousel-next {
+    right: 8px;
+}
+
+.carousel-dots {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+}
+
+.carousel-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.carousel-dot.active {
+    background: white;
+    transform: scale(1.2);
+}
+
+.carousel-counter {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    z-index: 10;
+}
+
+.carousel-image-status {
+    position: absolute;
+    bottom: 24px;
+    right: 8px;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-indicator.status-approved {
+    background: #3fb950;
+}
+
+.status-indicator.status-pending {
+    background: #d29922;
+}
+
+.status-indicator.status-rejected {
+    background: #f85149;
+}
+
+.status-pendente-análise-ia {
+    background: #9333ea !important;
+    color: white;
+}
+</style>
+
+<script>
+function carouselNav(btn, direction) {
+    const container = btn.closest('.carousel-container');
+    const track = container.querySelector('.carousel-track');
+    const slides = container.querySelectorAll('.carousel-slide');
+    const dots = container.querySelectorAll('.carousel-dot');
+    const counter = container.querySelector('.current-index');
+    
+    let currentIndex = parseInt(track.dataset.index) || 0;
+    let newIndex = currentIndex + direction;
+    
+    if (newIndex < 0) newIndex = slides.length - 1;
+    if (newIndex >= slides.length) newIndex = 0;
+    
+    slides[currentIndex].classList.remove('active');
+    slides[newIndex].classList.add('active');
+    
+    const img = slides[newIndex].querySelector('img');
+    if (img.dataset.src && !img.src) {
+        img.src = img.dataset.src;
+    }
+    
+    if (dots.length > 0) {
+        dots[currentIndex].classList.remove('active');
+        dots[newIndex].classList.add('active');
+    }
+    
+    if (counter) {
+        counter.textContent = newIndex + 1;
+    }
+    
+    track.dataset.index = newIndex;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                if (img.dataset.src) {
+                    img.src = img.dataset.src;
+                    img.removeAttribute('data-src');
+                }
+                observer.unobserve(img);
+            }
+        });
+    }, { rootMargin: '100px' });
+    
+    document.querySelectorAll('.carousel-slide.active img[data-src]').forEach(img => {
+        observer.observe(img);
+    });
+    
+    document.querySelectorAll('.carousel-dot').forEach(dot => {
+        dot.addEventListener('click', function() {
+            const container = this.closest('.carousel-container');
+            const track = container.querySelector('.carousel-track');
+            const slides = container.querySelectorAll('.carousel-slide');
+            const dots = container.querySelectorAll('.carousel-dot');
+            const counter = container.querySelector('.current-index');
+            
+            const currentIndex = parseInt(track.dataset.index) || 0;
+            const newIndex = parseInt(this.dataset.index);
+            
+            if (currentIndex === newIndex) return;
+            
+            slides[currentIndex].classList.remove('active');
+            slides[newIndex].classList.add('active');
+            
+            const img = slides[newIndex].querySelector('img');
+            if (img.dataset.src) {
+                img.src = img.dataset.src;
+            }
+            
+            dots[currentIndex].classList.remove('active');
+            dots[newIndex].classList.add('active');
+            
+            if (counter) {
+                counter.textContent = newIndex + 1;
+            }
+            
+            track.dataset.index = newIndex;
+        });
+    });
+});
+</script>
 {% endblock %}

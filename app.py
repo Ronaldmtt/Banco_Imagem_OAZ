@@ -1196,54 +1196,121 @@ def dashboard():
 @app.route('/catalog')
 @login_required
 def catalog():
-    # Get filter parameters
     status_filter = request.args.getlist('status')
     collection_filter = request.args.get('collection_id')
     brand_filter = request.args.get('brand_id')
     search_query = request.args.get('q', '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
     
-    query = Image.query
+    base_query = Image.query
     
-    # Apply filters
     if status_filter:
-        query = query.filter(Image.status.in_(status_filter))
+        base_query = base_query.filter(Image.status.in_(status_filter))
     
     if collection_filter and collection_filter != 'all':
-        query = query.filter_by(collection_id=collection_filter)
+        base_query = base_query.filter_by(collection_id=collection_filter)
     
     if brand_filter and brand_filter != 'all':
-        query = query.filter_by(brand_id=brand_filter)
+        base_query = base_query.filter_by(brand_id=brand_filter)
     
-    # Apply search if provided
     if search_query:
         search_term = f"%{search_query}%"
-        query = query.filter(
+        base_query = base_query.filter(
             db.or_(
                 Image.sku.ilike(search_term),
+                Image.sku_base.ilike(search_term),
                 Image.description.ilike(search_term),
                 Image.original_name.ilike(search_term),
                 Image.ai_item_type.ilike(search_term),
                 Image.tags.ilike(search_term)
             )
         )
-        
-    images = query.order_by(Image.upload_date.desc()).all()
     
-    # Get all collections and brands for the filter dropdown
+    sku_key_expr = db.func.coalesce(Image.sku_base, Image.sku, db.func.concat('no_sku_', Image.id.cast(db.String)))
+    
+    sku_subquery = base_query.with_entities(
+        sku_key_expr.label('sku_key'),
+        db.func.max(Image.upload_date).label('latest_upload')
+    ).group_by(sku_key_expr).subquery()
+    
+    total_skus = db.session.query(db.func.count()).select_from(sku_subquery).scalar() or 0
+    total_pages = max(1, (total_skus + per_page - 1) // per_page)
+    
+    page_skus_query = db.session.query(
+        sku_subquery.c.sku_key
+    ).order_by(sku_subquery.c.latest_upload.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    page_skus = [s[0] for s in page_skus_query]
+    
+    if page_skus:
+        sku_key_filter = db.func.coalesce(Image.sku_base, Image.sku, db.func.concat('no_sku_', Image.id.cast(db.String)))
+        page_images_query = Image.query.filter(sku_key_filter.in_(page_skus))
+        if status_filter:
+            page_images_query = page_images_query.filter(Image.status.in_(status_filter))
+        if collection_filter and collection_filter != 'all':
+            page_images_query = page_images_query.filter_by(collection_id=collection_filter)
+        if brand_filter and brand_filter != 'all':
+            page_images_query = page_images_query.filter_by(brand_id=brand_filter)
+        if search_query:
+            search_term = f"%{search_query}%"
+            page_images_query = page_images_query.filter(
+                db.or_(
+                    Image.sku.ilike(search_term),
+                    Image.sku_base.ilike(search_term),
+                    Image.description.ilike(search_term),
+                    Image.original_name.ilike(search_term),
+                    Image.ai_item_type.ilike(search_term),
+                    Image.tags.ilike(search_term)
+                )
+            )
+        images_for_page = page_images_query.order_by(Image.sequencia, Image.upload_date.desc()).all()
+    else:
+        images_for_page = []
+    
+    sku_groups = {}
+    for img in images_for_page:
+        sku_key = img.sku_base or img.sku or f"no_sku_{img.id}"
+        if sku_key not in sku_groups:
+            try:
+                tag_list = json.loads(img.tags) if img.tags else []
+            except:
+                tag_list = []
+            sku_groups[sku_key] = {
+                'sku_base': sku_key,
+                'cover_image': img,
+                'images': [],
+                'brand': img.brand_ref.name if img.brand_ref else 'Sem Marca',
+                'status': img.status,
+                'tag_list': tag_list,
+                'has_pending': False,
+                'has_approved': False,
+                'has_rejected': False
+            }
+        sku_groups[sku_key]['images'].append(img)
+        if img.status == 'Pendente' or img.status == 'Pendente Análise IA':
+            sku_groups[sku_key]['has_pending'] = True
+        elif img.status == 'Aprovado':
+            sku_groups[sku_key]['has_approved'] = True
+        elif img.status == 'Rejeitado':
+            sku_groups[sku_key]['has_rejected'] = True
+    
+    ordered_groups = []
+    for sku in page_skus:
+        if sku in sku_groups:
+            ordered_groups.append(sku_groups[sku])
+    
     collections = Collection.query.all()
     brands = Brand.query.order_by(Brand.name).all()
     
-    # Parse tags if they are stored as JSON string
-    for img in images:
-        if img.tags:
-            try:
-                img.tag_list = json.loads(img.tags)
-            except:
-                img.tag_list = []
-        else:
-            img.tag_list = []
-            
-    return render_template('images/catalog.html', images=images, collections=collections, brands=brands, search_query=search_query)
+    return render_template('images/catalog.html', 
+                          sku_groups=ordered_groups,
+                          total_skus=total_skus,
+                          page=page,
+                          total_pages=total_pages,
+                          per_page=per_page,
+                          collections=collections, 
+                          brands=brands, 
+                          search_query=search_query)
 
 
 @app.route('/upload', methods=['GET', 'POST'])

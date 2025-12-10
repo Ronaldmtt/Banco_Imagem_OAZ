@@ -11,6 +11,10 @@ packages = ["freetype", "glibcLocales", "lcms2", "libimagequant", "libjpeg", "li
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 35851
+externalPort = 3000
+
 [workflows]
 runButton = "Project"
 

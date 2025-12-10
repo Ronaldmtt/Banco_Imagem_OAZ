@@ -568,37 +568,60 @@ def extract_zip_to_temp(zip_path, temp_dir):
     """
     import shutil
     files_data = []
-    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    skipped_files = {'system': 0, 'extension': 0, 'hidden': 0, 'no_sku': 0}
+    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'}
     
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        total_files = len([f for f in zip_ref.infolist() if not f.is_dir()])
+        log_batch(f"[ZIP] Total de arquivos no ZIP: {total_files}", "INFO")
+        
         for file_info in zip_ref.infolist():
             if file_info.is_dir():
                 continue
             
-            filename = os.path.basename(file_info.filename)
+            full_path = file_info.filename
+            filename = os.path.basename(full_path)
+            
+            if '__MACOSX' in full_path or '.DS_Store' in full_path or 'Thumbs.db' in filename:
+                skipped_files['system'] += 1
+                continue
+            
             ext = os.path.splitext(filename)[1].lower()
             
             if ext not in allowed_extensions:
+                skipped_files['extension'] += 1
                 continue
             
             if filename.startswith('.') or filename.startswith('__'):
+                skipped_files['hidden'] += 1
                 continue
             
             sku = extract_sku_from_filename(filename)
             if not sku:
+                skipped_files['no_sku'] += 1
+                log_batch(f"[ZIP] Arquivo sem SKU ignorado: {filename}", "WARN")
                 continue
             
             temp_filename = f"zip_{sku}_{len(files_data)}{ext}"
             temp_path = os.path.join(temp_dir, temp_filename)
             
-            with zip_ref.open(file_info.filename) as src, open(temp_path, 'wb') as dst:
-                shutil.copyfileobj(src, dst, length=1024*1024)
-            
-            files_data.append({
-                'sku': sku,
-                'temp_path': temp_path,
-                'filename': filename
-            })
+            try:
+                with zip_ref.open(file_info.filename) as src, open(temp_path, 'wb') as dst:
+                    shutil.copyfileobj(src, dst, length=1024*1024)
+                
+                files_data.append({
+                    'sku': sku,
+                    'temp_path': temp_path,
+                    'filename': filename
+                })
+            except Exception as e:
+                log_batch(f"[ZIP] Erro ao extrair {filename}: {e}", "ERROR")
+    
+    total_skipped = sum(skipped_files.values())
+    if total_skipped > 0:
+        log_batch(f"[ZIP] Arquivos ignorados: {total_skipped} (sistema: {skipped_files['system']}, extensão inválida: {skipped_files['extension']}, ocultos: {skipped_files['hidden']}, sem SKU: {skipped_files['no_sku']})", "INFO")
+    
+    log_batch(f"[ZIP] Extração completa: {len(files_data)} imagens válidas de {total_files} arquivos", "INFO")
     
     return files_data
 

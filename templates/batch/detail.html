@@ -142,7 +142,7 @@
                     <td>{{ item.processed_at.strftime('%d/%m %H:%M') if item.processed_at else '-' }}</td>
                     <td>
                         {% if item.image_id %}
-                        <a href="{{ url_for('image_detail', image_id=item.image_id) }}" class="btn btn-sm btn-primary">
+                        <a href="{{ url_for('image_detail', id=item.image_id) }}" class="btn btn-sm btn-primary">
                             Ver Imagem
                         </a>
                         {% endif %}

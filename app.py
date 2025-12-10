@@ -793,17 +793,78 @@ def analyze_image_with_ai(image_path):
         return f"Erro ao analisar imagem: {str(e)}"
 
 
+def get_carteira_taxonomy():
+    """Extrai taxonomia real da Carteira de Compras para padronização"""
+    taxonomy = {
+        'categorias': [],
+        'subcategorias': [],
+        'tipos_peca': [],
+        'origens': ['NACIONAL', 'IMPORTADO'],
+        'materiais': []
+    }
+    
+    try:
+        categorias = db.session.query(db.func.distinct(db.func.upper(CarteiraCompras.categoria))).filter(
+            CarteiraCompras.categoria.isnot(None),
+            CarteiraCompras.categoria != ''
+        ).all()
+        taxonomy['categorias'] = sorted([c[0].strip() for c in categorias if c[0]])
+        
+        subcategorias = db.session.query(db.func.distinct(db.func.upper(CarteiraCompras.subcategoria))).filter(
+            CarteiraCompras.subcategoria.isnot(None),
+            CarteiraCompras.subcategoria != ''
+        ).all()
+        taxonomy['subcategorias'] = sorted([s[0].strip() for s in subcategorias if s[0]])
+        
+        tipos = db.session.query(db.func.distinct(db.func.upper(CarteiraCompras.tipo_peca))).filter(
+            CarteiraCompras.tipo_peca.isnot(None),
+            CarteiraCompras.tipo_peca != ''
+        ).all()
+        taxonomy['tipos_peca'] = sorted([t[0].strip() for t in tipos if t[0]])
+        
+        materiais = db.session.query(db.func.distinct(db.func.upper(CarteiraCompras.material))).filter(
+            CarteiraCompras.material.isnot(None),
+            CarteiraCompras.material != ''
+        ).all()
+        taxonomy['materiais'] = sorted([m[0].strip() for m in materiais if m[0]])
+        
+    except Exception as e:
+        print(f"[WARN] Error loading taxonomy: {e}")
+    
+    return taxonomy
+
+
+def normalize_to_taxonomy(value, valid_values):
+    """Normaliza um valor para corresponder à taxonomia da Carteira"""
+    if not value or not valid_values:
+        return value
+    
+    value_upper = value.upper().strip()
+    
+    for valid in valid_values:
+        if valid.upper() == value_upper:
+            return valid
+    
+    for valid in valid_values:
+        if value_upper in valid.upper() or valid.upper() in value_upper:
+            return valid
+    
+    return value.upper()
+
+
 def analyze_image_with_context(image_path_or_url, sku=None, collection_id=None, brand_id=None, subcolecao_id=None, is_url=False):
     """
     Analisa imagem com contexto das carteiras de compras importadas.
     Busca produtos similares para dar contexto ao GPT.
     Aceita caminho de arquivo local ou URL da imagem.
+    Retorna dados padronizados no formato da Carteira.
     """
     client = get_openai_client()
     if not client:
         return "AI Configuration missing. Please configure OpenAI API Key in Settings."
     
     try:
+        taxonomy = get_carteira_taxonomy()
         context_products = []
         
         query = CarteiraCompras.query.filter(
@@ -827,34 +888,43 @@ def analyze_image_with_context(image_path_or_url, sku=None, collection_id=None, 
                 'categoria': prod.categoria,
                 'cor': prod.cor,
                 'material': prod.material,
-                'tipo_peca': prod.tipo_peca
+                'tipo_peca': prod.tipo_peca,
+                'subcategoria': prod.subcategoria,
+                'origem': prod.origem
             })
+        
+        taxonomy_text = """
+═══════════════════════════════════════════════════════════════════
+TAXONOMIA OFICIAL (VOCÊ DEVE USAR APENAS ESTES VALORES):
+═══════════════════════════════════════════════════════════════════
+"""
+        if taxonomy['categorias']:
+            taxonomy_text += f"\nCATEGORIAS PERMITIDAS: {', '.join(taxonomy['categorias'])}"
+        if taxonomy['tipos_peca']:
+            taxonomy_text += f"\nTIPOS DE PEÇA PERMITIDOS: {', '.join(taxonomy['tipos_peca'])}"
+        if taxonomy['origens']:
+            taxonomy_text += f"\nORIGENS PERMITIDAS: {', '.join(taxonomy['origens'])}"
+        if taxonomy['materiais']:
+            taxonomy_text += f"\nMATERIAIS CONHECIDOS: {', '.join(taxonomy['materiais'][:20])}"
         
         context_text = ""
         if context_products:
             context_text = """
-═══════════════════════════════════════════════════════════════════
-CONTEXTO DA COLEÇÃO (produtos similares no catálogo):
-═══════════════════════════════════════════════════════════════════
 
-Use estas referências para entender o padrão de nomenclatura e categorização:
-
+═══════════════════════════════════════════════════════════════════
+EXEMPLOS DE PRODUTOS DO CATÁLOGO (referência de padrão):
+═══════════════════════════════════════════════════════════════════
 """
             for i, p in enumerate(context_products[:5], 1):
                 context_text += f"""
 Produto {i}:
-- SKU: {p.get('sku', 'N/A')}
 - Descrição: {p.get('descricao', 'N/A')}
 - Categoria: {p.get('categoria', 'N/A')}
+- Subcategoria: {p.get('subcategoria', 'N/A')}
+- Tipo Peça: {p.get('tipo_peca', 'N/A')}
 - Cor: {p.get('cor', 'N/A')}
 - Material: {p.get('material', 'N/A')}
-- Tipo: {p.get('tipo_peca', 'N/A')}
-"""
-            context_text += """
-
-IMPORTANTE: Mantenha a CONSISTÊNCIA com o estilo de descrição e categorização acima.
-Use terminologia e padrões similares aos produtos de referência.
-
+- Origem: {p.get('origem', 'N/A')}
 """
         
         if is_url:
@@ -872,18 +942,23 @@ Use terminologia e padrões similares aos produtos de referência.
         prompt = f"""
         Você é um especialista em moda analisando imagens para o banco de imagens OAZ.
         
+        {taxonomy_text}
         {context_text}
         
         RESPONDA TUDO EM PORTUGUÊS DO BRASIL.
         
-        Analise a imagem e identifique:
+        REGRA CRÍTICA: Você DEVE usar APENAS os valores listados na TAXONOMIA OFICIAL acima.
+        Para campos como categoria, tipo_peca e origem, escolha EXATAMENTE um dos valores permitidos.
         
-        1. TIPO DE ITEM: Identifique com precisão (vestido tubinho, blusa ciganinha, calça skinny, etc.)
-        2. COR: Seja específico (Azul Marinho, Rosa Blush, Preto, Bege Areia)
-        3. MATERIAL: Identifique o tecido (Algodão, Linho, Crepe, Malha, Jeans, Cetim)
-        4. ESTAMPA: Liso, Listrado, Floral, Animal Print, Geométrico
-        5. ESTILO: Festa, Social/Trabalho, Dia a Dia, Streetwear, Praia
-        6. DESCRIÇÃO DETALHADA: Inclua modelagem, comprimento, decote, mangas, detalhes
+        Analise a imagem e preencha TODOS os campos abaixo:
+        
+        1. CATEGORIA: Escolha da lista de categorias permitidas (ex: JEANS, MALHA, TECIDO PLANO, TRICOT)
+        2. TIPO DE PEÇA: Escolha da lista de tipos permitidos (ex: VESTIDO, BLUSA, CALÇA, SAIA, CAMISA)
+        3. COR: Seja específico (Azul Marinho, Rosa Blush, Preto, Bege Areia)
+        4. MATERIAL: Identifique o tecido (Algodão, Linho, Crepe, Malha, Jeans, Cetim)
+        5. ESTAMPA: Liso, Listrado, Floral, Animal Print, Geométrico
+        6. ESTILO: Festa, Social/Trabalho, Dia a Dia, Streetwear, Praia
+        7. DESCRIÇÃO DETALHADA: Inclua modelagem, comprimento, decote, mangas, detalhes
         
         FORMATO DE RESPOSTA (JSON):
         {{
@@ -892,10 +967,16 @@ Use terminologia e padrões similares aos produtos de referência.
                 {{
                     "position_ref": "Peça Superior/Inferior/Única",
                     "description": "Descrição ultra-detalhada...",
+                    "carteira": {{
+                        "categoria": "ESCOLHA DA LISTA DE CATEGORIAS",
+                        "subcategoria": "ESCOLHA DA LISTA DE TIPOS DE PEÇA",
+                        "tipo_peca": "ESCOLHA DA LISTA DE TIPOS DE PEÇA",
+                        "origem": "NACIONAL ou IMPORTADO"
+                    }},
                     "attributes": {{
-                        "item_type": "Tipo + Modelagem",
+                        "item_type": "Tipo + Modelagem detalhada",
                         "color": "Cor específica",
-                        "material": "Material",
+                        "material": "Material/Tecido",
                         "pattern": "Estampa ou Liso",
                         "style": "Estilo"
                     }},
@@ -945,12 +1026,21 @@ Use terminologia e padrões similares aos produtos de referência.
                 item_keywords = item.get('seo_keywords', [])
                 item_tags = filter_tags(item_attributes, item_keywords)
                 
+                carteira_data = item.get('carteira', {})
+                normalized_carteira = {
+                    'categoria': normalize_to_taxonomy(carteira_data.get('categoria'), taxonomy['categorias']),
+                    'subcategoria': normalize_to_taxonomy(carteira_data.get('subcategoria'), taxonomy['tipos_peca']),
+                    'tipo_peca': normalize_to_taxonomy(carteira_data.get('tipo_peca'), taxonomy['tipos_peca']),
+                    'origem': normalize_to_taxonomy(carteira_data.get('origem'), taxonomy['origens'])
+                }
+                
                 items_data.append({
                     'order': idx + 1,
                     'position_ref': item.get('position_ref', f'Peça {idx + 1}'),
                     'description': item.get('description', ''),
                     'tags': item_tags,
                     'attributes': item_attributes,
+                    'carteira': normalized_carteira,
                     'analyzed_with_context': len(context_products) > 0
                 })
             
@@ -960,6 +1050,13 @@ Use terminologia e padrões similares aos produtos de referência.
         attributes = data.get('attributes', {})
         keywords = data.get('seo_keywords', [])
         tags = filter_tags(attributes, keywords)
+        carteira_data = data.get('carteira', {})
+        normalized_carteira = {
+            'categoria': normalize_to_taxonomy(carteira_data.get('categoria'), taxonomy['categorias']),
+            'subcategoria': normalize_to_taxonomy(carteira_data.get('subcategoria'), taxonomy['tipos_peca']),
+            'tipo_peca': normalize_to_taxonomy(carteira_data.get('tipo_peca'), taxonomy['tipos_peca']),
+            'origem': normalize_to_taxonomy(carteira_data.get('origem'), taxonomy['origens'])
+        }
         
         return [{
             'order': 1,
@@ -967,6 +1064,7 @@ Use terminologia e padrões similares aos produtos de referência.
             'description': description,
             'tags': tags,
             'attributes': attributes,
+            'carteira': normalized_carteira,
             'analyzed_with_context': len(context_products) > 0
         }]
         
@@ -1810,6 +1908,7 @@ def analyze_single_image(image):
         ai_items = ai_result
         first_item = ai_items[0] if ai_items else {}
         first_attrs = first_item.get('attributes', {}) if first_item else {}
+        first_carteira = first_item.get('carteira', {}) if first_item else {}
         
         image.description = first_item.get('description', '')
         image.tags = json.dumps(first_item.get('tags', [])) if first_item else json.dumps([])
@@ -1818,6 +1917,16 @@ def analyze_single_image(image):
         image.ai_material = first_attrs.get('material')
         image.ai_pattern = first_attrs.get('pattern')
         image.ai_style = first_attrs.get('style')
+        
+        if first_carteira:
+            if first_carteira.get('categoria') and not image.categoria:
+                image.categoria = first_carteira.get('categoria')
+            if first_carteira.get('subcategoria') and not image.subcategoria:
+                image.subcategoria = first_carteira.get('subcategoria')
+            if first_carteira.get('tipo_peca') and not image.tipo_peca:
+                image.tipo_peca = first_carteira.get('tipo_peca')
+            if first_carteira.get('origem') and not image.origem:
+                image.origem = first_carteira.get('origem')
         
         ImageItem.query.filter_by(image_id=image.id).delete()
         

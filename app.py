@@ -1655,6 +1655,58 @@ def delete_collection(id):
     flash('Coleção removida com sucesso!')
     return redirect(url_for('collections'))
 
+@app.route('/collections/<int:id>/reprocessar', methods=['POST'])
+@login_required
+def reprocessar_colecao(id):
+    """Reprocessa todas as imagens de uma coleção, tentando match com Carteira"""
+    collection = Collection.query.get_or_404(id)
+    
+    images = Image.query.filter_by(collection_id=id).all()
+    reprocessadas = 0
+    matched = 0
+    
+    for img in images:
+        if not img.sku_base:
+            continue
+        
+        carteira = CarteiraCompras.query.filter_by(sku=img.sku_base).first()
+        
+        if carteira:
+            img.nome_peca = carteira.descricao
+            
+            if carteira.categoria:
+                img.categoria = carteira.categoria
+            if carteira.subcategoria:
+                img.subcategoria = carteira.subcategoria
+            if carteira.tipo_peca:
+                img.tipo_peca = carteira.tipo_peca
+            if carteira.origem:
+                img.origem = carteira.origem
+            if carteira.estilista:
+                img.estilista = carteira.estilista
+            if carteira.referencia_estilo:
+                img.referencia_estilo = carteira.referencia_estilo
+            
+            if carteira.colecao_id:
+                img.collection_id = carteira.colecao_id
+            if carteira.subcolecao_id:
+                img.subcolecao_id = carteira.subcolecao_id
+            if carteira.marca_id:
+                img.brand_id = carteira.marca_id
+            
+            if img.status == 'Pendente Análise IA':
+                img.status = 'Pendente'
+            
+            carteira.status_foto = 'Com Foto'
+            matched += 1
+        
+        reprocessadas += 1
+    
+    db.session.commit()
+    
+    flash(f'Reprocessadas {reprocessadas} imagens da coleção "{collection.name}". {matched} tiveram match com a Carteira.')
+    return redirect(url_for('collection_detail', id=id))
+
 @app.route('/collections/delete-all', methods=['POST'])
 @login_required
 def delete_all_collections():

@@ -59,13 +59,37 @@
         </div>
     </div>
     
-    {% if batch.status == 'Concluído' and batch.falhas > 0 %}
-    <div class="actions">
+    {% if batch.falhas > 0 %}
+    <div class="error-alert" id="error-alert">
+        <div class="error-alert-icon">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="error-alert-content">
+            <strong>{{ batch.falhas }} imagem(ns) com erro</strong>
+            <p>Alguns arquivos não foram processados corretamente. Você pode tentar reprocessar.</p>
+        </div>
+        {% if batch.status == 'Concluído' %}
         <form method="POST" action="{{ url_for('batch_retry_failed', batch_id=batch.id) }}" style="display: inline;">
             <button type="submit" class="btn btn-warning">
-                <i class="fas fa-redo"></i> Reprocessar Falhas ({{ batch.falhas }})
+                <i class="fas fa-redo"></i> Reprocessar Falhas
             </button>
         </form>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% if batch.status == 'Concluído' and batch.sucesso > 0 %}
+    <div class="success-alert">
+        <div class="success-alert-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="success-alert-content">
+            <strong>{{ batch.sucesso }} imagem(ns) processada(s) com sucesso!</strong>
+            <p>As imagens estão disponíveis no catálogo.</p>
+        </div>
+        <a href="{{ url_for('catalog') }}" class="btn btn-success">
+            <i class="fas fa-images"></i> Ver Catálogo
+        </a>
     </div>
     {% endif %}
 </div>
@@ -321,6 +345,58 @@
     color: var(--text-secondary);
     margin-top: 10px;
     text-align: right;
+}
+.error-alert {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: rgba(220, 53, 69, 0.15);
+    border: 1px solid rgba(220, 53, 69, 0.4);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 20px;
+}
+.error-alert-icon {
+    font-size: 2rem;
+    color: #dc3545;
+}
+.error-alert-content {
+    flex: 1;
+}
+.error-alert-content strong {
+    color: #dc3545;
+    font-size: 1.1rem;
+}
+.error-alert-content p {
+    color: var(--text-secondary);
+    margin: 5px 0 0;
+    font-size: 0.9rem;
+}
+.success-alert {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: rgba(40, 167, 69, 0.15);
+    border: 1px solid rgba(40, 167, 69, 0.4);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 20px;
+}
+.success-alert-icon {
+    font-size: 2rem;
+    color: #28a745;
+}
+.success-alert-content {
+    flex: 1;
+}
+.success-alert-content strong {
+    color: #28a745;
+    font-size: 1.1rem;
+}
+.success-alert-content p {
+    color: var(--text-secondary);
+    margin: 5px 0 0;
+    font-size: 0.9rem;
 }
 </style>
 

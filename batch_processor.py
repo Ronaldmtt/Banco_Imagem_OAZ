@@ -162,37 +162,37 @@ class BatchProcessor:
         self._cleanup_temp_files(temp_file_paths)
         log_batch(f"Arquivos temporários limpos")
     
-    def _match_carteira_compras_in_session(self, sku_completo, db):
+    def _match_carteira_compras_in_session(self, sku_completo):
         """
         Busca dados da CarteiraCompras pelo SKU usando a sessão atual.
         Tenta primeiro com SKU completo, depois com SKU base (sem sufixos).
         
         Args:
             sku_completo: Código SKU completo do arquivo (ex: ABC123_01)
-            db: Instância do SQLAlchemy database
             
         Returns:
             Dict com dados da carteira ou None se não encontrar
         """
         from app import CarteiraCompras
+        from sqlalchemy import func
         
         sku_base, sequencia = extract_sku_base_and_sequence(sku_completo)
         
-        carteira = db.session.query(CarteiraCompras).filter_by(sku=sku_completo).first()
+        carteira = self.db.session.query(CarteiraCompras).filter_by(sku=sku_completo).first()
         
         if not carteira:
             sku_upper = sku_completo.upper().strip()
-            carteira = db.session.query(CarteiraCompras).filter(
-                db.func.upper(db.func.trim(CarteiraCompras.sku)) == sku_upper
+            carteira = self.db.session.query(CarteiraCompras).filter(
+                func.upper(func.trim(CarteiraCompras.sku)) == sku_upper
             ).first()
         
         if not carteira and sku_base and sku_base != sku_completo:
-            carteira = db.session.query(CarteiraCompras).filter_by(sku=sku_base).first()
+            carteira = self.db.session.query(CarteiraCompras).filter_by(sku=sku_base).first()
             
             if not carteira:
                 sku_base_upper = sku_base.upper().strip()
-                carteira = db.session.query(CarteiraCompras).filter(
-                    db.func.upper(db.func.trim(CarteiraCompras.sku)) == sku_base_upper
+                carteira = self.db.session.query(CarteiraCompras).filter(
+                    func.upper(func.trim(CarteiraCompras.sku)) == sku_base_upper
                 ).first()
         
         if carteira:
@@ -228,7 +228,7 @@ class BatchProcessor:
     
     def _process_single_item_isolated(self, batch_id, item_id, sku, temp_path, original_filename):
         """Processa um único item com sessão de banco isolada"""
-        from app import db, BatchUpload, BatchItem, Image, ImageItem, CarteiraCompras, ImageThumbnail
+        from app import BatchUpload, BatchItem, Image, ImageItem, CarteiraCompras, ImageThumbnail
         
         log_batch(f"[{sku}] Iniciando processamento...")
         
@@ -255,7 +255,7 @@ class BatchProcessor:
                 log_batch(f"[{sku}] Arquivo: {original_filename} ({file_size_mb:.2f}MB)")
                 
                 log_batch(f"[{sku}] Buscando na Carteira de Compras...")
-                carteira_data = self._match_carteira_compras_in_session(sku, db)
+                carteira_data = self._match_carteira_compras_in_session(sku)
                 
                 if carteira_data and carteira_data.get('found'):
                     log_batch(f"[{sku}] ✓ MATCH encontrado na Carteira! Desc: {carteira_data.get('descricao', '')[:50]}...")

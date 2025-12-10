@@ -2612,6 +2612,36 @@ def obter_ou_criar_colecao(nome_colecao, contadores):
     contadores['colecoes_criadas'] += 1
     return nova_colecao.id
 
+def extrair_marca_do_nome_arquivo(nome_arquivo):
+    """
+    Extrai a marca do nome do arquivo usando padrões comuns.
+    Ex: "Carteira diversas coleção SOUQ.xlsx" -> "SOUQ"
+    Ex: "Carteira ANIMALE Inverno 26.xlsx" -> "ANIMALE"
+    """
+    import re
+    
+    if not nome_arquivo:
+        return None
+    
+    nome = os.path.splitext(nome_arquivo)[0]
+    
+    palavras_ignorar = ['carteira', 'diversas', 'coleção', 'colecao', 'inverno', 'verao', 'verão', 
+                        'primavera', 'outono', 'alto', 'preview', 'lancamento', 'lançamento',
+                        '2024', '2025', '2026', '24', '25', '26', '24-25', '25-26', '26-27']
+    
+    palavras = re.findall(r'[A-Za-zÀ-ÿ]+', nome)
+    
+    for palavra in reversed(palavras):
+        if len(palavra) >= 3 and palavra.lower() not in palavras_ignorar:
+            if palavra.isupper() or (len(palavra) >= 4 and palavra[0].isupper()):
+                return palavra.upper()
+    
+    for palavra in palavras:
+        if len(palavra) >= 3 and palavra.lower() not in palavras_ignorar:
+            return palavra.upper()
+    
+    return None
+
 def obter_ou_criar_marca(nome_marca, contadores):
     """Busca ou cria uma marca pelo nome. Retorna o ID da marca."""
     if not nome_marca or not nome_marca.strip():
@@ -2770,7 +2800,7 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
     
     return novo_produto.id
 
-def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None, tipo_carteira='Moda'):
+def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None, tipo_carteira='Moda', marca_fallback=None):
     """
     Processa linhas do DataFrame e insere/atualiza na CarteiraCompras.
     Auto-cria Coleções (baseado no nome da ABA), Subcoleções (baseado em ENTRADA), Marcas e Produtos.
@@ -2786,6 +2816,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
         contadores: Dicionário para rastrear entidades criadas
         cache_produtos: Cache de produtos já criados nesta importação
         tipo_carteira: Tipo de carteira (Moda, Acessórios, Home)
+        marca_fallback: Marca extraída do nome do arquivo (usado quando não há coluna MARCA)
     
     Returns:
         (count, skus_invalidos): Quantidade de itens criados e linhas ignoradas
@@ -2803,15 +2834,17 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     if cache_produtos is None:
         cache_produtos = {}
     
-    # Cache de subcoleções para evitar duplicatas
     cache_subcolecoes = {}
     
     count = 0
     skus_invalidos = 0
     
-    # IMPORTANTE: A Coleção é baseada no NOME DA ABA, não em coluna do Excel
-    # Criar/obter a Coleção baseada no nome da aba
     colecao_id = obter_ou_criar_colecao(aba_origem, contadores) if aba_origem and aba_origem != 'CSV' else None
+    
+    marca_fallback_id = None
+    if marca_fallback:
+        marca_fallback_id = obter_ou_criar_marca(marca_fallback, contadores)
+        print(f"[INFO] Marca extraída do nome do arquivo: {marca_fallback}")
     
     for idx, row in df.iterrows():
         sku = str(row.get('sku', '')).strip() if pd.notna(row.get('sku', '')) else ''
@@ -2822,7 +2855,6 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
         
         sku = sku.rstrip('.00').rstrip('.0').strip()
         
-        # Subcoleção vem da coluna ENTRADA (mapeada como 'subcolecao_nome')
         nome_subcolecao = str(row.get('subcolecao_nome', '')).strip() if pd.notna(row.get('subcolecao_nome', '')) else None
         nome_marca = str(row.get('marca_nome', '')).strip() if pd.notna(row.get('marca_nome', '')) else None
         
@@ -2836,7 +2868,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
                 subcolecao_id = obter_ou_criar_subcolecao(nome_subcolecao, colecao_id, contadores)
                 cache_subcolecoes[cache_key] = subcolecao_id
         
-        marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else None
+        marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else marca_fallback_id
         produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id, subcolecao_id=subcolecao_id, cache_produtos=cache_produtos)
         
         existing = CarteiraCompras.query.filter_by(sku=sku).first()
@@ -2936,6 +2968,8 @@ def importar_carteira():
             importar_todas = request.form.get('importar_todas', '') == 'true'
             tipo_carteira = request.form.get('tipo_carteira', 'Moda')
             
+            marca_do_arquivo = extrair_marca_do_nome_arquivo(file.filename)
+            
             total_count = 0
             total_invalidos = 0
             abas_processadas = []
@@ -2946,7 +2980,6 @@ def importar_carteira():
                 'produtos_criados': 0
             }
             
-            # Cache para evitar duplicatas de produtos na mesma importação
             cache_produtos = {}
             
             if filename.endswith('.csv'):
@@ -2963,7 +2996,7 @@ def importar_carteira():
                     flash('Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".', 'error')
                     return redirect(request.url)
                 
-                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores, cache_produtos, tipo_carteira)
+                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores, cache_produtos, tipo_carteira, marca_do_arquivo)
                 total_count = count
                 total_invalidos = invalidos
                 abas_processadas.append('CSV')
@@ -2983,7 +3016,7 @@ def importar_carteira():
                         if not sku_encontrado:
                             continue
                         
-                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores, cache_produtos, tipo_carteira)
+                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores, cache_produtos, tipo_carteira, marca_do_arquivo)
                         total_count += count
                         total_invalidos += invalidos
                         if count > 0:
@@ -3005,7 +3038,7 @@ def importar_carteira():
                         flash(f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".', 'error')
                         return redirect(request.url)
                     
-                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos, tipo_carteira)
+                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos, tipo_carteira, marca_do_arquivo)
                     total_count = count
                     total_invalidos = invalidos
                     abas_processadas.append(aba_selecionada)

@@ -12,6 +12,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import json
 import base64
+from PIL import Image as PILImage
 
 # Load environment variables
 load_dotenv()
@@ -167,6 +168,24 @@ class ImageItem(db.Model):
     
     # Referência visual (ex: "peça superior", "peça inferior", "acessório")
     position_ref = db.Column(db.String(50))
+
+class ImageThumbnail(db.Model):
+    """Armazena thumbnails das imagens para exibição rápida em tela"""
+    id = db.Column(db.Integer, primary_key=True)
+    image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False, unique=True)
+    thumbnail_data = db.Column(db.LargeBinary, nullable=False)  # Dados binários do thumbnail
+    width = db.Column(db.Integer)  # Largura do thumbnail
+    height = db.Column(db.Integer)  # Altura do thumbnail
+    file_size = db.Column(db.Integer)  # Tamanho em bytes
+    mime_type = db.Column(db.String(50), default='image/jpeg')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relacionamento com Image
+    image = db.relationship('Image', backref=db.backref('thumbnail', uselist=False))
+    
+    __table_args__ = (
+        db.Index('idx_thumbnail_image_id', 'image_id'),
+    )
 
 class Produto(db.Model):
     """Modelo de Produto com SKU e atributos técnicos"""
@@ -1031,6 +1050,119 @@ def serve_storage_image(object_path):
     except Exception as e:
         print(f"[ERROR] Failed to serve storage image {object_path}: {e}")
         return "Image not found", 404
+
+def generate_thumbnail(image_data, max_width=300, quality=75):
+    """Gera thumbnail a partir de dados de imagem
+    
+    Args:
+        image_data: bytes da imagem original
+        max_width: largura máxima do thumbnail (default 300px)
+        quality: qualidade JPEG (default 75%)
+    
+    Returns:
+        tuple: (thumbnail_bytes, width, height, file_size)
+    """
+    try:
+        img = PILImage.open(io.BytesIO(image_data))
+        
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        original_width, original_height = img.size
+        if original_width > max_width:
+            ratio = max_width / original_width
+            new_height = int(original_height * ratio)
+            img = img.resize((max_width, new_height), PILImage.Resampling.LANCZOS)
+        
+        output = io.BytesIO()
+        img.save(output, format='JPEG', quality=quality, optimize=True)
+        thumbnail_bytes = output.getvalue()
+        
+        width, height = img.size
+        file_size = len(thumbnail_bytes)
+        
+        print(f"[THUMBNAIL] Gerado: {width}x{height}, {file_size/1024:.1f}KB (original: {original_width}x{original_height})")
+        
+        return thumbnail_bytes, width, height, file_size
+        
+    except Exception as e:
+        print(f"[ERROR] Falha ao gerar thumbnail: {e}")
+        return None, None, None, None
+
+def save_thumbnail_for_image(image_id, image_data):
+    """Salva thumbnail no banco de dados para uma imagem
+    
+    Args:
+        image_id: ID da imagem
+        image_data: bytes da imagem original
+    
+    Returns:
+        ImageThumbnail ou None
+    """
+    try:
+        existing = ImageThumbnail.query.filter_by(image_id=image_id).first()
+        if existing:
+            print(f"[THUMBNAIL] Já existe para imagem {image_id}, pulando...")
+            return existing
+        
+        thumbnail_bytes, width, height, file_size = generate_thumbnail(image_data)
+        
+        if thumbnail_bytes is None:
+            return None
+        
+        thumbnail = ImageThumbnail(
+            image_id=image_id,
+            thumbnail_data=thumbnail_bytes,
+            width=width,
+            height=height,
+            file_size=file_size,
+            mime_type='image/jpeg'
+        )
+        db.session.add(thumbnail)
+        db.session.commit()
+        
+        print(f"[THUMBNAIL] Salvo para imagem {image_id}: {file_size/1024:.1f}KB")
+        return thumbnail
+        
+    except Exception as e:
+        print(f"[ERROR] Falha ao salvar thumbnail para imagem {image_id}: {e}")
+        db.session.rollback()
+        return None
+
+@app.route('/thumbnail/<int:image_id>')
+def serve_thumbnail(image_id):
+    """Serve thumbnail de uma imagem do banco de dados"""
+    try:
+        thumbnail = ImageThumbnail.query.filter_by(image_id=image_id).first()
+        
+        if thumbnail and thumbnail.thumbnail_data:
+            return Response(
+                thumbnail.thumbnail_data,
+                mimetype=thumbnail.mime_type or 'image/jpeg',
+                headers={
+                    'Cache-Control': 'public, max-age=31536000'
+                }
+            )
+        
+        image = Image.query.get(image_id)
+        if image and image.storage_path:
+            from object_storage import object_storage
+            file_bytes = object_storage.download_file(image.storage_path)
+            if file_bytes:
+                save_thumbnail_for_image(image_id, file_bytes)
+                thumbnail = ImageThumbnail.query.filter_by(image_id=image_id).first()
+                if thumbnail:
+                    return Response(
+                        thumbnail.thumbnail_data,
+                        mimetype='image/jpeg',
+                        headers={'Cache-Control': 'public, max-age=31536000'}
+                    )
+        
+        return Response(status=404)
+        
+    except Exception as e:
+        print(f"[ERROR] Falha ao servir thumbnail {image_id}: {e}")
+        return Response(status=404)
 
 @app.route('/dashboard')
 @login_required

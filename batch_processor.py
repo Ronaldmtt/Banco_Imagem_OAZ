@@ -5,6 +5,7 @@ Match primário com CarteiraCompras, API como fallback futuro
 """
 
 import os
+import io
 import json
 import zipfile
 import tempfile
@@ -13,12 +14,56 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import time
+from PIL import Image as PILImage
 
 MAX_WORKERS = 5
 MAX_RETRIES = 3
 RETRY_DELAY = 2
 
 progress_lock = Lock()
+
+def log_batch(message, level="INFO"):
+    """Logger centralizado para batch processing"""
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}] [{level}] [BATCH] {message}")
+
+def generate_thumbnail_bytes(image_data, max_width=300, quality=75):
+    """Gera thumbnail a partir de dados de imagem
+    
+    Args:
+        image_data: bytes da imagem original
+        max_width: largura máxima do thumbnail (default 300px)
+        quality: qualidade JPEG (default 75%)
+    
+    Returns:
+        tuple: (thumbnail_bytes, width, height, file_size) ou (None, None, None, None) em caso de erro
+    """
+    try:
+        img = PILImage.open(io.BytesIO(image_data))
+        
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        original_width, original_height = img.size
+        if original_width > max_width:
+            ratio = max_width / original_width
+            new_height = int(original_height * ratio)
+            img = img.resize((max_width, new_height), PILImage.Resampling.LANCZOS)
+        
+        output = io.BytesIO()
+        img.save(output, format='JPEG', quality=quality, optimize=True)
+        thumbnail_bytes = output.getvalue()
+        
+        width, height = img.size
+        file_size = len(thumbnail_bytes)
+        
+        log_batch(f"Thumbnail gerado: {width}x{height}, {file_size/1024:.1f}KB (original: {original_width}x{original_height})")
+        
+        return thumbnail_bytes, width, height, file_size
+        
+    except Exception as e:
+        log_batch(f"Falha ao gerar thumbnail: {e}", "ERROR")
+        return None, None, None, None
 
 class BatchProcessor:
     """Processador de lotes de imagens com threading e sessões isoladas"""
@@ -38,19 +83,31 @@ class BatchProcessor:
             batch_id: ID do BatchUpload
             temp_file_paths: Lista de dicts com {item_id, sku, temp_path, filename}
         """
+        log_batch(f"========== INICIANDO PROCESSAMENTO LOTE #{batch_id} ==========")
+        log_batch(f"Total de arquivos para processar: {len(temp_file_paths)}")
+        log_batch(f"Workers paralelos: {self.max_workers}")
+        
         with self.app.app_context():
             from app import BatchUpload
             batch = self.db.session.get(BatchUpload, batch_id)
             if not batch:
+                log_batch(f"ERRO: Lote #{batch_id} não encontrado no banco!", "ERROR")
                 return
             
             batch.status = 'Processando'
             batch.started_at = datetime.utcnow()
             self.db.session.commit()
+            log_batch(f"Status do lote atualizado para 'Processando'")
+        
+        processed_count = 0
+        success_count = 0
+        error_count = 0
+        start_time = time.time()
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {}
             
+            log_batch(f"Submetendo {len(temp_file_paths)} tarefas ao executor...")
             for file_info in temp_file_paths:
                 future = executor.submit(
                     self._process_single_item_isolated,
@@ -62,14 +119,37 @@ class BatchProcessor:
                 )
                 futures[future] = file_info['item_id']
             
+            log_batch(f"Todas as tarefas submetidas. Aguardando conclusão...")
+            
             for future in as_completed(futures):
                 item_id = futures[future]
                 try:
                     result = future.result()
+                    processed_count += 1
+                    if result['success']:
+                        success_count += 1
+                    else:
+                        error_count += 1
                     self._update_batch_progress_atomic(batch_id, result['success'])
+                    
+                    if processed_count % 10 == 0 or processed_count == len(temp_file_paths):
+                        elapsed = time.time() - start_time
+                        rate = processed_count / elapsed if elapsed > 0 else 0
+                        remaining = len(temp_file_paths) - processed_count
+                        eta = remaining / rate if rate > 0 else 0
+                        log_batch(f"Progresso: {processed_count}/{len(temp_file_paths)} ({success_count} OK, {error_count} erros) - {rate:.1f} img/s - ETA: {eta:.0f}s")
+                        
                 except Exception as e:
-                    print(f"[ERROR] Exception processing item {item_id}: {e}")
+                    error_count += 1
+                    processed_count += 1
+                    log_batch(f"EXCEÇÃO processando item {item_id}: {e}", "ERROR")
                     self._update_batch_progress_atomic(batch_id, False)
+        
+        elapsed_total = time.time() - start_time
+        log_batch(f"========== PROCESSAMENTO CONCLUÍDO ==========")
+        log_batch(f"Lote #{batch_id}: {processed_count} processados em {elapsed_total:.1f}s")
+        log_batch(f"Sucesso: {success_count} | Erros: {error_count}")
+        log_batch(f"Taxa média: {processed_count/elapsed_total:.1f} imagens/segundo")
         
         with self.app.app_context():
             batch = self.db.session.get(BatchUpload, batch_id)
@@ -77,8 +157,10 @@ class BatchProcessor:
                 batch.status = 'Concluído'
                 batch.finished_at = datetime.utcnow()
                 self.db.session.commit()
+                log_batch(f"Status do lote atualizado para 'Concluído'")
         
         self._cleanup_temp_files(temp_file_paths)
+        log_batch(f"Arquivos temporários limpos")
     
     def _match_carteira_compras_in_session(self, sku_completo, db):
         """
@@ -146,33 +228,51 @@ class BatchProcessor:
     
     def _process_single_item_isolated(self, batch_id, item_id, sku, temp_path, original_filename):
         """Processa um único item com sessão de banco isolada"""
-        from app import db, BatchUpload, BatchItem, Image, ImageItem, CarteiraCompras
+        from app import db, BatchUpload, BatchItem, Image, ImageItem, CarteiraCompras, ImageThumbnail
+        
+        log_batch(f"[{sku}] Iniciando processamento...")
         
         with self.app.app_context():
             self.db.session.remove()
             
             item = self.db.session.get(BatchItem, item_id)
             if not item:
+                log_batch(f"[{sku}] Item #{item_id} não encontrado!", "ERROR")
                 return {'success': False, 'error': 'Item not found'}
             
             item.status = 'Processando'
+            item.processing_status = 'processing'
             item.tentativas += 1
             self.db.session.commit()
+            log_batch(f"[{sku}] Tentativa #{item.tentativas}")
             
             try:
                 if not os.path.exists(temp_path):
+                    log_batch(f"[{sku}] Arquivo temporário não encontrado: {temp_path}", "ERROR")
                     raise FileNotFoundError(f"Temp file not found: {temp_path}")
                 
+                file_size_mb = os.path.getsize(temp_path) / (1024 * 1024)
+                log_batch(f"[{sku}] Arquivo: {original_filename} ({file_size_mb:.2f}MB)")
+                
+                log_batch(f"[{sku}] Buscando na Carteira de Compras...")
                 carteira_data = self._match_carteira_compras_in_session(sku, db)
                 
+                if carteira_data and carteira_data.get('found'):
+                    log_batch(f"[{sku}] ✓ MATCH encontrado na Carteira! Desc: {carteira_data.get('descricao', '')[:50]}...")
+                else:
+                    log_batch(f"[{sku}] ✗ Sem match na Carteira - será marcado para análise IA")
+                
+                log_batch(f"[{sku}] Fazendo upload para Object Storage...")
                 storage_result = None
                 for attempt in range(MAX_RETRIES):
                     try:
                         with open(temp_path, 'rb') as f:
                             ext = os.path.splitext(original_filename)[1] or '.jpg'
                             storage_result = self.object_storage.upload_file(f, f"{sku}{ext}")
+                        log_batch(f"[{sku}] ✓ Upload concluído")
                         break
                     except Exception as e:
+                        log_batch(f"[{sku}] Upload falhou (tentativa {attempt+1}/{MAX_RETRIES}): {e}", "WARN")
                         if attempt < MAX_RETRIES - 1:
                             time.sleep(RETRY_DELAY * (attempt + 1))
                         else:
@@ -297,6 +397,7 @@ class BatchProcessor:
                 
                 item = self.db.session.get(BatchItem, item_id)
                 item.status = 'Sucesso'
+                item.processing_status = 'completed'
                 item.storage_path = storage_path
                 item.image_id = new_image.id
                 item.ai_description = description
@@ -314,13 +415,36 @@ class BatchProcessor:
                 item.processed_at = datetime.utcnow()
                 item.erro_mensagem = None
                 
+                log_batch(f"[{sku}] Gerando thumbnail...")
+                try:
+                    with open(temp_path, 'rb') as f:
+                        image_data = f.read()
+                    thumbnail_bytes, thumb_width, thumb_height, thumb_size = generate_thumbnail_bytes(image_data)
+                    
+                    if thumbnail_bytes:
+                        thumbnail = ImageThumbnail(
+                            image_id=new_image.id,
+                            thumbnail_data=thumbnail_bytes,
+                            width=thumb_width,
+                            height=thumb_height,
+                            file_size=thumb_size,
+                            mime_type='image/jpeg'
+                        )
+                        self.db.session.add(thumbnail)
+                        log_batch(f"[{sku}] ✓ Thumbnail salvo: {thumb_size/1024:.1f}KB")
+                    else:
+                        log_batch(f"[{sku}] ⚠ Thumbnail não gerado", "WARN")
+                except Exception as thumb_err:
+                    log_batch(f"[{sku}] ⚠ Erro ao gerar thumbnail: {thumb_err}", "WARN")
+                
                 self.db.session.commit()
                 
+                log_batch(f"[{sku}] ✓ SUCESSO - Imagem #{new_image.id} criada (match: {match_source})")
                 return {'success': True, 'image_id': new_image.id, 'match_source': match_source}
                 
             except Exception as e:
                 error_msg = str(e)
-                print(f"[ERROR] Failed to process {sku}: {error_msg}")
+                log_batch(f"[{sku}] ✗ ERRO: {error_msg}", "ERROR")
                 traceback.print_exc()
                 
                 self.db.session.rollback()
@@ -328,6 +452,7 @@ class BatchProcessor:
                 item = self.db.session.get(BatchItem, item_id)
                 if item:
                     item.status = 'Erro'
+                    item.processing_status = 'failed'
                     item.erro_mensagem = error_msg[:500]
                     item.processed_at = datetime.utcnow()
                     self.db.session.commit()

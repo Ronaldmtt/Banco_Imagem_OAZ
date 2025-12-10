@@ -79,8 +79,11 @@
             <div class="image-card">
                 <div style="position: relative;">
                     <a href="{{ url_for('image_detail', id=image.id) }}">
-                        <img src="{{ image.image_url }}" class="image-preview"
-                            alt="{{ image.original_name }}">
+                        <img src="{{ url_for('serve_thumbnail', image_id=image.id) }}" 
+                             class="image-preview"
+                             alt="{{ image.original_name }}"
+                             loading="lazy"
+                             onerror="this.src='{{ image.image_url }}'">
                     </a>
                     <div style="position: absolute; top: 8px; left: 8px;">
                         <input type="checkbox" style="transform: scale(1.2);">

@@ -793,10 +793,11 @@ def analyze_image_with_ai(image_path):
         return f"Erro ao analisar imagem: {str(e)}"
 
 
-def analyze_image_with_context(image_path, sku=None, collection_id=None, brand_id=None, subcolecao_id=None):
+def analyze_image_with_context(image_path_or_url, sku=None, collection_id=None, brand_id=None, subcolecao_id=None, is_url=False):
     """
     Analisa imagem com contexto das carteiras de compras importadas.
     Busca produtos similares para dar contexto ao GPT.
+    Aceita caminho de arquivo local ou URL da imagem.
     """
     client = get_openai_client()
     if not client:
@@ -856,7 +857,17 @@ Use terminologia e padrões similares aos produtos de referência.
 
 """
         
-        base64_image = encode_image(image_path)
+        if is_url:
+            image_content = {
+                "type": "image_url",
+                "image_url": {"url": image_path_or_url}
+            }
+        else:
+            base64_image = encode_image(image_path_or_url)
+            image_content = {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            }
         
         prompt = f"""
         Você é um especialista em moda analisando imagens para o banco de imagens OAZ.
@@ -903,12 +914,7 @@ Use terminologia e padrões similares aos produtos de referência.
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
-                            },
-                        },
+                        image_content,
                     ],
                 }
             ],
@@ -1745,6 +1751,7 @@ def reanalyze_image(id):
     
     temp_file_path = None
     file_path = None
+    image_url = None
     
     if image.storage_path:
         from object_storage import object_storage
@@ -1757,21 +1764,44 @@ def reanalyze_image(id):
             os.write(fd, file_bytes)
             os.close(fd)
             file_path = temp_file_path
+        else:
+            if image.storage_path:
+                domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
+                if domain:
+                    image_url = f"https://{domain}/storage/{image.storage_path}"
+                else:
+                    image_url = url_for('serve_storage', path=image.storage_path, _external=True)
     
-    if not file_path:
+    if not file_path and not image_url:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
     
-    if not os.path.exists(file_path):
+    if not file_path and not image_url:
+        flash('Arquivo de imagem não encontrado')
+        return redirect(url_for('image_detail', id=id))
+    
+    if file_path and not os.path.exists(file_path) and not image_url:
+        if image.storage_path:
+            domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
+            if domain:
+                image_url = f"https://{domain}/storage/{image.storage_path}"
+            else:
+                image_url = url_for('serve_storage', path=image.storage_path, _external=True)
+    
+    use_url = image_url is not None
+    image_source = image_url if use_url else file_path
+    
+    if not image_source:
         flash('Arquivo de imagem não encontrado')
         return redirect(url_for('image_detail', id=id))
     
     try:
         ai_result = analyze_image_with_context(
-            file_path, 
+            image_source, 
             sku=image.sku,
             collection_id=image.collection_id,
             brand_id=image.brand_id,
-            subcolecao_id=image.subcolecao_id
+            subcolecao_id=image.subcolecao_id,
+            is_url=use_url
         )
         
         # Check if analysis failed (returned error message string)

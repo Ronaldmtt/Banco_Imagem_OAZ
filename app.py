@@ -119,6 +119,7 @@ class Image(db.Model):
     tags = db.Column(db.Text)
     
     # Campos extras da Carteira (preenchidos no cruzamento SKU)
+    nome_peca = db.Column(db.Text)  # Nome da peça vindo da Carteira (ex: "Jaqueta Reese")
     categoria = db.Column(db.String(100))  # GRUPO
     subcategoria = db.Column(db.String(100))  # SUBGRUPO
     tipo_peca = db.Column(db.String(50))  # TOP/BOTTOM/INTEIRO

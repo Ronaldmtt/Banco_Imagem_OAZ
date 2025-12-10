@@ -25,6 +25,9 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_recycle": 300,
         "pool_pre_ping": True,
+        "pool_size": 20,
+        "max_overflow": 30,
+        "pool_timeout": 60,
     }
     UPLOAD_FOLDER = 'static/uploads'
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'zip'}
@@ -3479,6 +3482,8 @@ def batch_upload_file():
         })
         
     except Exception as e:
+        db.session.rollback()
+        print(f"[UPLOAD ERROR] {file.filename if file else 'unknown'}: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/batch/<int:batch_id>/sync-total', methods=['POST'])

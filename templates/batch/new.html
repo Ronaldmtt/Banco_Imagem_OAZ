@@ -448,10 +448,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Upload single file with retry
-    async function uploadSingleFile(file, batchId, maxRetries = 3) {
+    // Upload single file with retry and exponential backoff
+    async function uploadSingleFile(file, batchId, maxRetries = 5) {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                if (uploadCancelled) {
+                    return { success: false, filename: file.name, cancelled: true };
+                }
+                
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('batch_id', batchId);
@@ -465,23 +469,29 @@ document.addEventListener('DOMContentLoaded', function() {
                     return { success: true, filename: file.name };
                 }
                 
+                // Server error, retry with backoff
                 if (attempt < maxRetries) {
-                    await new Promise(r => setTimeout(r, 500 * attempt));
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Max 10s
+                    console.log(`Retry ${attempt}/${maxRetries} for ${file.name} after ${delay}ms`);
+                    await new Promise(r => setTimeout(r, delay));
                 }
             } catch (err) {
+                console.log(`Error uploading ${file.name}: ${err.message}`);
                 if (attempt < maxRetries) {
-                    await new Promise(r => setTimeout(r, 500 * attempt));
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                    await new Promise(r => setTimeout(r, delay));
                 }
             }
         }
+        console.error(`Failed to upload ${file.name} after ${maxRetries} attempts`);
         return { success: false, filename: file.name };
     }
     
     // Upload multiple files function with retry
     async function uploadMultipleFiles(files, collectionId, brandId, batchName) {
         const totalFiles = files.length;
-        const BATCH_SIZE = 5; // Upload 5 files at a time (more stable)
-        const MAX_RETRIES = 3;
+        const BATCH_SIZE = 5; // Keep at 5 to avoid server overload
+        const MAX_RETRIES = 5; // More retries for large batches
         
         progressStatus.textContent = 'Criando lote...';
         progressDetails.textContent = `Preparando ${totalFiles} arquivos...`;

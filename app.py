@@ -1176,10 +1176,17 @@ def dashboard():
     total_brands = Brand.query.count()
     recent_images = Image.query.order_by(Image.upload_date.desc()).limit(5).all()
     
+    pending_skus = db.session.query(db.func.count(db.func.distinct(Image.sku_base))).filter(Image.status == 'Pendente').scalar() or 0
+    pending_ia_skus = db.session.query(db.func.count(db.func.distinct(Image.sku_base))).filter(Image.status == 'Pendente Análise IA').scalar() or 0
+    total_skus = db.session.query(db.func.count(db.func.distinct(Image.sku_base))).scalar() or 0
+    
     return render_template('dashboard/index.html',
                           total_images=total_images,
+                          total_skus=total_skus,
                           pending_images=pending_images,
+                          pending_skus=pending_skus,
                           pending_ia_images=pending_ia_images,
+                          pending_ia_skus=pending_ia_skus,
                           approved_images=approved_images,
                           rejected_images=rejected_images,
                           total_collections=total_collections,

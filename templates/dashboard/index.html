@@ -11,21 +11,21 @@
         <div class="stat-title">Total de Imagens</div>
         <div class="stat-value">{{ total_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
-            no sistema
+            {{ total_skus }} SKUs únicos
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-title">Com Match (Pendentes)</div>
         <div class="stat-value" style="color: #d29922;">{{ pending_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
-            aguardando revisão
+            {{ pending_skus }} SKUs aguardando revisão
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-title">Sem Match (Análise IA)</div>
         <div class="stat-value" style="color: #9333ea;">{{ pending_ia_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
-            sem dados na Carteira
+            {{ pending_ia_skus }} SKUs sem dados
         </div>
     </div>
     <div class="stat-card">

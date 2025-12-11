@@ -14,6 +14,15 @@ import json
 import base64
 from PIL import Image as PILImage
 
+# Sistema de Logging OAZ
+from oaz_logger import (
+    info, debug, warn, error, success,
+    log_start, log_end, log_progress, log_action, log_error, log_data,
+    log_route, log_operation, log_separator, log_section,
+    auth_log, batch_log, upload_log, carteira_log, catalog_log, crud_log, nav_log,
+    M  # Módulos
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -1107,18 +1116,18 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        print(f"[DEBUG] Login attempt - Username: {username}, Password length: {len(password) if password else 0}")
+        auth_log.login_attempt(username)
         user = User.query.filter_by(username=username).first()
-        print(f"[DEBUG] User found: {user is not None}")
         if user:
             password_check = user.check_password(password)
-            print(f"[DEBUG] Password check result: {password_check}")
             if password_check:
                 login_user(user)
-                print(f"[DEBUG] User logged in successfully: {user.username}")
+                auth_log.login_success(username, user.id)
                 return redirect(url_for('dashboard'))
+        auth_log.login_failed(username, "Usuário ou senha inválidos")
         flash('Usuário ou senha inválidos')
-        print(f"[DEBUG] Login failed")
+    else:
+        nav_log.page_enter("Login")
     return render_template('auth/login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -1127,8 +1136,10 @@ def register():
         username = request.form.get('username')
         email = request.form.get('email')
         password = request.form.get('password')
+        info(M.AUTH, 'ACTION', f"Tentativa de registro", username=username, email=email)
         
         if User.query.filter_by(username=username).first():
+            warn(M.AUTH, 'WARN', f"Registro falhou - usuário já existe", username=username)
             flash('Nome de usuário já existe')
             return redirect(url_for('register'))
             
@@ -1136,13 +1147,18 @@ def register():
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
+        success(M.AUTH, 'SUCCESS', f"Usuário registrado com sucesso", username=username, user_id=user.id)
         login_user(user)
         return redirect(url_for('dashboard'))
+    else:
+        nav_log.page_enter("Registro")
     return render_template('auth/register.html')
 
 @app.route('/logout')
 @login_required
 def logout():
+    username = current_user.username if current_user else "desconhecido"
+    auth_log.logout(username)
     logout_user()
     return redirect(url_for('login'))
 
@@ -1296,6 +1312,7 @@ def serve_thumbnail(image_id):
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    nav_log.page_enter("Dashboard", user=current_user.username)
     total_images = Image.query.count()
     pending_images = Image.query.filter_by(status='Pendente').count()
     pending_ia_images = Image.query.filter_by(status='Pendente Análise IA').count()
@@ -1304,6 +1321,7 @@ def dashboard():
     total_collections = Collection.query.count()
     total_brands = Brand.query.count()
     recent_images = Image.query.order_by(Image.upload_date.desc()).limit(5).all()
+    debug(M.DASHBOARD, 'DATA', f"Métricas carregadas", imagens=total_images, pendentes=pending_images, colecoes=total_collections)
     
     pending_skus = db.session.query(db.func.count(db.func.distinct(Image.sku_base))).filter(Image.status == 'Pendente').scalar() or 0
     pending_ia_skus = db.session.query(db.func.count(db.func.distinct(Image.sku_base))).filter(Image.status == 'Pendente Análise IA').scalar() or 0
@@ -1369,6 +1387,9 @@ def catalog():
     search_query = request.args.get('q', '').strip()
     page = request.args.get('page', 1, type=int)
     per_page = 20
+    
+    filters = {'status': status_filter, 'collection': collection_filter, 'brand': brand_filter, 'q': search_query}
+    catalog_log.page_accessed(page, filters=filters)
     
     base_query = Image.query
     
@@ -1601,6 +1622,7 @@ def upload():
 @app.route('/collections')
 @login_required
 def collections():
+    nav_log.page_enter("Coleções", user=current_user.username)
     search = request.args.get('search', '')
     season = request.args.get('season', '')
     year = request.args.get('year', '')
@@ -1622,6 +1644,7 @@ def collections():
 def collection_detail(id):
     """Página de detalhes da coleção com filtros de subcoleção"""
     collection = Collection.query.get_or_404(id)
+    nav_log.page_enter(f"Coleção: {collection.name}", user=current_user.username)
     
     # Buscar subcoleções desta coleção
     subcolecoes = Subcolecao.query.filter_by(colecao_id=id).order_by(Subcolecao.nome).all()
@@ -1811,6 +1834,7 @@ def delete_all_collections():
 @app.route('/collections/new', methods=['GET', 'POST'])
 @login_required
 def new_collection():
+    nav_log.page_enter("Nova Coleção", user=current_user.username)
     if request.method == 'POST':
         name = request.form.get('name')
         description = request.form.get('description')
@@ -1831,6 +1855,7 @@ def new_collection():
         )
         db.session.add(collection)
         db.session.commit()
+        crud_log.created("Coleção", collection.id, name)
         
         flash('Coleção criada com sucesso!')
         return redirect(url_for('collections'))
@@ -2294,12 +2319,14 @@ def edit_image(id):
 @app.route('/brands')
 @login_required
 def brands():
+    nav_log.page_enter("Marcas", user=current_user.username)
     brands = Brand.query.order_by(Brand.name).all()
     return render_template('brands/list.html', brands=brands)
 
 @app.route('/brands/new', methods=['GET', 'POST'])
 @login_required
 def new_brand():
+    nav_log.page_enter("Nova Marca", user=current_user.username)
     if request.method == 'POST':
         name = request.form.get('name')
         description = request.form.get('description')
@@ -2315,6 +2342,7 @@ def new_brand():
         brand = Brand(name=name, description=description)
         db.session.add(brand)
         db.session.commit()
+        crud_log.created("Marca", brand.id, name)
         
         flash('Marca criada com sucesso!')
         return redirect(url_for('brands'))
@@ -2324,6 +2352,7 @@ def new_brand():
 @app.route('/analytics')
 @login_required
 def analytics():
+    nav_log.page_enter("Analytics", user=current_user.username)
     total_images = Image.query.count()
     pending_images = Image.query.filter_by(status='Pendente').count()
     approved_images = Image.query.filter_by(status='Aprovado').count()
@@ -2898,6 +2927,7 @@ def desassociar_imagem_produto(id, imagem_id):
 @app.route('/carteira')
 @login_required
 def carteira():
+    nav_log.page_enter("Carteira de Compras", user=current_user.username)
     status = request.args.get('status', '')
     search = request.args.get('search', '')
     lote = request.args.get('lote', '')
@@ -2952,6 +2982,7 @@ def carteira():
 @login_required
 def deletar_lote_carteira(lote_id):
     """Deleta todos os itens de um lote de importação"""
+    log_start(M.CARTEIRA, f"Exclusão de lote: {lote_id}")
     try:
         itens = CarteiraCompras.query.filter_by(lote_importacao=lote_id).all()
         count = len(itens)
@@ -2960,9 +2991,11 @@ def deletar_lote_carteira(lote_id):
             db.session.delete(item)
         
         db.session.commit()
+        log_end(M.CARTEIRA, f"Lote {lote_id} excluído: {count} itens removidos")
         flash(f'Lote "{lote_id}" deletado com sucesso! {count} itens removidos.', 'success')
     except Exception as e:
         db.session.rollback()
+        log_error(M.CARTEIRA, f"Exclusão de lote {lote_id}", str(e))
         flash(f'Erro ao deletar lote: {str(e)}', 'error')
     
     return redirect(url_for('carteira'))
@@ -2971,13 +3004,16 @@ def deletar_lote_carteira(lote_id):
 @login_required
 def limpar_toda_carteira():
     """Limpa toda a carteira de compras"""
+    log_start(M.CARTEIRA, "Limpeza completa da carteira")
     try:
         count = CarteiraCompras.query.count()
         CarteiraCompras.query.delete()
         db.session.commit()
+        log_end(M.CARTEIRA, f"Carteira limpa: {count} itens removidos")
         flash(f'Carteira limpa com sucesso! {count} itens removidos.', 'success')
     except Exception as e:
         db.session.rollback()
+        log_error(M.CARTEIRA, "Limpeza da carteira", str(e))
         flash(f'Erro ao limpar carteira: {str(e)}', 'error')
     
     return redirect(url_for('carteira'))
@@ -3365,6 +3401,9 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     """
     import pandas as pd
     
+    log_start(M.CARTEIRA, f"Processando aba: {aba_origem}")
+    total_linhas = len(df)
+    
     if contadores is None:
         contadores = {
             'colecoes_criadas': 0,
@@ -3483,7 +3522,11 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
             
             db.session.add(item)
             count += 1
+            
+            if count % 100 == 0:
+                log_progress(M.CARTEIRA, "Importação", count, total_linhas)
     
+    log_end(M.CARTEIRA, f"Aba {aba_origem}: {count} registros")
     return count, skus_invalidos
 
 def reconciliar_imagens_com_carteira():
@@ -3557,7 +3600,9 @@ def reconciliar_imagens_com_carteira():
 @login_required
 def reconciliar_carteira():
     """Endpoint para reconciliar imagens com a Carteira."""
+    carteira_log.reconciliation_started()
     reconciliadas = reconciliar_imagens_com_carteira()
+    carteira_log.reconciliation_completed(reconciliadas)
     
     if reconciliadas > 0:
         flash(f'{reconciliadas} imagem(ns) reconciliada(s) com a Carteira!')
@@ -3594,6 +3639,8 @@ def importar_carteira():
             importar_todas = request.form.get('importar_todas', '') == 'true'
             tipo_carteira = request.form.get('tipo_carteira', 'Moda')
             
+            carteira_log.import_started(file.filename, aba_selecionada if aba_selecionada else 'todas')
+            
             marca_do_arquivo = extrair_marca_do_nome_arquivo(file.filename)
             
             total_count = 0
@@ -3626,6 +3673,7 @@ def importar_carteira():
                 total_count = count
                 total_invalidos = invalidos
                 abas_processadas.append('CSV')
+                carteira_log.import_progress(count, count, 'CSV')
                 
             else:
                 xl = pd.ExcelFile(file)
@@ -3647,6 +3695,7 @@ def importar_carteira():
                         total_invalidos += invalidos
                         if count > 0:
                             abas_processadas.append(f"{sheet_name} ({count})")
+                            carteira_log.import_progress(total_count, len(xl.sheet_names), sheet_name)
                     
                     if total_count == 0:
                         flash('Nenhum item válido encontrado nas abas do Excel. Verifique se existe uma coluna "REFERÊNCIA E COR" ou "SKU" em pelo menos uma aba.', 'error')
@@ -3668,6 +3717,7 @@ def importar_carteira():
                     total_count = count
                     total_invalidos = invalidos
                     abas_processadas.append(aba_selecionada)
+                    carteira_log.import_progress(count, count, aba_selecionada)
             
             db.session.commit()
             
@@ -3694,11 +3744,14 @@ def importar_carteira():
             
             atualizar_status_carteira()
             
+            carteira_log.import_completed(total_count, len(abas_processadas), lote_id)
+            
             # Retornar sucesso para requisição AJAX
             return {'success': True, 'message': f'{total_count} itens importados'}, 200
             
         except Exception as e:
             db.session.rollback()
+            carteira_log.import_error(str(e))
             flash(f'Erro ao importar: {str(e)}', 'error')
             return {'success': False, 'error': str(e)}, 500
     
@@ -3938,6 +3991,7 @@ def get_batch_processor():
 @login_required
 def batch_list():
     """Lista todos os lotes de upload"""
+    nav_log.page_enter("Batches", user=current_user.username)
     batches = BatchUpload.query.filter_by(usuario_id=current_user.id).order_by(BatchUpload.created_at.desc()).all()
     return render_template('batch/index.html', batches=batches)
 
@@ -3945,6 +3999,7 @@ def batch_list():
 @login_required
 def batch_queue():
     """Página para criar múltiplos batches e processar em fila"""
+    nav_log.page_enter("Fila de Batches", user=current_user.username)
     collections = Collection.query.order_by(Collection.name).all()
     brands = Brand.query.order_by(Brand.name).all()
     return render_template('batch/queue.html', collections=collections, brands=brands)
@@ -3958,6 +4013,8 @@ def batch_process_all():
     
     if not batch_ids:
         return jsonify({'error': 'Nenhum batch especificado'}), 400
+    
+    log_start(M.BATCH, f"Processando todos os batches: {len(batch_ids)} lotes")
     
     batches_to_process = []
     for batch_id in batch_ids:
@@ -3981,6 +4038,8 @@ def batch_process_all():
         )
         thread.daemon = True
         thread.start()
+    
+    log_end(M.BATCH, "Processamento de múltiplos batches")
     
     return jsonify({
         'success': True,
@@ -4096,6 +4155,8 @@ def batch_create_async():
     db.session.add(batch)
     db.session.commit()
     
+    batch_log.batch_created(batch.id, batch_name, total_files)
+    
     return jsonify({
         'batch_id': batch.id,
         'status': 'created'
@@ -4117,6 +4178,9 @@ def batch_upload_file():
     batch = BatchUpload.query.get(batch_id)
     if not batch:
         return jsonify({'error': 'Batch not found'}), 404
+    
+    file_size = request.content_length or 0
+    upload_log.upload_started(batch_id, file.filename, file_size)
     
     try:
         ext = os.path.splitext(file.filename)[1].lower()
@@ -4145,6 +4209,8 @@ def batch_upload_file():
         db.session.add(item)
         db.session.commit()
         
+        debug(M.UPLOAD, 'SUCCESS', f"Arquivo recebido", sku=sku)
+        
         return jsonify({
             'success': True,
             'item_id': item.id,
@@ -4153,7 +4219,7 @@ def batch_upload_file():
         
     except Exception as e:
         db.session.rollback()
-        print(f"[UPLOAD ERROR] {file.filename if file else 'unknown'}: {str(e)}")
+        upload_log.upload_error(batch_id, file.filename if file else 'unknown', str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/batch/<int:batch_id>/sync-total', methods=['POST'])
@@ -4176,6 +4242,8 @@ def batch_sync_total(batch_id):
 @login_required
 def batch_delete(batch_id):
     """Exclui um lote e todos os seus itens"""
+    log_start(M.BATCH, f"Excluindo batch #{batch_id}")
+    
     batch = BatchUpload.query.get_or_404(batch_id)
     
     if batch.usuario_id != current_user.id and not current_user.is_admin:
@@ -4194,10 +4262,13 @@ def batch_delete(batch_id):
         db.session.delete(batch)
         db.session.commit()
         
+        log_end(M.BATCH, f"Batch #{batch_id} excluído")
+        
         return jsonify({'success': True, 'message': 'Lote excluído com sucesso'})
         
     except Exception as e:
         db.session.rollback()
+        batch_log.batch_error(batch_id, str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/batch/<int:batch_id>')
@@ -4265,6 +4336,8 @@ def batch_streaming_upload():
     Salva arquivos em disco usando chunks de 20MB sem carregar na memória
     """
     import hashlib
+    
+    log_start(M.UPLOAD, "Streaming upload iniciado")
     
     CHUNK_SIZE = 20 * 1024 * 1024  # 20MB chunks
     TEMP_UPLOAD_DIR = '/tmp/batch_uploads'
@@ -4353,6 +4426,8 @@ def batch_streaming_upload():
     batch.total_arquivos = BatchItem.query.filter_by(batch_id=batch_id).count()
     db.session.commit()
     
+    log_end(M.UPLOAD, f"Streaming upload concluído: {len(received_files)} arquivos recebidos")
+    
     return {
         'batch_id': batch_id,
         'received_count': len(received_files),
@@ -4377,6 +4452,8 @@ def batch_start_processing(batch_id):
     
     if not pending_items:
         return {'error': 'Nenhum item pendente para processar'}, 400
+    
+    batch_log.batch_started(batch_id, len(pending_items))
     
     batch.status = 'Processando'
     batch.started_at = datetime.utcnow()

@@ -16,6 +16,12 @@ from threading import Lock
 import time
 from PIL import Image as PILImage
 
+from oaz_logger import (
+    info, debug, warn, error, success,
+    log_start, log_end, log_progress, log_error,
+    batch_log, M
+)
+
 MAX_WORKERS = 5
 MAX_RETRIES = 3
 RETRY_DELAY = 2
@@ -23,9 +29,15 @@ RETRY_DELAY = 2
 progress_lock = Lock()
 
 def log_batch(message, level="INFO"):
-    """Logger centralizado para batch processing"""
-    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"[{timestamp}] [{level}] [BATCH] {message}")
+    """Logger centralizado para batch processing - usando sistema OAZ"""
+    if level == "ERROR":
+        error(M.BATCH, 'PROCESS', message)
+    elif level == "WARN":
+        warn(M.BATCH, 'PROCESS', message)
+    elif level == "DEBUG":
+        debug(M.BATCH, 'PROCESS', message)
+    else:
+        info(M.BATCH, 'PROCESS', message)
 
 def generate_thumbnail_bytes(image_data, max_width=300, quality=75):
     """Gera thumbnail a partir de dados de imagem

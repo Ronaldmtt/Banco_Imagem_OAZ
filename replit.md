@@ -39,11 +39,14 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
     - 300px max width, JPEG quality 75% (~5-50KB each)
     - Endpoint `/thumbnail/<image_id>` serves thumbnails with fallback generation
     - Catalog listing uses thumbnails for fast page loads
--   **Logging System**: Extensive console logging for monitoring:
-    - Timestamps with milliseconds for all batch operations
-    - Progress tracking with rate (img/s) and ETA
-    - Individual image processing logs with SKU and status
-    - Carteira match status visible in real-time
+-   **Logging System**: Sistema de logging centralizado (`oaz_logger.py`) para monitoramento RPA:
+    - Formato estruturado: `[TIMESTAMP] [LEVEL] [MODULE] [ACTION] mensagem | key=value`
+    - Módulos: AUTH, BATCH, UPLOAD, CARTEIRA, CATALOG, CRUD, DASHBOARD, SYSTEM
+    - Logs especializados: auth_log, batch_log, upload_log, carteira_log, catalog_log, crud_log, nav_log
+    - Rastreamento de início/progresso/fim de cada operação
+    - Integrado em todas as rotas Flask e processamento de batch
+    - Timestamps com milissegundos para debugging
+    - Cores no console para fácil identificação visual
 -   **Data Models**: Includes models for Users, Brands, Collections, Images, ImageItems (for multi-piece detection), Products, SKU History, and Shopping Cart (CarteiraCompras) imports.
 -   **Workflow**: Implements a status workflow for images: Pendente → Aprovado/Rejeitado → Pendente Análise IA.
 -   **Product Management**: Comprehensive CRUD operations for products, linking images to products, and tracking SKU changes with an audit trail.

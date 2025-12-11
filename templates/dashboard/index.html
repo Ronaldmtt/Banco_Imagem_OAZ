@@ -75,6 +75,53 @@
                 <canvas id="statusChart"></canvas>
             </div>
         </div>
+        
+        <div class="chart-card" style="background: linear-gradient(135deg, rgba(255,107,53,0.1), rgba(139,92,246,0.1));">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3><i class="fas fa-camera" style="color: #ff6b35; margin-right: 8px;"></i>SKUs Pendentes de Foto</h3>
+                <a href="{{ url_for('skus_sem_foto') }}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-list"></i> Ver Lista Completa
+                </a>
+            </div>
+            <div style="display: flex; gap: 20px; margin-bottom: 1rem;">
+                <div style="text-align: center; padding: 15px 25px; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                    <div style="font-size: 2rem; font-weight: 700; color: #ff6b35;">{{ total_skus_sem_foto }}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">SKUs sem foto</div>
+                </div>
+                <div style="text-align: center; padding: 15px 25px; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                    <div style="font-size: 2rem; font-weight: 700; color: #3fb950;">{{ total_skus_carteira - total_skus_sem_foto }}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">SKUs com foto</div>
+                </div>
+                <div style="text-align: center; padding: 15px 25px; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                    <div style="font-size: 2rem; font-weight: 700; color: var(--accent-blue);">{{ total_skus_carteira }}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Total na Carteira</div>
+                </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                {% for item in skus_pendentes_foto %}
+                <div style="display: flex; align-items: center; gap: 15px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600;">{{ item.colecao }}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                            {{ item.com_foto }}/{{ item.total }} SKUs fotografados
+                        </div>
+                    </div>
+                    <div style="width: 150px;">
+                        <div style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                            <div style="width: {{ item.percentual }}%; height: 100%; background: linear-gradient(90deg, #3fb950, #28a745); border-radius: 4px;"></div>
+                        </div>
+                    </div>
+                    <div style="width: 50px; text-align: right; font-weight: 600; color: {% if item.percentual >= 80 %}#3fb950{% elif item.percentual >= 50 %}#d29922{% else %}#f85149{% endif %};">
+                        {{ item.percentual }}%
+                    </div>
+                    <div style="color: #f85149; font-weight: 600; min-width: 80px; text-align: right;">
+                        {{ item.sem_foto }} pendentes
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 1.5rem;">

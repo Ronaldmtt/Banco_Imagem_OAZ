@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}SKUs Pendentes de Foto - OAZ Smart Image Bank{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-camera" style="color: #ff6b35;"></i> SKUs Pendentes de Foto</h1>
+    <div class="header-actions">
+        <a href="{{ url_for('exportar_skus_sem_foto') }}" class="btn btn-success">
+            <i class="fas fa-file-csv"></i> Exportar CSV
+        </a>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<div class="stats-row" style="display: flex; gap: 20px; margin-bottom: 2rem;">
+    <div class="stat-card" style="flex: 1; text-align: center;">
+        <div style="font-size: 2.5rem; font-weight: 700; color: #ff6b35;">{{ total_sem_foto }}</div>
+        <div style="color: var(--text-secondary);">SKUs Sem Foto</div>
+    </div>
+    <div class="stat-card" style="flex: 1; text-align: center;">
+        <div style="font-size: 2.5rem; font-weight: 700; color: #3fb950;">{{ total_com_foto }}</div>
+        <div style="color: var(--text-secondary);">SKUs Com Foto</div>
+    </div>
+    <div class="stat-card" style="flex: 1; text-align: center;">
+        <div style="font-size: 2.5rem; font-weight: 700; color: var(--accent-blue);">{{ total_carteira }}</div>
+        <div style="color: var(--text-secondary);">Total na Carteira</div>
+    </div>
+    <div class="stat-card" style="flex: 1; text-align: center;">
+        <div style="font-size: 2.5rem; font-weight: 700; color: {% if percentual >= 80 %}#3fb950{% elif percentual >= 50 %}#d29922{% else %}#f85149{% endif %};">{{ percentual }}%</div>
+        <div style="color: var(--text-secondary);">Cobertura</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Filtrar por Coleção</h3>
+        <div class="filter-tabs">
+            <a href="{{ url_for('skus_sem_foto') }}" class="filter-tab {% if not colecao_filter %}active{% endif %}">Todas</a>
+            {% for col in colecoes %}
+            <a href="{{ url_for('skus_sem_foto', colecao=col.id) }}" 
+               class="filter-tab {% if colecao_filter == col.id %}active{% endif %}">{{ col.name }}</a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if skus_sem_foto %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Coleção</th>
+                    <th>Marca</th>
+                    <th>Categoria</th>
+                    <th>Subcategoria</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in skus_sem_foto %}
+                <tr>
+                    <td><strong>{{ item.sku }}</strong></td>
+                    <td>{{ item.colecao or '-' }}</td>
+                    <td>{{ item.marca or '-' }}</td>
+                    <td>{{ item.categoria or '-' }}</td>
+                    <td>{{ item.subcategoria or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        {% if pagination.pages > 1 %}
+        <div class="pagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('skus_sem_foto', page=pagination.prev_num, colecao=colecao_filter) }}" class="btn btn-sm btn-secondary">
+                <i class="fas fa-chevron-left"></i> Anterior
+            </a>
+            {% endif %}
+            
+            <span style="padding: 8px 16px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                Página {{ pagination.page }} de {{ pagination.pages }}
+            </span>
+            
+            {% if pagination.has_next %}
+            <a href="{{ url_for('skus_sem_foto', page=pagination.next_num, colecao=colecao_filter) }}" class="btn btn-sm btn-secondary">
+                Próximo <i class="fas fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% else %}
+        <div class="empty-state" style="text-align: center; padding: 3rem;">
+            <i class="fas fa-check-circle" style="font-size: 4rem; color: #3fb950; margin-bottom: 1rem;"></i>
+            <h3>Todos os SKUs têm foto!</h3>
+            <p style="color: var(--text-secondary);">Não há SKUs pendentes de fotografia nesta coleção.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+.btn-success {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+}
+.filter-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.filter-tab {
+    padding: 6px 14px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.filter-tab:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+}
+.filter-tab.active {
+    background: var(--primary-color);
+    color: white;
+}
+.stat-card {
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+</style>
+{% endblock %}

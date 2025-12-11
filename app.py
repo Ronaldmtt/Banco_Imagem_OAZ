@@ -4197,9 +4197,8 @@ def batch_create_async():
 @app.route('/batch/upload-file', methods=['POST'])
 @login_required
 def batch_upload_file():
-    """Upload de um único arquivo para um lote existente"""
-    TEMP_UPLOAD_DIR = '/tmp/batch_uploads'
-    os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+    """Upload de um único arquivo direto para Object Storage (sem usar /tmp)"""
+    from object_storage import object_storage as storage_service
     
     batch_id = request.form.get('batch_id')
     file = request.files.get('file')
@@ -4223,10 +4222,11 @@ def batch_upload_file():
         if not sku:
             sku = os.path.splitext(file.filename)[0]
         
-        safe_filename = f"{batch_id}_{sku}_{datetime.now().strftime('%H%M%S%f')}{ext}"
-        temp_path = os.path.join(TEMP_UPLOAD_DIR, safe_filename)
+        file_bytes = file.read()
+        file_size_actual = len(file_bytes)
         
-        file.save(temp_path)
+        result = storage_service.upload_file(io.BytesIO(file_bytes), file.filename)
+        storage_path = result['object_name']
         
         item = BatchItem(
             batch_id=batch_id,
@@ -4235,18 +4235,19 @@ def batch_upload_file():
             status='Pendente',
             reception_status='received',
             processing_status='pending',
-            received_path=temp_path,
-            file_size=os.path.getsize(temp_path)
+            received_path=storage_path,
+            file_size=file_size_actual
         )
         db.session.add(item)
         db.session.commit()
         
-        debug(M.UPLOAD, 'SUCCESS', f"Arquivo recebido", sku=sku)
+        debug(M.UPLOAD, 'SUCCESS', f"Arquivo enviado ao Object Storage", sku=sku, path=storage_path)
         
         return jsonify({
             'success': True,
             'item_id': item.id,
-            'sku': sku
+            'sku': sku,
+            'storage_path': storage_path
         })
         
     except Exception as e:

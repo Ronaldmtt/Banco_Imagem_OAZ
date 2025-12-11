@@ -1,0 +1,321 @@
+
+    fd = _os.open(file, flags, 0o600)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 122] Disk quota exceeded: '/tmp/tmp_9ru70ul'
+[2025-12-11 23:00:12.407] [WARN   ] [SYSTEM         ] [UPLOAD_RETRY] [JS] Retry 3/8 para 04.26.12.496.061_2.jpg (HTTP 500) | batch_id=12
+172.31.88.162 - - [11/Dec/2025 23:00:12] "POST /api/log HTTP/1.1" 200 -
+[2025-12-11 23:00:12.424] [WARN   ] [SYSTEM         ] [UPLOAD_RETRY] [JS] Retry 3/8 para 04.26.12.496.061_1.jpg (HTTP 500) | batch_id=12
+172.31.88.162 - - [11/Dec/2025 23:00:12] "POST /api/log HTTP/1.1" 200 -
+[2025-12-11 23:00:12.542] [WARN   ] [SYSTEM         ] [UPLOAD_RETRY] [JS] Retry 3/8 para 04.26.12.496.002_4.jpg (HTTP 500) | batch_id=12
+172.31.88.162 - - [11/Dec/2025 23:00:12] "POST /api/log HTTP/1.1" 200 -
+172.31.88.162 - - [11/Dec/2025 23:00:19] "POST /batch/upload-file HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask_login/utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/app.py", line 4204, in batch_upload_file
+    batch_id = request.form.get('batch_id')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/utils.py", line 100, in __get__
+    value = self.fget(obj)  # type: ignore
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 445, in form
+    self._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/wrappers.py", line 198, in _load_form_data
+    super()._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 271, in _load_form_data
+    data = parser.parse(
+           ^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 242, in parse
+    return parse_func(stream, mimetype, content_length, options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 267, in _parse_multipart
+    form, files = parser.parse(stream, boundary, content_length)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 391, in parse
+    _write(event.data)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 844, in write
+    self._check(file)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 712, in _check
+    self.rollover()
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 717, in rollover
+    newfile = self._file = TemporaryFile(**self._TemporaryFileArgs)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 674, in TemporaryFile
+    file = _io.open(dir, mode, buffering=buffering,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 667, in opener
+    fd, name = _mkstemp_inner(dir, prefix, suffix, flags, output_type)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 257, in _mkstemp_inner
+    fd = _os.open(file, flags, 0o600)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 122] Disk quota exceeded: '/tmp/tmpab1kg7de'
+172.31.88.162 - - [11/Dec/2025 23:00:19] "POST /batch/upload-file HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask_login/utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/app.py", line 4204, in batch_upload_file
+    batch_id = request.form.get('batch_id')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/utils.py", line 100, in __get__
+    value = self.fget(obj)  # type: ignore
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 445, in form
+    self._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/wrappers.py", line 198, in _load_form_data
+    super()._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 271, in _load_form_data
+    data = parser.parse(
+           ^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 242, in parse
+    return parse_func(stream, mimetype, content_length, options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 267, in _parse_multipart
+    form, files = parser.parse(stream, boundary, content_length)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 391, in parse
+    _write(event.data)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 844, in write
+    self._check(file)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 712, in _check
+    self.rollover()
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 717, in rollover
+    newfile = self._file = TemporaryFile(**self._TemporaryFileArgs)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 674, in TemporaryFile
+    file = _io.open(dir, mode, buffering=buffering,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 667, in opener
+    fd, name = _mkstemp_inner(dir, prefix, suffix, flags, output_type)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 257, in _mkstemp_inner
+    fd = _os.open(file, flags, 0o600)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 122] Disk quota exceeded: '/tmp/tmp7zq6hjqv'
+172.31.88.162 - - [11/Dec/2025 23:00:21] "POST /batch/upload-file HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask_login/utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/app.py", line 4204, in batch_upload_file
+    batch_id = request.form.get('batch_id')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/utils.py", line 100, in __get__
+    value = self.fget(obj)  # type: ignore
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 445, in form
+    self._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/wrappers.py", line 198, in _load_form_data
+    super()._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 271, in _load_form_data
+    data = parser.parse(
+           ^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 242, in parse
+    return parse_func(stream, mimetype, content_length, options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 267, in _parse_multipart
+    form, files = parser.parse(stream, boundary, content_length)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 391, in parse
+    _write(event.data)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 844, in write
+    self._check(file)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 712, in _check
+    self.rollover()
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 717, in rollover
+    newfile = self._file = TemporaryFile(**self._TemporaryFileArgs)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 674, in TemporaryFile
+    file = _io.open(dir, mode, buffering=buffering,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 667, in opener
+    fd, name = _mkstemp_inner(dir, prefix, suffix, flags, output_type)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 257, in _mkstemp_inner
+    fd = _os.open(file, flags, 0o600)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 122] Disk quota exceeded: '/tmp/tmpne785va_'
+172.31.88.162 - - [11/Dec/2025 23:00:21] "POST /batch/upload-file HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask_login/utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/app.py", line 4204, in batch_upload_file
+    batch_id = request.form.get('batch_id')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/utils.py", line 100, in __get__
+    value = self.fget(obj)  # type: ignore
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 445, in form
+    self._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/wrappers.py", line 198, in _load_form_data
+    super()._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 271, in _load_form_data
+    data = parser.parse(
+           ^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 242, in parse
+    return parse_func(stream, mimetype, content_length, options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 267, in _parse_multipart
+    form, files = parser.parse(stream, boundary, content_length)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 391, in parse
+    _write(event.data)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 844, in write
+    self._check(file)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 712, in _check
+    self.rollover()
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 717, in rollover
+    newfile = self._file = TemporaryFile(**self._TemporaryFileArgs)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 674, in TemporaryFile
+    file = _io.open(dir, mode, buffering=buffering,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 667, in opener
+    fd, name = _mkstemp_inner(dir, prefix, suffix, flags, output_type)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 257, in _mkstemp_inner
+    fd = _os.open(file, flags, 0o600)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 122] Disk quota exceeded: '/tmp/tmplkdx_mvh'
+172.31.88.162 - - [11/Dec/2025 23:00:21] "POST /batch/upload-file HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask_login/utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/app.py", line 4204, in batch_upload_file
+    batch_id = request.form.get('batch_id')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/utils.py", line 100, in __get__
+    value = self.fget(obj)  # type: ignore
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 445, in form
+    self._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/wrappers.py", line 198, in _load_form_data
+    super()._load_form_data()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 271, in _load_form_data
+    data = parser.parse(
+           ^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 242, in parse
+    return parse_func(stream, mimetype, content_length, options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 267, in _parse_multipart
+    form, files = parser.parse(stream, boundary, content_length)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/werkzeug/formparser.py", line 391, in parse
+    _write(event.data)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 844, in write
+    self._check(file)
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 712, in _check
+    self.rollover()
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 717, in rollover
+    newfile = self._file = TemporaryFile(**self._TemporaryFileArgs)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 674, in TemporaryFile
+    file = _io.open(dir, mode, buffering=buffering,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 667, in opener
+    fd, name = _mkstemp_inner(dir, prefix, suffix, flags, output_type)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tempfile.py", line 257, in _mkstemp_inner
+    fd = _os.open(file, flags, 0o600)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 122] Disk quota exceeded: '/tmp/tmpodtc_bw6'
+[2025-12-11 23:00:22.407] [WARN   ] [SYSTEM         ] [UPLOAD_RETRY] [JS] Retry 4/8 para 04.26.12.496.002_4.jpg (HTTP 500) | batch_id=12
+172.31.88.162 - - [11/Dec/2025 23:00:22] "POST /api/log HTTP/1.1" 200 -
+[2025-12-11 23:00:22.504] [WARN   ] [SYSTEM         ] [UPLOAD_RETRY] [JS] Retry 4/8 para 04.26.12.496.061_1.jpg (HTTP 500) | batch_id=12
+172.31.88.162 - - [11/Dec/2025 23:00:22] "POST /api/log HTTP/1.1" 200 -
+[2025-12-11 23:00:22.545] [WARN   ] [SYSTEM         ] [UPLOAD_RETRY] [JS] Retry 4/8 para 04.26.12.496.061_2.jpg (HTTP 500) | batch_id=12
+172.31.88.162 - - [11/Dec/2025 23:00:22] "POST /api/log HTTP/1.1" 200 -

@@ -575,17 +575,26 @@ class BatchProcessor:
                     continue
                 
                 for item in pending_items:
-                    if item.received_path and os.path.exists(item.received_path):
-                        temp_file_paths.append({
-                            'item_id': item.id,
-                            'sku': item.sku,
-                            'temp_path': item.received_path,
-                            'filename': item.filename_original
-                        })
+                    if item.received_path:
+                        is_object_storage = item.received_path.startswith('images/')
+                        is_local_file = os.path.exists(item.received_path) if not is_object_storage else False
+                        
+                        if is_object_storage or is_local_file:
+                            temp_file_paths.append({
+                                'item_id': item.id,
+                                'sku': item.sku,
+                                'temp_path': item.received_path,
+                                'filename': item.filename_original,
+                                'is_object_storage': is_object_storage
+                            })
+                        else:
+                            log_batch(f"Arquivo não encontrado para item {item.id}: {item.received_path}", "WARN")
+                            item.processing_status = 'failed'
+                            item.erro_mensagem = 'Arquivo não encontrado'
                     else:
-                        log_batch(f"Arquivo não encontrado para item {item.id}: {item.received_path}", "WARN")
+                        log_batch(f"Item {item.id} sem caminho de arquivo", "WARN")
                         item.processing_status = 'failed'
-                        item.erro_mensagem = 'Arquivo temporário não encontrado'
+                        item.erro_mensagem = 'Caminho de arquivo vazio'
                 
                 self.db.session.commit()
             

@@ -75,13 +75,14 @@ class BatchProcessor:
         self.analyze_func = analyze_func
         self.max_workers = app.config.get('MAX_BATCH_WORKERS', MAX_WORKERS)
     
-    def process_batch(self, batch_id, temp_file_paths):
+    def process_batch(self, batch_id, temp_file_paths, skip_cleanup=False):
         """
         Processa um lote de imagens em paralelo usando arquivos temporários
         
         Args:
             batch_id: ID do BatchUpload
             temp_file_paths: Lista de dicts com {item_id, sku, temp_path, filename}
+            skip_cleanup: Se True, não remove arquivos temporários após processamento
         """
         log_batch(f"========== INICIANDO PROCESSAMENTO LOTE #{batch_id} ==========")
         log_batch(f"Total de arquivos para processar: {len(temp_file_paths)}")
@@ -159,8 +160,11 @@ class BatchProcessor:
                 self.db.session.commit()
                 log_batch(f"Status do lote atualizado para 'Concluído'")
         
-        self._cleanup_temp_files(temp_file_paths)
-        log_batch(f"Arquivos temporários limpos")
+        if not skip_cleanup:
+            self._cleanup_temp_files(temp_file_paths)
+            log_batch(f"Arquivos temporários limpos")
+        else:
+            log_batch(f"Cleanup ignorado (skip_cleanup=True)")
     
     def _match_carteira_compras_in_session(self, sku_completo):
         """
@@ -505,6 +509,77 @@ class BatchProcessor:
                     shutil.rmtree(temp_dir, ignore_errors=True)
                 except Exception as e:
                     print(f"[WARN] Could not delete temp dir {temp_dir}: {e}")
+    
+    def process_multiple_batches(self, batch_ids):
+        """
+        Processa múltiplos batches em sequência.
+        Usado para processar todos os batches de uma fila de upload.
+        
+        Args:
+            batch_ids: Lista de IDs de BatchUpload para processar
+        """
+        log_batch(f"========== PROCESSANDO MÚLTIPLOS BATCHES ==========")
+        log_batch(f"Total de batches para processar: {len(batch_ids)}")
+        
+        all_temp_files = []
+        
+        for idx, batch_id in enumerate(batch_ids):
+            log_batch(f"--- Batch {idx + 1}/{len(batch_ids)} (ID: {batch_id}) ---")
+            
+            temp_file_paths = []
+            
+            with self.app.app_context():
+                from app import BatchUpload, BatchItem
+                
+                batch = self.db.session.get(BatchUpload, batch_id)
+                if not batch:
+                    log_batch(f"Batch {batch_id} não encontrado, pulando...", "WARN")
+                    continue
+                
+                pending_items = self.db.session.query(BatchItem).filter_by(
+                    batch_id=batch_id,
+                    processing_status='pending'
+                ).all()
+                
+                if not pending_items:
+                    log_batch(f"Batch {batch_id} não tem itens pendentes, pulando...")
+                    batch.status = 'Concluído'
+                    self.db.session.commit()
+                    continue
+                
+                for item in pending_items:
+                    if item.received_path and os.path.exists(item.received_path):
+                        temp_file_paths.append({
+                            'item_id': item.id,
+                            'sku': item.sku,
+                            'temp_path': item.received_path,
+                            'filename': item.filename_original
+                        })
+                    else:
+                        log_batch(f"Arquivo não encontrado para item {item.id}: {item.received_path}", "WARN")
+                        item.processing_status = 'failed'
+                        item.erro_mensagem = 'Arquivo temporário não encontrado'
+                
+                self.db.session.commit()
+            
+            if temp_file_paths:
+                log_batch(f"Iniciando processamento de {len(temp_file_paths)} itens do batch {batch_id}")
+                all_temp_files.extend(temp_file_paths)
+                self.process_batch(batch_id, temp_file_paths, skip_cleanup=True)
+            else:
+                with self.app.app_context():
+                    batch = self.db.session.get(BatchUpload, batch_id)
+                    if batch:
+                        log_batch(f"Nenhum arquivo válido para processar no batch {batch_id}", "WARN")
+                        batch.status = 'Erro'
+                        batch.finished_at = datetime.utcnow()
+                        self.db.session.commit()
+        
+        if all_temp_files:
+            log_batch(f"Limpando {len(all_temp_files)} arquivos temporários de todos os batches...")
+            self._cleanup_temp_files(all_temp_files)
+        
+        log_batch(f"========== TODOS OS BATCHES PROCESSADOS ==========")
 
 
 def extract_sku_from_filename(filename):

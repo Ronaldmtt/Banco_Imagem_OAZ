@@ -3792,6 +3792,53 @@ def batch_list():
     batches = BatchUpload.query.filter_by(usuario_id=current_user.id).order_by(BatchUpload.created_at.desc()).all()
     return render_template('batch/index.html', batches=batches)
 
+@app.route('/batch/queue')
+@login_required
+def batch_queue():
+    """Página para criar múltiplos batches e processar em fila"""
+    collections = Collection.query.order_by(Collection.name).all()
+    brands = Brand.query.order_by(Brand.name).all()
+    return render_template('batch/queue.html', collections=collections, brands=brands)
+
+@app.route('/batch/process-all', methods=['POST'])
+@login_required
+def batch_process_all():
+    """Processa múltiplos batches de uma vez"""
+    data = request.get_json()
+    batch_ids = data.get('batch_ids', [])
+    
+    if not batch_ids:
+        return jsonify({'error': 'Nenhum batch especificado'}), 400
+    
+    batches_to_process = []
+    for batch_id in batch_ids:
+        batch = BatchUpload.query.get(batch_id)
+        if batch and batch.usuario_id == current_user.id:
+            pending_items = BatchItem.query.filter_by(
+                batch_id=batch_id, 
+                processing_status='pending'
+            ).count()
+            if pending_items > 0:
+                batch.status = 'Processando'
+                batches_to_process.append(batch_id)
+    
+    db.session.commit()
+    
+    if batches_to_process:
+        processor = get_batch_processor()
+        thread = threading.Thread(
+            target=processor.process_multiple_batches,
+            args=(batches_to_process,)
+        )
+        thread.daemon = True
+        thread.start()
+    
+    return jsonify({
+        'success': True,
+        'batches_started': len(batches_to_process),
+        'batch_ids': batches_to_process
+    })
+
 @app.route('/batch/new', methods=['GET', 'POST'])
 @login_required
 def batch_new():

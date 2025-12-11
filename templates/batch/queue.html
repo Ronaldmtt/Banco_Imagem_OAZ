@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+
+{% block title %}Fila de Uploads - OAZ Smart Image Bank{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Fila de Uploads</h1>
+    <div class="header-actions">
+        <a href="{{ url_for('batch_list') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<div class="queue-container">
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-plus-circle"></i> Adicionar Batches à Fila</h3>
+        </div>
+        <div class="card-body">
+            <div id="batch-forms">
+                <div class="batch-form-item" data-index="0">
+                    <div class="batch-form-header">
+                        <span class="batch-number">Batch #1</span>
+                        <button type="button" class="btn btn-sm btn-danger remove-batch" style="display: none;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>Nome do Batch</label>
+                            <input type="text" class="form-control batch-name" placeholder="Ex: Coleção Verão 25-26">
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label>Coleção</label>
+                            <select class="form-control batch-collection">
+                                <option value="">Selecione...</option>
+                                {% for c in collections %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label>Marca</label>
+                            <select class="form-control batch-brand">
+                                <option value="">Selecione...</option>
+                                {% for b in brands %}
+                                <option value="{{ b.id }}">{{ b.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group col-md-2">
+                            <label>Arquivos</label>
+                            <div class="file-select-btn">
+                                <input type="file" class="batch-files" multiple accept=".jpg,.jpeg,.png,.gif,.webp">
+                                <span class="file-count">0 arquivos</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="add-batch-section">
+                <button type="button" class="btn btn-outline-primary" id="add-batch-btn">
+                    <i class="fas fa-plus"></i> Adicionar Outro Batch
+                </button>
+            </div>
+            
+            <div class="queue-summary" id="queue-summary" style="display: none;">
+                <div class="summary-stats">
+                    <div class="stat">
+                        <span class="stat-value" id="total-batches">0</span>
+                        <span class="stat-label">Batches</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="total-files">0</span>
+                        <span class="stat-label">Arquivos</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary btn-lg" id="start-queue-btn" disabled>
+                    <i class="fas fa-cloud-upload-alt"></i> Iniciar Upload da Fila
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="upload-progress-section" class="card" style="display: none;">
+        <div class="card-header">
+            <h3><i class="fas fa-tasks"></i> Progresso da Fila</h3>
+        </div>
+        <div class="card-body">
+            <div id="queue-progress-list"></div>
+            
+            <div class="overall-progress">
+                <div class="progress-header">
+                    <span>Progresso Geral</span>
+                    <span id="overall-percent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="overall-progress-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="processing-section" class="card" style="display: none;">
+        <div class="card-header">
+            <h3><i class="fas fa-cogs"></i> Processamento</h3>
+        </div>
+        <div class="card-body">
+            <div class="processing-info">
+                <p>Todos os uploads foram concluídos! Agora você pode processar todos os batches de uma vez.</p>
+                <p>O processamento fará o match das imagens com a Carteira de Compras.</p>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-success btn-lg" id="process-all-btn">
+                    <i class="fas fa-play"></i> Processar Todos os Batches
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.queue-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.batch-form-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+.batch-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+.batch-number {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 1.1rem;
+}
+.form-row {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+.form-group {
+    flex: 1;
+    min-width: 150px;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+.file-select-btn {
+    position: relative;
+    overflow: hidden;
+}
+.file-select-btn input[type="file"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+.file-count {
+    display: block;
+    padding: 10px 15px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+}
+.file-count:hover {
+    background: rgba(255,255,255,0.1);
+}
+.add-batch-section {
+    text-align: center;
+    margin: 20px 0;
+}
+.btn-outline-primary {
+    background: transparent;
+    border: 2px dashed var(--primary-color);
+    color: var(--primary-color);
+}
+.btn-outline-primary:hover {
+    background: rgba(255,107,53,0.1);
+}
+.queue-summary {
+    background: rgba(255,107,53,0.1);
+    border: 1px solid rgba(255,107,53,0.3);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+}
+.summary-stats {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+}
+.stat {
+    text-align: center;
+}
+.stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+.stat-label {
+    color: var(--text-secondary);
+}
+.form-actions {
+    text-align: center;
+    margin-top: 30px;
+}
+.btn-lg {
+    padding: 15px 40px;
+    font-size: 1.1rem;
+}
+#queue-progress-list {
+    margin-bottom: 30px;
+}
+.queue-item-progress {
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 10px;
+}
+.queue-item-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.queue-item-name {
+    font-weight: 600;
+}
+.queue-item-status {
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+.status-waiting {
+    background: rgba(108,117,125,0.2);
+    color: #6c757d;
+}
+.status-uploading {
+    background: rgba(0,123,255,0.2);
+    color: #007bff;
+}
+.status-uploaded {
+    background: rgba(40,167,69,0.2);
+    color: #28a745;
+}
+.status-processing {
+    background: rgba(255,193,7,0.2);
+    color: #ffc107;
+}
+.overall-progress {
+    margin-top: 20px;
+}
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.progress-bar-container {
+    height: 24px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), #ff9f43);
+    border-radius: 12px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+.processing-info {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-secondary);
+}
+.processing-info p {
+    margin: 10px 0;
+}
+.col-md-2 { flex: 0 0 16.66%; max-width: 16.66%; }
+.col-md-3 { flex: 0 0 25%; max-width: 25%; }
+.col-md-4 { flex: 0 0 33.33%; max-width: 33.33%; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const batchForms = document.getElementById('batch-forms');
+    const addBatchBtn = document.getElementById('add-batch-btn');
+    const startQueueBtn = document.getElementById('start-queue-btn');
+    const queueSummary = document.getElementById('queue-summary');
+    const uploadProgressSection = document.getElementById('upload-progress-section');
+    const processingSection = document.getElementById('processing-section');
+    const processAllBtn = document.getElementById('process-all-btn');
+    
+    let batchIndex = 1;
+    let uploadedBatchIds = [];
+    
+    const collectionsData = [
+        {% for c in collections %}
+        { id: {{ c.id }}, name: "{{ c.name }}" },
+        {% endfor %}
+    ];
+    
+    const brandsData = [
+        {% for b in brands %}
+        { id: {{ b.id }}, name: "{{ b.name }}" },
+        {% endfor %}
+    ];
+    
+    function updateSummary() {
+        const forms = batchForms.querySelectorAll('.batch-form-item');
+        let totalBatches = 0;
+        let totalFiles = 0;
+        
+        forms.forEach(form => {
+            const filesInput = form.querySelector('.batch-files');
+            if (filesInput.files.length > 0) {
+                totalBatches++;
+                totalFiles += filesInput.files.length;
+            }
+        });
+        
+        document.getElementById('total-batches').textContent = totalBatches;
+        document.getElementById('total-files').textContent = totalFiles;
+        
+        if (totalBatches > 0) {
+            queueSummary.style.display = 'block';
+            startQueueBtn.disabled = false;
+        } else {
+            queueSummary.style.display = 'none';
+            startQueueBtn.disabled = true;
+        }
+        
+        forms.forEach((form, idx) => {
+            const removeBtn = form.querySelector('.remove-batch');
+            if (forms.length > 1) {
+                removeBtn.style.display = 'block';
+            } else {
+                removeBtn.style.display = 'none';
+            }
+        });
+    }
+    
+    function createBatchForm(index) {
+        const template = batchForms.querySelector('.batch-form-item').cloneNode(true);
+        template.dataset.index = index;
+        template.querySelector('.batch-number').textContent = `Batch #${index + 1}`;
+        template.querySelector('.batch-name').value = '';
+        template.querySelector('.batch-collection').selectedIndex = 0;
+        template.querySelector('.batch-brand').selectedIndex = 0;
+        template.querySelector('.file-count').textContent = '0 arquivos';
+        
+        const newFileInput = document.createElement('input');
+        newFileInput.type = 'file';
+        newFileInput.className = 'batch-files';
+        newFileInput.multiple = true;
+        newFileInput.accept = '.jpg,.jpeg,.png,.gif,.webp';
+        
+        const oldFileInput = template.querySelector('.batch-files');
+        oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+        
+        newFileInput.addEventListener('change', function() {
+            const count = this.files.length;
+            this.parentNode.querySelector('.file-count').textContent = count + ' arquivos';
+            updateSummary();
+        });
+        
+        template.querySelector('.remove-batch').addEventListener('click', function() {
+            template.remove();
+            renumberBatches();
+            updateSummary();
+        });
+        
+        return template;
+    }
+    
+    function renumberBatches() {
+        const forms = batchForms.querySelectorAll('.batch-form-item');
+        forms.forEach((form, idx) => {
+            form.dataset.index = idx;
+            form.querySelector('.batch-number').textContent = `Batch #${idx + 1}`;
+        });
+        batchIndex = forms.length;
+    }
+    
+    batchForms.querySelector('.batch-files').addEventListener('change', function() {
+        const count = this.files.length;
+        this.parentNode.querySelector('.file-count').textContent = count + ' arquivos';
+        updateSummary();
+    });
+    
+    batchForms.querySelector('.remove-batch').addEventListener('click', function() {
+        const form = this.closest('.batch-form-item');
+        if (batchForms.querySelectorAll('.batch-form-item').length > 1) {
+            form.remove();
+            renumberBatches();
+            updateSummary();
+        }
+    });
+    
+    addBatchBtn.addEventListener('click', function() {
+        const newForm = createBatchForm(batchIndex);
+        batchForms.appendChild(newForm);
+        batchIndex++;
+        updateSummary();
+    });
+    
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    }
+    
+    async function uploadSingleFile(file, batchId, maxRetries = 5) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('batch_id', batchId);
+                
+                const response = await fetch('/batch/upload-file', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    return { success: true, filename: file.name };
+                }
+                
+                if (attempt < maxRetries) {
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            } catch (err) {
+                if (attempt < maxRetries) {
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            }
+        }
+        return { success: false, filename: file.name };
+    }
+    
+    async function uploadBatchFiles(batchData, progressCallback) {
+        const createResponse = await fetch('/batch/create-async', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                batch_name: batchData.name,
+                collection_id: batchData.collectionId,
+                brand_id: batchData.brandId,
+                total_files: 0,
+                auto_process: false
+            })
+        });
+        
+        if (!createResponse.ok) {
+            throw new Error('Falha ao criar batch');
+        }
+        
+        const createData = await createResponse.json();
+        const batchId = createData.batch_id;
+        
+        const files = Array.from(batchData.files);
+        const totalFiles = files.length;
+        const BATCH_SIZE = 5;
+        let uploaded = 0;
+        
+        for (let i = 0; i < totalFiles; i += BATCH_SIZE) {
+            const batchFiles = files.slice(i, Math.min(i + BATCH_SIZE, totalFiles));
+            const uploadPromises = batchFiles.map(file => uploadSingleFile(file, batchId));
+            const results = await Promise.all(uploadPromises);
+            
+            for (const result of results) {
+                if (result.success) uploaded++;
+            }
+            
+            progressCallback(uploaded, totalFiles);
+        }
+        
+        await fetch(`/batch/${batchId}/sync-total`, { method: 'POST' });
+        
+        return { batchId, uploaded, total: totalFiles };
+    }
+    
+    startQueueBtn.addEventListener('click', async function() {
+        const forms = batchForms.querySelectorAll('.batch-form-item');
+        const batches = [];
+        
+        forms.forEach(form => {
+            const filesInput = form.querySelector('.batch-files');
+            if (filesInput.files.length > 0) {
+                batches.push({
+                    name: form.querySelector('.batch-name').value || `Batch ${batches.length + 1}`,
+                    collectionId: form.querySelector('.batch-collection').value,
+                    brandId: form.querySelector('.batch-brand').value,
+                    files: filesInput.files
+                });
+            }
+        });
+        
+        if (batches.length === 0) return;
+        
+        document.querySelector('.card-body').style.display = 'none';
+        uploadProgressSection.style.display = 'block';
+        
+        const progressList = document.getElementById('queue-progress-list');
+        progressList.innerHTML = batches.map((b, i) => `
+            <div class="queue-item-progress" id="queue-item-${i}">
+                <div class="queue-item-header">
+                    <span class="queue-item-name">${b.name}</span>
+                    <span class="queue-item-status status-waiting" id="status-${i}">Aguardando</span>
+                </div>
+                <div class="progress-bar-container" style="height: 12px;">
+                    <div class="progress-bar" id="progress-${i}" style="width: 0%"></div>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 5px;">
+                    <span id="details-${i}">${b.files.length} arquivos</span>
+                </div>
+            </div>
+        `).join('');
+        
+        let totalFilesAll = batches.reduce((sum, b) => sum + b.files.length, 0);
+        let uploadedFilesAll = 0;
+        uploadedBatchIds = [];
+        
+        for (let i = 0; i < batches.length; i++) {
+            document.getElementById(`status-${i}`).textContent = 'Subindo...';
+            document.getElementById(`status-${i}`).className = 'queue-item-status status-uploading';
+            
+            const result = await uploadBatchFiles(batches[i], (uploaded, total) => {
+                const percent = (uploaded / total * 100).toFixed(0);
+                document.getElementById(`progress-${i}`).style.width = percent + '%';
+                document.getElementById(`details-${i}`).textContent = `${uploaded}/${total} arquivos`;
+                
+                const overallPercent = ((uploadedFilesAll + uploaded) / totalFilesAll * 100).toFixed(0);
+                document.getElementById('overall-progress-bar').style.width = overallPercent + '%';
+                document.getElementById('overall-percent').textContent = overallPercent + '%';
+            });
+            
+            uploadedFilesAll += result.uploaded;
+            uploadedBatchIds.push(result.batchId);
+            
+            document.getElementById(`status-${i}`).textContent = 'Upload Concluído';
+            document.getElementById(`status-${i}`).className = 'queue-item-status status-uploaded';
+            document.getElementById(`progress-${i}`).style.width = '100%';
+        }
+        
+        document.getElementById('overall-progress-bar').style.width = '100%';
+        document.getElementById('overall-percent').textContent = '100%';
+        
+        processingSection.style.display = 'block';
+    });
+    
+    processAllBtn.addEventListener('click', async function() {
+        processAllBtn.disabled = true;
+        processAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Iniciando processamento...';
+        
+        try {
+            const response = await fetch('/batch/process-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ batch_ids: uploadedBatchIds })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                window.location.href = '/batches';
+            } else {
+                alert('Erro: ' + (data.error || 'Falha ao iniciar processamento'));
+                processAllBtn.disabled = false;
+                processAllBtn.innerHTML = '<i class="fas fa-play"></i> Processar Todos os Batches';
+            }
+        } catch (err) {
+            alert('Erro: ' + err.message);
+            processAllBtn.disabled = false;
+            processAllBtn.innerHTML = '<i class="fas fa-play"></i> Processar Todos os Batches';
+        }
+    });
+});
+</script>
+{% endblock %}

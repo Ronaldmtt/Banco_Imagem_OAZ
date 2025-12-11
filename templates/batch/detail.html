@@ -92,6 +92,18 @@
         </a>
     </div>
     {% endif %}
+    
+    {% if batch.status == 'Processando' %}
+    <div class="resume-section" style="margin-top: 1rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <strong>Processamento parado?</strong>
+            <p style="margin: 0; color: #888; font-size: 0.9rem;">Se o processamento parou inesperadamente, clique para retomar.</p>
+        </div>
+        <button id="btn-resume" class="btn btn-primary" onclick="resumeProcessing()">
+            <i class="fas fa-play"></i> Retomar Processamento
+        </button>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -401,6 +413,33 @@
 </style>
 
 <script>
+function resumeProcessing() {
+    const btn = document.getElementById('btn-resume');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retomando...';
+    
+    fetch('{{ url_for("batch_resume", batch_id=batch.id) }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Erro: ' + data.error);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play"></i> Retomar Processamento';
+        } else {
+            btn.innerHTML = '<i class="fas fa-check"></i> Retomado! (' + data.items_to_process + ' itens)';
+            setTimeout(() => location.reload(), 1000);
+        }
+    })
+    .catch(err => {
+        alert('Erro ao retomar: ' + err);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Retomar Processamento';
+    });
+}
+
 (function() {
     let pollInterval = null;
     let lastStatus = '{{ batch.status }}';

@@ -166,13 +166,15 @@ class BatchProcessor:
         else:
             log_batch(f"Cleanup ignorado (skip_cleanup=True)")
     
-    def _match_carteira_compras_in_session(self, sku_completo):
+    def _match_carteira_compras_in_session(self, sku_completo, colecao_id=None):
         """
         Busca dados da CarteiraCompras pelo SKU usando a sessão atual.
         Tenta primeiro com SKU completo, depois com SKU base (sem sufixos).
+        IMPORTANTE: Só faz match com a coleção especificada (do batch).
         
         Args:
             sku_completo: Código SKU completo do arquivo (ex: ABC123_01)
+            colecao_id: ID da coleção do batch (filtra o match apenas para esta coleção)
             
         Returns:
             Dict com dados da carteira ou None se não encontrar
@@ -182,22 +184,34 @@ class BatchProcessor:
         
         sku_base, sequencia = extract_sku_base_and_sequence(sku_completo)
         
-        carteira = self.db.session.query(CarteiraCompras).filter_by(sku=sku_completo).first()
+        query = self.db.session.query(CarteiraCompras).filter_by(sku=sku_completo)
+        if colecao_id:
+            query = query.filter(CarteiraCompras.colecao_id == colecao_id)
+        carteira = query.first()
         
         if not carteira:
             sku_upper = sku_completo.upper().strip()
-            carteira = self.db.session.query(CarteiraCompras).filter(
+            query = self.db.session.query(CarteiraCompras).filter(
                 func.upper(func.trim(CarteiraCompras.sku)) == sku_upper
-            ).first()
+            )
+            if colecao_id:
+                query = query.filter(CarteiraCompras.colecao_id == colecao_id)
+            carteira = query.first()
         
         if not carteira and sku_base and sku_base != sku_completo:
-            carteira = self.db.session.query(CarteiraCompras).filter_by(sku=sku_base).first()
+            query = self.db.session.query(CarteiraCompras).filter_by(sku=sku_base)
+            if colecao_id:
+                query = query.filter(CarteiraCompras.colecao_id == colecao_id)
+            carteira = query.first()
             
             if not carteira:
                 sku_base_upper = sku_base.upper().strip()
-                carteira = self.db.session.query(CarteiraCompras).filter(
+                query = self.db.session.query(CarteiraCompras).filter(
                     func.upper(func.trim(CarteiraCompras.sku)) == sku_base_upper
-                ).first()
+                )
+                if colecao_id:
+                    query = query.filter(CarteiraCompras.colecao_id == colecao_id)
+                carteira = query.first()
         
         if carteira:
             return {
@@ -258,8 +272,11 @@ class BatchProcessor:
                 file_size_mb = os.path.getsize(temp_path) / (1024 * 1024)
                 log_batch(f"[{sku}] Arquivo: {original_filename} ({file_size_mb:.2f}MB)")
                 
-                log_batch(f"[{sku}] Buscando na Carteira de Compras...")
-                carteira_data = self._match_carteira_compras_in_session(sku)
+                batch = self.db.session.get(BatchUpload, batch_id)
+                batch_colecao_id = batch.colecao_id if batch else None
+                
+                log_batch(f"[{sku}] Buscando na Carteira de Compras (coleção: {batch_colecao_id})...")
+                carteira_data = self._match_carteira_compras_in_session(sku, colecao_id=batch_colecao_id)
                 
                 if carteira_data and carteira_data.get('found'):
                     log_batch(f"[{sku}] ✓ MATCH encontrado na Carteira! Desc: {carteira_data.get('descricao', '')[:50]}...")
@@ -286,8 +303,6 @@ class BatchProcessor:
                 
                 import uuid
                 unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"
-                
-                batch = self.db.session.get(BatchUpload, batch_id)
                 
                 if carteira_data and carteira_data.get('found'):
                     nome_peca = carteira_data.get('descricao', '')  # Nome da peça vai para campo separado

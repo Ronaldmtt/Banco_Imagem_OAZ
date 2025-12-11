@@ -1309,28 +1309,27 @@ def dashboard():
     pending_ia_skus = db.session.query(db.func.count(db.func.distinct(Image.sku_base))).filter(Image.status == 'Pendente Análise IA').scalar() or 0
     total_skus = db.session.query(db.func.count(db.func.distinct(Image.sku_base))).scalar() or 0
     
-    skus_sem_foto_por_colecao = db.session.query(
-        Collection.name,
-        db.func.count(db.func.distinct(CarteiraCompras.sku)).label('sem_foto'),
-        db.func.count(db.func.distinct(CarteiraCompras.sku)).filter(
-            db.exists().where(Image.sku_base == CarteiraCompras.sku)
-        ).label('com_foto')
-    ).join(CarteiraCompras, CarteiraCompras.colecao_id == Collection.id
-    ).group_by(Collection.name).all()
-    
     skus_pendentes_foto = []
     total_skus_carteira = 0
     total_skus_sem_foto = 0
-    for colecao, sem_foto, com_foto in skus_sem_foto_por_colecao:
-        total_col = db.session.query(db.func.count(db.func.distinct(CarteiraCompras.sku))).join(
-            Collection, CarteiraCompras.colecao_id == Collection.id
-        ).filter(Collection.name == colecao).scalar() or 0
+    
+    colecoes = Collection.query.all()
+    for col in colecoes:
+        total_col = db.session.query(db.func.count(db.func.distinct(CarteiraCompras.sku))).filter(
+            CarteiraCompras.colecao_id == col.id
+        ).scalar() or 0
         
-        com_foto_real = db.session.query(db.func.count(db.func.distinct(CarteiraCompras.sku))).join(
-            Collection, CarteiraCompras.colecao_id == Collection.id
-        ).filter(
-            Collection.name == colecao,
-            db.exists().where(Image.sku_base == CarteiraCompras.sku)
+        if total_col == 0:
+            continue
+        
+        com_foto_real = db.session.query(db.func.count(db.func.distinct(CarteiraCompras.sku))).filter(
+            CarteiraCompras.colecao_id == col.id,
+            db.exists().where(
+                db.and_(
+                    Image.sku_base == CarteiraCompras.sku,
+                    Image.collection_id == col.id
+                )
+            )
         ).scalar() or 0
         
         sem_foto_real = total_col - com_foto_real
@@ -1338,7 +1337,7 @@ def dashboard():
         total_skus_sem_foto += sem_foto_real
         
         skus_pendentes_foto.append({
-            'colecao': colecao,
+            'colecao': col.name,
             'total': total_col,
             'com_foto': com_foto_real,
             'sem_foto': sem_foto_real,
@@ -2420,22 +2419,28 @@ def reports():
 @app.route('/skus-sem-foto')
 @login_required
 def skus_sem_foto():
-    """Lista SKUs da Carteira que não têm imagem cadastrada"""
+    """Lista SKUs da Carteira que não têm imagem cadastrada NA MESMA COLEÇÃO"""
     page = request.args.get('page', 1, type=int)
     colecao_filter = request.args.get('colecao', type=int)
     per_page = 50
     
-    subquery = db.session.query(Image.sku_base).filter(Image.sku_base.isnot(None)).distinct().subquery()
-    
     query = db.session.query(
         CarteiraCompras.sku,
+        CarteiraCompras.colecao_id,
         Collection.name.label('colecao'),
         Brand.name.label('marca'),
         CarteiraCompras.categoria,
         CarteiraCompras.subcategoria
     ).outerjoin(Collection, CarteiraCompras.colecao_id == Collection.id
     ).outerjoin(Brand, CarteiraCompras.marca_id == Brand.id
-    ).filter(~CarteiraCompras.sku.in_(db.session.query(subquery)))
+    ).filter(
+        ~db.exists().where(
+            db.and_(
+                Image.sku_base == CarteiraCompras.sku,
+                Image.collection_id == CarteiraCompras.colecao_id
+            )
+        )
+    )
     
     if colecao_filter:
         query = query.filter(CarteiraCompras.colecao_id == colecao_filter)
@@ -2456,7 +2461,12 @@ def skus_sem_foto():
     
     total_carteira = db.session.query(db.func.count(db.func.distinct(CarteiraCompras.sku))).scalar() or 0
     total_com_foto = db.session.query(db.func.count(db.func.distinct(CarteiraCompras.sku))).filter(
-        CarteiraCompras.sku.in_(db.session.query(subquery))
+        db.exists().where(
+            db.and_(
+                Image.sku_base == CarteiraCompras.sku,
+                Image.collection_id == CarteiraCompras.colecao_id
+            )
+        )
     ).scalar() or 0
     total_sem_foto = total_carteira - total_com_foto
     percentual = round((total_com_foto / total_carteira * 100) if total_carteira > 0 else 0, 1)
@@ -2476,13 +2486,11 @@ def skus_sem_foto():
 @app.route('/skus-sem-foto/exportar')
 @login_required
 def exportar_skus_sem_foto():
-    """Exporta CSV com SKUs que não têm foto"""
+    """Exporta CSV com SKUs que não têm foto NA MESMA COLEÇÃO"""
     output = io.StringIO()
     writer = csv.writer(output)
     
     writer.writerow(['SKU', 'Coleção', 'Marca', 'Categoria', 'Subcategoria'])
-    
-    subquery = db.session.query(Image.sku_base).filter(Image.sku_base.isnot(None)).distinct().subquery()
     
     skus = db.session.query(
         CarteiraCompras.sku,
@@ -2492,7 +2500,13 @@ def exportar_skus_sem_foto():
         CarteiraCompras.subcategoria
     ).outerjoin(Collection, CarteiraCompras.colecao_id == Collection.id
     ).outerjoin(Brand, CarteiraCompras.marca_id == Brand.id
-    ).filter(~CarteiraCompras.sku.in_(db.session.query(subquery))
+    ).filter(
+        ~db.exists().where(
+            db.and_(
+                Image.sku_base == CarteiraCompras.sku,
+                Image.collection_id == CarteiraCompras.colecao_id
+            )
+        )
     ).distinct().order_by(CarteiraCompras.sku).all()
     
     for row in skus:

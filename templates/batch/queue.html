@@ -471,8 +471,13 @@ document.addEventListener('DOMContentLoaded', function() {
         return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
     }
     
-    async function uploadSingleFile(file, batchId, fileIndex, totalFiles, maxRetries = 5) {
+    async function uploadSingleFile(file, batchId, fileIndex, totalFiles, maxRetries = 8) {
+        const TIMEOUT_MS = 120000; // 2 minutos por arquivo
+        
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+            
             try {
                 const formData = new FormData();
                 formData.append('file', file);
@@ -480,27 +485,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const response = await fetch('/batch/upload-file', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (response.ok) {
                     return { success: true, filename: file.name };
                 }
                 
+                const errorText = await response.text().catch(() => 'Unknown');
+                console.warn(`[UPLOAD] HTTP ${response.status} para ${file.name}: ${errorText}`);
+                
                 if (attempt < maxRetries) {
-                    OAZLog.warn('UPLOAD_RETRY', `Retry ${attempt}/${maxRetries} para ${file.name}`, { batch_id: batchId });
-                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                    OAZLog.warn('UPLOAD_RETRY', `Retry ${attempt}/${maxRetries} para ${file.name} (HTTP ${response.status})`, { batch_id: batchId });
+                    const delay = Math.min(2000 * attempt, 15000);
                     await new Promise(r => setTimeout(r, delay));
                 }
             } catch (err) {
+                clearTimeout(timeoutId);
+                
+                const isTimeout = err.name === 'AbortError';
+                const errMsg = isTimeout ? 'TIMEOUT' : err.message;
+                
+                console.warn(`[UPLOAD] Erro tentativa ${attempt}/${maxRetries} para ${file.name}: ${errMsg}`);
+                
                 if (attempt < maxRetries) {
-                    OAZLog.warn('UPLOAD_RETRY', `Retry ${attempt}/${maxRetries} para ${file.name} (erro: ${err.message})`, { batch_id: batchId });
-                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                    OAZLog.warn('UPLOAD_RETRY', `Retry ${attempt}/${maxRetries} para ${file.name} (${errMsg})`, { batch_id: batchId, timeout: isTimeout });
+                    const delay = isTimeout ? 5000 : Math.min(2000 * attempt, 15000);
                     await new Promise(r => setTimeout(r, delay));
                 }
             }
         }
-        OAZLog.error('UPLOAD_FAILED', `Falha definitiva: ${file.name}`, { batch_id: batchId, tentativas: maxRetries });
+        OAZLog.error('UPLOAD_FAILED', `Falha definitiva após ${maxRetries} tentativas: ${file.name}`, { batch_id: batchId });
         return { success: false, filename: file.name };
     }
     
@@ -529,7 +547,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const files = Array.from(batchData.files);
         const totalFiles = files.length;
-        const BATCH_SIZE = 5;
+        const BATCH_SIZE = 3; // Reduzido para evitar sobrecarga
         let uploaded = 0;
         let failed = 0;
         

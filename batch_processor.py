@@ -410,7 +410,7 @@ class BatchProcessor:
                 item.processing_status = 'completed'
                 item.storage_path = storage_path
                 item.image_id = new_image.id
-                item.ai_description = description
+                item.ai_description = nome_peca
                 item.ai_tags = json.dumps(tags_list)
                 item.ai_attributes = json.dumps({
                     'match_source': match_source,

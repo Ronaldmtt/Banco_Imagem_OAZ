@@ -3413,19 +3413,22 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
         marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else marca_fallback_id
         produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id, subcolecao_id=subcolecao_id, cache_produtos=cache_produtos)
         
-        existing = CarteiraCompras.query.filter_by(sku=sku).first()
+        # IMPORTANTE: Verificar existência por SKU + COLEÇÃO (um mesmo SKU pode existir em múltiplas coleções)
+        if colecao_id:
+            existing = CarteiraCompras.query.filter_by(sku=sku, colecao_id=colecao_id).first()
+        else:
+            existing = CarteiraCompras.query.filter_by(sku=sku).first()
+        
         if existing:
+            # Atualizar registro existente na mesma coleção
             existing.lote_importacao = lote_id
             existing.aba_origem = aba_origem
-            if colecao_id:
-                existing.colecao_id = colecao_id
             if subcolecao_id:
                 existing.subcolecao_id = subcolecao_id
             if marca_id:
                 existing.marca_id = marca_id
             if produto_id:
                 existing.produto_id = produto_id
-            # Atualizar colecao_nome com o nome da aba para referência
             existing.colecao_nome = aba_origem
         else:
             status_foto_original = str(row.get('status_foto_original', '')).upper() if pd.notna(row.get('status_foto_original', '')) else ''

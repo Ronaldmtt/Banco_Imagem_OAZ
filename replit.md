@@ -28,6 +28,12 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
     - Phase 2 (Processing): Batches of 20 images processed in parallel with persistent state
     - Watchdog thread detects stuck items (> 5 min) and resets for retry
     - Resume capability after browser close or server restart via /batch/{id}/resume endpoint
+-   **Multi-Batch Queue System**: Upload multiple collections at once with centralized processing:
+    - Create multiple batches in a single interface (/batch/queue)
+    - Each batch can have different collection and brand assignments
+    - Upload files for each batch in sequence (one batch at a time)
+    - "Processar Todos" button to start processing all uploaded batches together
+    - Sequential processing with cleanup only after all batches complete
 -   **Thumbnail System**: Automatic thumbnail generation using Pillow:
     - Thumbnails stored in PostgreSQL (BYTEA) for fast retrieval
     - 300px max width, JPEG quality 75% (~5-50KB each)

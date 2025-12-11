@@ -1104,6 +1104,33 @@ Produto {i}:
         return f"Erro ao analisar imagem: {str(e)}"
 
 
+# Endpoint para receber logs do frontend
+@app.route('/api/log', methods=['POST'])
+def frontend_log():
+    """Recebe logs do frontend (JavaScript) e exibe no console do servidor"""
+    try:
+        data = request.get_json()
+        module = data.get('module', 'FRONTEND')
+        action = data.get('action', 'ACTION')
+        message = data.get('message', '')
+        level = data.get('level', 'INFO').upper()
+        extras = data.get('extras', {})
+        
+        if level == 'ERROR':
+            error(M.SYSTEM, action, f"[JS] {message}", **extras)
+        elif level == 'WARN':
+            warn(M.SYSTEM, action, f"[JS] {message}", **extras)
+        elif level == 'SUCCESS':
+            success(M.SYSTEM, action, f"[JS] {message}", **extras)
+        elif level == 'DEBUG':
+            debug(M.SYSTEM, action, f"[JS] {message}", **extras)
+        else:
+            info(M.SYSTEM, action, f"[JS] {message}", **extras)
+        
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 # Routes
 @app.route('/')
 def index():
@@ -2652,6 +2679,7 @@ def export_report(report_type):
 @app.route('/produtos')
 @login_required
 def produtos():
+    nav_log.page_enter("Produtos", user=current_user.username)
     search = request.args.get('search', '')
     marca_id = request.args.get('marca_id', '')
     colecao_id = request.args.get('colecao_id', '')
@@ -3615,6 +3643,8 @@ def reconciliar_carteira():
 @app.route('/carteira/importar', methods=['GET', 'POST'])
 @login_required
 def importar_carteira():
+    if request.method == 'GET':
+        nav_log.page_enter("Importar Carteira", user=current_user.username)
     if request.method == 'POST':
         if 'arquivo' not in request.files:
             flash('Nenhum arquivo enviado', 'error')
@@ -4057,6 +4087,8 @@ def batch_new():
         collection_id = request.form.get('collection_id')
         brand_id = request.form.get('brand_id')
         batch_name = request.form.get('batch_name', f"Lote {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        
+        log_start(M.BATCH, f"Criando novo batch: {batch_name}", arquivos=len(files) if files else 0, zip=bool(zip_file))
         
         temp_dir = tempfile.mkdtemp(prefix='batch_upload_')
         temp_file_paths = []
@@ -4585,8 +4617,9 @@ def batch_retry_failed(batch_id):
 @login_required
 def analyze_pending_ai():
     """Página para analisar imagens pendentes de análise IA"""
-    
+    nav_log.page_enter("Análise IA Pendente", user=current_user.username)
     pending_images = Image.query.filter_by(status='Pendente Análise IA').order_by(Image.upload_date.desc()).all()
+    debug(M.CATALOG, 'DATA', f"Imagens pendentes de IA carregadas", total=len(pending_images))
     
     if request.method == 'POST':
         image_ids = request.form.getlist('image_ids')

@@ -317,6 +317,26 @@ document.addEventListener('DOMContentLoaded', function() {
     let batchIndex = 1;
     let uploadedBatchIds = [];
     
+    // Sistema de Logging para Frontend (envia para console do servidor)
+    const OAZLog = {
+        async send(level, action, message, extras = {}) {
+            try {
+                await fetch('/api/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ module: 'FRONTEND', level, action, message, extras })
+                });
+            } catch (e) { console.error('Log error:', e); }
+        },
+        info: (action, message, extras) => OAZLog.send('INFO', action, message, extras),
+        debug: (action, message, extras) => OAZLog.send('DEBUG', action, message, extras),
+        warn: (action, message, extras) => OAZLog.send('WARN', action, message, extras),
+        error: (action, message, extras) => OAZLog.send('ERROR', action, message, extras),
+        success: (action, message, extras) => OAZLog.send('SUCCESS', action, message, extras)
+    };
+    
+    OAZLog.info('PAGE_LOAD', 'Página Fila de Batches carregada');
+    
     const collectionsData = [
         {% for c in collections %}
         { id: {{ c.id }}, name: "{{ c.name }}" },
@@ -384,6 +404,13 @@ document.addEventListener('DOMContentLoaded', function() {
         newFileInput.addEventListener('change', function() {
             const count = this.files.length;
             this.parentNode.querySelector('.file-count').textContent = count + ' arquivos';
+            
+            // Calcular tamanho total
+            let totalSize = 0;
+            for (let i = 0; i < this.files.length; i++) {
+                totalSize += this.files[i].size;
+            }
+            OAZLog.info('FILES_SELECTED', `Arquivos selecionados no Batch #${parseInt(template.dataset.index) + 1}`, { arquivos: count, tamanho_total_mb: (totalSize / 1024 / 1024).toFixed(2) });
             updateSummary();
         });
         
@@ -408,12 +435,21 @@ document.addEventListener('DOMContentLoaded', function() {
     batchForms.querySelector('.batch-files').addEventListener('change', function() {
         const count = this.files.length;
         this.parentNode.querySelector('.file-count').textContent = count + ' arquivos';
+        
+        // Calcular tamanho total dos arquivos
+        let totalSize = 0;
+        for (let i = 0; i < this.files.length; i++) {
+            totalSize += this.files[i].size;
+        }
+        OAZLog.info('FILES_SELECTED', `Arquivos selecionados no Batch #1`, { arquivos: count, tamanho_total_mb: (totalSize / 1024 / 1024).toFixed(2) });
         updateSummary();
     });
     
     batchForms.querySelector('.remove-batch').addEventListener('click', function() {
         const form = this.closest('.batch-form-item');
         if (batchForms.querySelectorAll('.batch-form-item').length > 1) {
+            const batchNum = form.querySelector('.batch-number').textContent;
+            OAZLog.info('BATCH_REMOVED', `${batchNum} removido da fila`);
             form.remove();
             renumberBatches();
             updateSummary();
@@ -424,6 +460,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const newForm = createBatchForm(batchIndex);
         batchForms.appendChild(newForm);
         batchIndex++;
+        OAZLog.info('BATCH_ADDED', `Batch #${batchIndex} adicionado à fila`);
         updateSummary();
     });
     
@@ -434,7 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
     }
     
-    async function uploadSingleFile(file, batchId, maxRetries = 5) {
+    async function uploadSingleFile(file, batchId, fileIndex, totalFiles, maxRetries = 5) {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 const formData = new FormData();
@@ -451,20 +488,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 if (attempt < maxRetries) {
+                    OAZLog.warn('UPLOAD_RETRY', `Retry ${attempt}/${maxRetries} para ${file.name}`, { batch_id: batchId });
                     const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
                     await new Promise(r => setTimeout(r, delay));
                 }
             } catch (err) {
                 if (attempt < maxRetries) {
+                    OAZLog.warn('UPLOAD_RETRY', `Retry ${attempt}/${maxRetries} para ${file.name} (erro: ${err.message})`, { batch_id: batchId });
                     const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
                     await new Promise(r => setTimeout(r, delay));
                 }
             }
         }
+        OAZLog.error('UPLOAD_FAILED', `Falha definitiva: ${file.name}`, { batch_id: batchId, tentativas: maxRetries });
         return { success: false, filename: file.name };
     }
     
-    async function uploadBatchFiles(batchData, progressCallback) {
+    async function uploadBatchFiles(batchData, progressCallback, batchIndex) {
+        OAZLog.info('BATCH_CREATE_START', `Criando batch: ${batchData.name}`, { colecao_id: batchData.collectionId, marca_id: batchData.brandId });
+        
         const createResponse = await fetch('/batch/create-async', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -478,6 +520,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         if (!createResponse.ok) {
+            OAZLog.error('BATCH_CREATE_ERROR', `Falha ao criar batch: ${batchData.name}`);
             throw new Error('Falha ao criar batch');
         }
         
@@ -488,22 +531,43 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalFiles = files.length;
         const BATCH_SIZE = 5;
         let uploaded = 0;
+        let failed = 0;
+        
+        OAZLog.info('UPLOAD_BATCH_START', `========== INICIANDO UPLOAD BATCH #${batchId} ==========`, { nome: batchData.name, total_arquivos: totalFiles, workers_paralelos: BATCH_SIZE });
+        const uploadStartTime = Date.now();
         
         for (let i = 0; i < totalFiles; i += BATCH_SIZE) {
             const batchFiles = files.slice(i, Math.min(i + BATCH_SIZE, totalFiles));
-            const uploadPromises = batchFiles.map(file => uploadSingleFile(file, batchId));
+            const startIndex = i;
+            const uploadPromises = batchFiles.map((file, idx) => uploadSingleFile(file, batchId, startIndex + idx + 1, totalFiles));
             const results = await Promise.all(uploadPromises);
             
             for (const result of results) {
-                if (result.success) uploaded++;
+                if (result.success) {
+                    uploaded++;
+                } else {
+                    failed++;
+                }
+            }
+            
+            // Log de progresso a cada 20 arquivos ou no final
+            if (uploaded % 20 === 0 || uploaded + failed === totalFiles) {
+                const elapsed = (Date.now() - uploadStartTime) / 1000;
+                const rate = uploaded / elapsed;
+                const remaining = totalFiles - uploaded - failed;
+                const eta = rate > 0 ? remaining / rate : 0;
+                OAZLog.info('UPLOAD_PROGRESS', `Progresso: ${uploaded}/${totalFiles} (${failed} falhas) - ${rate.toFixed(1)} arq/s - ETA: ${eta.toFixed(0)}s`, { batch_id: batchId });
             }
             
             progressCallback(uploaded, totalFiles);
         }
         
+        const totalElapsed = (Date.now() - uploadStartTime) / 1000;
+        OAZLog.success('UPLOAD_BATCH_END', `========== UPLOAD BATCH #${batchId} CONCLUÍDO ==========`, { sucessos: uploaded, falhas: failed, tempo_segundos: totalElapsed.toFixed(1), taxa_media: (uploaded / totalElapsed).toFixed(1) });
+        
         await fetch(`/batch/${batchId}/sync-total`, { method: 'POST' });
         
-        return { batchId, uploaded, total: totalFiles };
+        return { batchId, uploaded, total: totalFiles, failed };
     }
     
     startQueueBtn.addEventListener('click', async function() {
@@ -524,6 +588,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (batches.length === 0) return;
         
+        // Calcular total de arquivos
+        const totalFilesAll = batches.reduce((sum, b) => sum + b.files.length, 0);
+        OAZLog.info('QUEUE_START', `========== INICIANDO FILA DE UPLOADS ==========`, { total_batches: batches.length, total_arquivos: totalFilesAll });
+        
         document.querySelector('.card-body').style.display = 'none';
         uploadProgressSection.style.display = 'block';
         
@@ -543,13 +611,15 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `).join('');
         
-        let totalFilesAll = batches.reduce((sum, b) => sum + b.files.length, 0);
         let uploadedFilesAll = 0;
         uploadedBatchIds = [];
+        const queueStartTime = Date.now();
         
         for (let i = 0; i < batches.length; i++) {
             document.getElementById(`status-${i}`).textContent = 'Subindo...';
             document.getElementById(`status-${i}`).className = 'queue-item-status status-uploading';
+            
+            OAZLog.info('BATCH_UPLOAD_START', `Iniciando upload do Batch ${i + 1}/${batches.length}: ${batches[i].name}`, { arquivos: batches[i].files.length });
             
             const result = await uploadBatchFiles(batches[i], (uploaded, total) => {
                 const percent = (uploaded / total * 100).toFixed(0);
@@ -559,7 +629,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const overallPercent = ((uploadedFilesAll + uploaded) / totalFilesAll * 100).toFixed(0);
                 document.getElementById('overall-progress-bar').style.width = overallPercent + '%';
                 document.getElementById('overall-percent').textContent = overallPercent + '%';
-            });
+            }, i);
             
             uploadedFilesAll += result.uploaded;
             uploadedBatchIds.push(result.batchId);
@@ -569,6 +639,9 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(`progress-${i}`).style.width = '100%';
         }
         
+        const totalQueueTime = (Date.now() - queueStartTime) / 1000;
+        OAZLog.success('QUEUE_END', `========== FILA DE UPLOADS CONCLUÍDA ==========`, { batches_concluidos: batches.length, arquivos_enviados: uploadedFilesAll, tempo_total_segundos: totalQueueTime.toFixed(1) });
+        
         document.getElementById('overall-progress-bar').style.width = '100%';
         document.getElementById('overall-percent').textContent = '100%';
         
@@ -576,10 +649,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     processAllBtn.addEventListener('click', async function() {
+        OAZLog.info('PROCESS_ALL_CLICK', `Botão "Processar Todos" clicado`, { batch_ids: uploadedBatchIds });
+        
         processAllBtn.disabled = true;
         processAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Iniciando processamento...';
         
         try {
+            OAZLog.info('PROCESS_ALL_START', `Iniciando processamento de ${uploadedBatchIds.length} batches`, { batch_ids: uploadedBatchIds });
+            
             const response = await fetch('/batch/process-all', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -589,13 +666,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (response.ok) {
-                window.location.href = '/batches';
+                OAZLog.success('PROCESS_ALL_TRIGGERED', `Processamento iniciado com sucesso`, { batches_started: data.batches_started });
+                window.location.href = '/batch';
             } else {
+                OAZLog.error('PROCESS_ALL_ERROR', `Erro ao iniciar processamento: ${data.error || 'Falha desconhecida'}`);
                 alert('Erro: ' + (data.error || 'Falha ao iniciar processamento'));
                 processAllBtn.disabled = false;
                 processAllBtn.innerHTML = '<i class="fas fa-play"></i> Processar Todos os Batches';
             }
         } catch (err) {
+            OAZLog.error('PROCESS_ALL_EXCEPTION', `Exceção: ${err.message}`);
             alert('Erro: ' + err.message);
             processAllBtn.disabled = false;
             processAllBtn.innerHTML = '<i class="fas fa-play"></i> Processar Todos os Batches';

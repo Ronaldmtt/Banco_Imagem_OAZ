@@ -49,7 +49,8 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
 -   **Product Management**: Comprehensive CRUD operations for products, linking images to products, and tracking SKU changes with an audit trail.
 -   **Import System**: Robust Excel/CSV import for purchase orders, including automatic creation of brands, collections, and products, with flexible column normalization and multi-sheet import capabilities.
 -   **Reporting**: Provides metrics by status, brand, and collection, with CSV export functionality.
--   **SKUs Sem Foto Report**: Dashboard card showing photography coverage by collection, with progress bars and detailed page listing pending SKUs with CSV export.
+-   **SKUs Sem Foto Report**: Dashboard card showing photography coverage by collection, with progress bars and detailed page listing pending SKUs with CSV export. Reports correctly consider collection scope - a SKU is only marked as "with photo" if there's an image in the SAME collection.
+-   **Collection-Scoped Matching**: Batch processing now filters SKU matches by the collection selected in the batch dropdown, preventing cross-collection matches.
 -   **Multi-Piece Detection**: AI can detect and analyze up to four individual pieces within a single image, each with its own metadata.
 
 ### System Design Choices

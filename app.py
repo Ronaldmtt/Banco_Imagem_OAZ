@@ -14,7 +14,7 @@ import json
 import base64
 from PIL import Image as PILImage
 
-# Sistema de Logging OAZ
+# Sistema de Logging OAZ (local)
 from oaz_logger import (
     info, debug, warn, error, success,
     log_start, log_end, log_progress, log_action, log_error, log_data,
@@ -23,8 +23,89 @@ from oaz_logger import (
     M  # Módulos
 )
 
+# RPA Monitor Client (monitoramento externo via WebSocket)
+try:
+    from rpa_monitor_client import setup_rpa_monitor, rpa_log
+    RPA_MONITOR_AVAILABLE = True
+except ImportError:
+    RPA_MONITOR_AVAILABLE = False
+    rpa_log = None
+
 # Load environment variables
 load_dotenv()
+
+# Inicializar RPA Monitor se disponível
+if RPA_MONITOR_AVAILABLE:
+    rpa_id = os.environ.get('RPA_MONITOR_ID', 'APP-BANCO-IMAGEM-OAZ')
+    rpa_host = os.environ.get('RPA_MONITOR_HOST', 'wss://app-in-sight.replit.app/ws')
+    rpa_port = os.environ.get('RPA_MONITOR_PORT', None)
+    rpa_region = os.environ.get('RPA_MONITOR_REGION', 'Sudeste')
+    rpa_transport = os.environ.get('RPA_MONITOR_TRANSPORT', 'ws')
+    
+    # Converter port para int se fornecido
+    if rpa_port and rpa_port.strip():
+        try:
+            rpa_port = int(rpa_port)
+        except ValueError:
+            rpa_port = None
+    else:
+        rpa_port = None
+    
+    try:
+        setup_rpa_monitor(
+            rpa_id=rpa_id,
+            host=rpa_host,
+            port=rpa_port,
+            region=rpa_region,
+            transport=rpa_transport,
+        )
+        print(f"[RPA Monitor] Conectado: {rpa_id} -> {rpa_host}")
+    except Exception as e:
+        print(f"[RPA Monitor] Erro ao conectar: {e}")
+        RPA_MONITOR_AVAILABLE = False
+
+# Funções helper para RPA logging (envia para servidor externo)
+def rpa_info(msg, regiao="geral"):
+    """Log INFO para RPA Monitor externo"""
+    if RPA_MONITOR_AVAILABLE and rpa_log:
+        try:
+            rpa_log.info(msg)
+        except Exception:
+            pass
+
+def rpa_warn(msg, regiao="geral"):
+    """Log WARNING para RPA Monitor externo"""
+    if RPA_MONITOR_AVAILABLE and rpa_log:
+        try:
+            rpa_log.warn(msg)
+        except Exception:
+            pass
+
+def rpa_error(msg, exc=None, regiao="geral", take_screenshot=True):
+    """Log ERROR para RPA Monitor externo com screenshot automático"""
+    if RPA_MONITOR_AVAILABLE and rpa_log:
+        try:
+            rpa_log.error(msg, exc=exc, regiao=regiao)
+            if take_screenshot:
+                import time
+                rpa_log.screenshot(
+                    filename=f"error_{int(time.time())}.png",
+                    regiao=regiao,
+                )
+        except Exception:
+            pass
+
+def rpa_screenshot(regiao="manual"):
+    """Captura screenshot para RPA Monitor externo"""
+    if RPA_MONITOR_AVAILABLE and rpa_log:
+        try:
+            import time
+            rpa_log.screenshot(
+                filename=f"screen_{int(time.time())}.png",
+                regiao=regiao,
+            )
+        except Exception:
+            pass
 
 # Configuration
 class Config:
@@ -1144,17 +1225,21 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         auth_log.login_attempt(username)
+        rpa_info(f"[AUTH] Tentativa de login: {username}")
         user = User.query.filter_by(username=username).first()
         if user:
             password_check = user.check_password(password)
             if password_check:
                 login_user(user)
                 auth_log.login_success(username, user.id)
+                rpa_info(f"[AUTH] Login bem-sucedido: {username} (ID: {user.id})")
                 return redirect(url_for('dashboard'))
         auth_log.login_failed(username, "Usuário ou senha inválidos")
+        rpa_warn(f"[AUTH] Login falhou: {username}")
         flash('Usuário ou senha inválidos')
     else:
         nav_log.page_enter("Login")
+        rpa_info("[NAV] Página: Login")
     return render_template('auth/login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -1164,9 +1249,11 @@ def register():
         email = request.form.get('email')
         password = request.form.get('password')
         info(M.AUTH, 'ACTION', f"Tentativa de registro", username=username, email=email)
+        rpa_info(f"[AUTH] Tentativa de registro: {username}")
         
         if User.query.filter_by(username=username).first():
             warn(M.AUTH, 'WARN', f"Registro falhou - usuário já existe", username=username)
+            rpa_warn(f"[AUTH] Registro falhou - usuário já existe: {username}")
             flash('Nome de usuário já existe')
             return redirect(url_for('register'))
             
@@ -1175,10 +1262,12 @@ def register():
         db.session.add(user)
         db.session.commit()
         success(M.AUTH, 'SUCCESS', f"Usuário registrado com sucesso", username=username, user_id=user.id)
+        rpa_info(f"[AUTH] Usuário registrado: {username} (ID: {user.id})")
         login_user(user)
         return redirect(url_for('dashboard'))
     else:
         nav_log.page_enter("Registro")
+        rpa_info("[NAV] Página: Registro")
     return render_template('auth/register.html')
 
 @app.route('/logout')
@@ -1186,6 +1275,7 @@ def register():
 def logout():
     username = current_user.username if current_user else "desconhecido"
     auth_log.logout(username)
+    rpa_info(f"[AUTH] Logout: {username}")
     logout_user()
     return redirect(url_for('login'))
 
@@ -1340,6 +1430,7 @@ def serve_thumbnail(image_id):
 @login_required
 def dashboard():
     nav_log.page_enter("Dashboard", user=current_user.username)
+    rpa_info(f"[NAV] Dashboard - Usuário: {current_user.username}")
     total_images = Image.query.count()
     pending_images = Image.query.filter_by(status='Pendente').count()
     pending_ia_images = Image.query.filter_by(status='Pendente Análise IA').count()
@@ -1417,6 +1508,7 @@ def catalog():
     
     filters = {'status': status_filter, 'collection': collection_filter, 'brand': brand_filter, 'q': search_query}
     catalog_log.page_accessed(page, filters=filters)
+    rpa_info(f"[NAV] Catálogo - Página {page} - Usuário: {current_user.username}")
     
     base_query = Image.query
     
@@ -2956,6 +3048,7 @@ def desassociar_imagem_produto(id, imagem_id):
 @login_required
 def carteira():
     nav_log.page_enter("Carteira de Compras", user=current_user.username)
+    rpa_info(f"[NAV] Carteira de Compras - Usuário: {current_user.username}")
     status = request.args.get('status', '')
     search = request.args.get('search', '')
     lote = request.args.get('lote', '')
@@ -3011,6 +3104,7 @@ def carteira():
 def deletar_lote_carteira(lote_id):
     """Deleta todos os itens de um lote de importação"""
     log_start(M.CARTEIRA, f"Exclusão de lote: {lote_id}")
+    rpa_info(f"[CARTEIRA] Iniciando exclusão do lote: {lote_id}")
     try:
         itens = CarteiraCompras.query.filter_by(lote_importacao=lote_id).all()
         count = len(itens)
@@ -3645,9 +3739,11 @@ def reconciliar_carteira():
 def importar_carteira():
     if request.method == 'GET':
         nav_log.page_enter("Importar Carteira", user=current_user.username)
+        rpa_info(f"[NAV] Importar Carteira - Usuário: {current_user.username}")
     if request.method == 'POST':
         if 'arquivo' not in request.files:
             flash('Nenhum arquivo enviado', 'error')
+            rpa_warn("[CARTEIRA] Importação falhou - nenhum arquivo enviado")
             return redirect(request.url)
         
         file = request.files['arquivo']
@@ -3775,6 +3871,7 @@ def importar_carteira():
             atualizar_status_carteira()
             
             carteira_log.import_completed(total_count, len(abas_processadas), lote_id)
+            rpa_info(f"[CARTEIRA] Importação concluída: {total_count} itens, {len(abas_processadas)} abas - Lote: {lote_id}")
             
             # Retornar sucesso para requisição AJAX
             return {'success': True, 'message': f'{total_count} itens importados'}, 200
@@ -3782,6 +3879,7 @@ def importar_carteira():
         except Exception as e:
             db.session.rollback()
             carteira_log.import_error(str(e))
+            rpa_error(f"[CARTEIRA] Erro na importação: {str(e)}", exc=e, regiao="carteira")
             flash(f'Erro ao importar: {str(e)}', 'error')
             return {'success': False, 'error': str(e)}, 500
     
@@ -4022,6 +4120,7 @@ def get_batch_processor():
 def batch_list():
     """Lista todos os lotes de upload"""
     nav_log.page_enter("Batches", user=current_user.username)
+    rpa_info(f"[NAV] Batches - Usuário: {current_user.username}")
     batches = BatchUpload.query.filter_by(usuario_id=current_user.id).order_by(BatchUpload.created_at.desc()).all()
     return render_template('batch/index.html', batches=batches)
 
@@ -4030,6 +4129,7 @@ def batch_list():
 def batch_queue():
     """Página para criar múltiplos batches e processar em fila"""
     nav_log.page_enter("Fila de Batches", user=current_user.username)
+    rpa_info(f"[NAV] Fila de Batches - Usuário: {current_user.username}")
     collections = Collection.query.order_by(Collection.name).all()
     brands = Brand.query.order_by(Brand.name).all()
     return render_template('batch/queue.html', collections=collections, brands=brands)
@@ -4042,9 +4142,11 @@ def batch_process_all():
     batch_ids = data.get('batch_ids', [])
     
     if not batch_ids:
+        rpa_warn("[BATCH] Nenhum batch especificado para processamento")
         return jsonify({'error': 'Nenhum batch especificado'}), 400
     
     log_start(M.BATCH, f"Processando todos os batches: {len(batch_ids)} lotes")
+    rpa_info(f"[BATCH] Iniciando processamento de {len(batch_ids)} batches")
     
     batches_to_process = []
     for batch_id in batch_ids:
@@ -4188,6 +4290,7 @@ def batch_create_async():
     db.session.commit()
     
     batch_log.batch_created(batch.id, batch_name, total_files)
+    rpa_info(f"[BATCH] Novo lote criado: #{batch.id} '{batch_name}' - {total_files} arquivos")
     
     return jsonify({
         'batch_id': batch.id,
@@ -4253,6 +4356,7 @@ def batch_upload_file():
     except Exception as e:
         db.session.rollback()
         upload_log.upload_error(batch_id, file.filename if file else 'unknown', str(e))
+        rpa_error(f"[UPLOAD] Erro no upload: {file.filename if file else 'unknown'} - {str(e)}", exc=e, regiao="upload")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/batch/<int:batch_id>/sync-total', methods=['POST'])
@@ -4276,6 +4380,7 @@ def batch_sync_total(batch_id):
 def batch_delete(batch_id):
     """Exclui um lote e todos os seus itens"""
     log_start(M.BATCH, f"Excluindo batch #{batch_id}")
+    rpa_info(f"[BATCH] Iniciando exclusão do batch #{batch_id}")
     
     batch = BatchUpload.query.get_or_404(batch_id)
     

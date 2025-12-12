@@ -25,7 +25,7 @@ from oaz_logger import (
 
 # RPA Monitor Client (monitoramento externo via WebSocket)
 try:
-    from rpa_monitor_client import setup_rpa_monitor, rpa_log
+    from rpa_monitor_client import auto_setup_rpa_monitor, rpa_log
     RPA_MONITOR_AVAILABLE = True
 except ImportError:
     RPA_MONITOR_AVAILABLE = False
@@ -34,31 +34,13 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-# Inicializar RPA Monitor se disponível
+# Inicializar RPA Monitor se disponível (usa variáveis de ambiente automaticamente)
+# Variáveis esperadas: RPA_MONITOR_ID, RPA_MONITOR_HOST, RPA_MONITOR_TRANSPORT, RPA_MONITOR_REGION
 if RPA_MONITOR_AVAILABLE:
-    rpa_id = os.environ.get('RPA_MONITOR_ID', 'APP-BANCO-IMAGEM-OAZ')
-    rpa_host = os.environ.get('RPA_MONITOR_HOST', 'wss://app-in-sight.replit.app/ws')
-    rpa_port = os.environ.get('RPA_MONITOR_PORT', None)
-    rpa_region = os.environ.get('RPA_MONITOR_REGION', 'Sudeste')
-    rpa_transport = os.environ.get('RPA_MONITOR_TRANSPORT', 'ws')
-    
-    # Converter port para int se fornecido
-    if rpa_port and rpa_port.strip():
-        try:
-            rpa_port = int(rpa_port)
-        except ValueError:
-            rpa_port = None
-    else:
-        rpa_port = None
-    
     try:
-        setup_rpa_monitor(
-            rpa_id=rpa_id,
-            host=rpa_host,
-            port=rpa_port,
-            region=rpa_region,
-            transport=rpa_transport,
-        )
+        auto_setup_rpa_monitor()
+        rpa_id = os.environ.get('RPA_MONITOR_ID', 'N/A')
+        rpa_host = os.environ.get('RPA_MONITOR_HOST', 'N/A')
         print(f"[RPA Monitor] Conectado: {rpa_id} -> {rpa_host}")
     except Exception as e:
         print(f"[RPA Monitor] Erro ao conectar: {e}")

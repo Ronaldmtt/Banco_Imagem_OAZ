@@ -4327,6 +4327,7 @@ def batch_upload_file():
         db.session.commit()
         
         debug(M.UPLOAD, 'SUCCESS', f"Arquivo enviado ao Object Storage", sku=sku, path=storage_path)
+        rpa_info(f"[UPLOAD] OK: {sku} ({file_size_actual//1024}KB)")
         
         return jsonify({
             'success': True,
@@ -4383,12 +4384,14 @@ def batch_delete(batch_id):
         db.session.commit()
         
         log_end(M.BATCH, f"Batch #{batch_id} excluído")
+        rpa_info(f"[BATCH] Lote #{batch_id} excluído com sucesso")
         
         return jsonify({'success': True, 'message': 'Lote excluído com sucesso'})
         
     except Exception as e:
         db.session.rollback()
         batch_log.batch_error(batch_id, str(e))
+        rpa_error(f"[BATCH] Erro ao excluir batch #{batch_id}: {str(e)}", exc=e, regiao="batch")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/batch/<int:batch_id>')

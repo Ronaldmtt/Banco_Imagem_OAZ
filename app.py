@@ -1609,6 +1609,7 @@ def catalog():
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
+    rpa_info(f"[NAV] Upload - Usuário: {current_user.username}")
     if request.method == 'POST':
         if 'image' not in request.files:
             flash('Nenhum arquivo enviado')
@@ -1797,6 +1798,7 @@ def collection_detail(id):
 @login_required
 def edit_collection(id):
     collection = Collection.query.get_or_404(id)
+    rpa_info(f"[NAV] Editar Coleção: {collection.name} - Usuário: {current_user.username}")
     
     if request.method == 'POST':
         collection.name = request.form.get('name')
@@ -1807,6 +1809,7 @@ def edit_collection(id):
         collection.campanha = request.form.get('campanha')
         
         db.session.commit()
+        rpa_info(f"[CRUD] Coleção atualizada: {collection.name} (ID: {id})")
         flash('Coleção atualizada com sucesso!')
         return redirect(url_for('collections'))
     
@@ -1818,8 +1821,11 @@ def edit_collection(id):
 @login_required
 def delete_collection(id):
     collection = Collection.query.get_or_404(id)
+    nome = collection.name
+    rpa_info(f"[CRUD] Deletando coleção: {nome} (ID: {id})")
     db.session.delete(collection)
     db.session.commit()
+    rpa_info(f"[CRUD] Coleção deletada: {nome}")
     flash('Coleção removida com sucesso!')
     return redirect(url_for('collections'))
 
@@ -1860,6 +1866,7 @@ def buscar_carteira_por_sku(sku_base):
 def reprocessar_colecao(id):
     """Reprocessa todas as imagens de uma coleção, tentando match com Carteira"""
     collection = Collection.query.get_or_404(id)
+    rpa_info(f"[BATCH] Reprocessando coleção: {collection.name} (ID: {id})")
     
     carteiras_mesma_colecao = {}
     carteiras_global = {}
@@ -1925,6 +1932,7 @@ def reprocessar_colecao(id):
     db.session.commit()
     
     total_carteira_colecao = CarteiraCompras.query.filter_by(colecao_id=id).count()
+    rpa_info(f"[BATCH] Reprocessamento concluído: {reprocessadas} imagens, {matched} matches")
     flash(f'Reprocessadas {reprocessadas} imagens. {matched} com match ({matched_mesma_colecao} da mesma coleção). Carteira desta coleção: {total_carteira_colecao} itens.')
     return redirect(url_for('collection_detail', id=id))
 
@@ -1932,9 +1940,11 @@ def reprocessar_colecao(id):
 @login_required
 def delete_all_collections():
     """Deleta todas as coleções"""
+    rpa_info("[CRUD] Iniciando deleção de TODAS as coleções")
     count = Collection.query.count()
     Collection.query.delete()
     db.session.commit()
+    rpa_info(f"[CRUD] Todas coleções deletadas: {count} removidas")
     flash(f'{count} coleções removidas com sucesso!', 'success')
     return redirect(url_for('collections'))
 
@@ -1942,6 +1952,7 @@ def delete_all_collections():
 @login_required
 def new_collection():
     nav_log.page_enter("Nova Coleção", user=current_user.username)
+    rpa_info(f"[NAV] Nova Coleção - Usuário: {current_user.username}")
     if request.method == 'POST':
         name = request.form.get('name')
         description = request.form.get('description')
@@ -1963,6 +1974,7 @@ def new_collection():
         db.session.add(collection)
         db.session.commit()
         crud_log.created("Coleção", collection.id, name)
+        rpa_info(f"[CRUD] Coleção criada: {name} (ID: {collection.id})")
         
         flash('Coleção criada com sucesso!')
         return redirect(url_for('collections'))
@@ -1976,6 +1988,7 @@ def new_collection():
 @app.route('/subcolecoes')
 @login_required
 def subcolecoes():
+    rpa_info(f"[NAV] Subcoleções - Usuário: {current_user.username}")
     colecao_id = request.args.get('colecao_id', '')
     
     query = Subcolecao.query
@@ -1991,6 +2004,7 @@ def subcolecoes():
 @app.route('/subcolecoes/new', methods=['GET', 'POST'])
 @login_required
 def new_subcolecao():
+    rpa_info(f"[NAV] Nova Subcoleção - Usuário: {current_user.username}")
     # Pegar colecao_id da URL para pré-selecionar
     colecao_id_preselect = request.args.get('colecao_id', type=int)
     
@@ -2019,6 +2033,7 @@ def new_subcolecao():
         )
         db.session.add(subcolecao)
         db.session.commit()
+        rpa_info(f"[CRUD] Subcoleção criada: {nome} (ID: {subcolecao.id})")
         
         flash('Subcoleção criada com sucesso!', 'success')
         # Redirecionar para página de detalhes da coleção
@@ -2031,6 +2046,7 @@ def new_subcolecao():
 @login_required
 def edit_subcolecao(id):
     subcolecao = Subcolecao.query.get_or_404(id)
+    rpa_info(f"[NAV] Editar Subcoleção: {subcolecao.nome} - Usuário: {current_user.username}")
     colecao_id_original = subcolecao.colecao_id
     
     if request.method == 'POST':
@@ -2049,6 +2065,7 @@ def edit_subcolecao(id):
         subcolecao.slug = re.sub(r'[^a-zA-Z0-9]', '_', subcolecao.nome.upper()).strip('_').lower()
         
         db.session.commit()
+        rpa_info(f"[CRUD] Subcoleção atualizada: {subcolecao.nome} (ID: {id})")
         flash('Subcoleção atualizada com sucesso!', 'success')
         # Redirecionar para página de detalhes da coleção
         return redirect(url_for('collection_detail', id=subcolecao.colecao_id))
@@ -2060,9 +2077,12 @@ def edit_subcolecao(id):
 @login_required
 def delete_subcolecao(id):
     subcolecao = Subcolecao.query.get_or_404(id)
+    nome = subcolecao.nome
     colecao_id = subcolecao.colecao_id
+    rpa_info(f"[CRUD] Deletando subcoleção: {nome} (ID: {id})")
     db.session.delete(subcolecao)
     db.session.commit()
+    rpa_info(f"[CRUD] Subcoleção deletada: {nome}")
     flash('Subcoleção removida com sucesso!', 'success')
     return redirect(url_for('collection_detail', id=colecao_id))
 
@@ -2071,6 +2091,7 @@ def delete_subcolecao(id):
 @login_required
 def image_detail(id):
     image = Image.query.get_or_404(id)
+    rpa_info(f"[NAV] Detalhe Imagem ID:{id} SKU:{image.sku or 'N/A'} - Usuário: {current_user.username}")
     try:
         image.tag_list = json.loads(image.tags) if image.tags else []
     except:
@@ -2112,16 +2133,19 @@ def image_detail(id):
 @login_required
 def delete_image(id):
     image = Image.query.get_or_404(id)
+    sku = image.sku or 'N/A'
+    rpa_info(f"[CRUD] Deletando imagem ID:{id} SKU:{sku}")
     
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
         if os.path.exists(file_path):
             os.remove(file_path)
     except Exception as e:
-        print(f"Error deleting file: {e}")
+        rpa_error(f"[CRUD] Erro ao deletar arquivo da imagem {id}: {str(e)}", exc=e, regiao="catalog")
         
     db.session.delete(image)
     db.session.commit()
+    rpa_info(f"[CRUD] Imagem deletada: ID:{id} SKU:{sku}")
     
     flash('Imagem deletada com sucesso')
     return redirect(url_for('catalog'))
@@ -2131,11 +2155,14 @@ def delete_image(id):
 def update_image_status(id, status):
     image = Image.query.get_or_404(id)
     valid_statuses = ['Pendente', 'Aprovado', 'Rejeitado']
+    old_status = image.status
     if status in valid_statuses:
         image.status = status
         db.session.commit()
+        rpa_info(f"[STATUS] Imagem ID:{id} alterada: {old_status} -> {status}")
         flash(f'Status atualizado para {status}')
     else:
+        rpa_warn(f"[STATUS] Tentativa de status inválido para imagem {id}: {status}")
         flash('Status inválido')
     return redirect(url_for('image_detail', id=id))
 
@@ -2322,6 +2349,7 @@ def analyze_single_image(image, selected_fields=None):
 @app.route('/image/<int:id>/reanalyze', methods=['POST'])
 @login_required
 def reanalyze_image(id):
+    rpa_info(f"[AI] Reanalisando imagem ID:{id}")
     image = Image.query.get_or_404(id)
     
     selected_fields = request.form.getlist('fields')
@@ -2382,6 +2410,7 @@ def reanalyze_image(id):
 @app.route('/image/<int:image_id>/item/<int:item_id>/delete', methods=['POST'])
 @login_required
 def delete_image_item(image_id, item_id):
+    rpa_info(f"[CRUD] Deletando item {item_id} da imagem {image_id}")
     """Deletar uma peça individual detectada pela IA"""
     item = ImageItem.query.filter_by(id=item_id, image_id=image_id).first_or_404()
     
@@ -2395,6 +2424,7 @@ def delete_image_item(image_id, item_id):
 @app.route('/image/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_image(id):
+    rpa_info(f"[NAV] Editar Imagem ID:{id} - Usuário: {current_user.username}")
     image = Image.query.get_or_404(id)
     
     if request.method == 'POST':
@@ -2482,11 +2512,13 @@ def analytics():
 @app.route('/integrations')
 @login_required
 def integrations():
+    rpa_info(f"[NAV] Integrações - Usuário: {current_user.username}")
     return render_template('integrations/index.html')
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
+    rpa_info(f"[NAV] Configurações - Usuário: {current_user.username}")
     if request.method == 'POST':
         api_key = request.form.get('api_key')
         
@@ -2498,6 +2530,7 @@ def settings():
             db.session.add(config)
             
         db.session.commit()
+        rpa_info("[CONFIG] Configurações atualizadas")
         flash('Settings updated successfully')
         return redirect(url_for('settings'))
         
@@ -2508,6 +2541,7 @@ def settings():
 @app.route('/reports')
 @login_required
 def reports():
+    rpa_info(f"[NAV] Relatórios - Usuário: {current_user.username}")
     total_images = Image.query.count()
     images_with_sku = Image.query.filter(Image.sku.isnot(None), Image.sku != '').count()
     images_without_sku = total_images - images_with_sku
@@ -2560,6 +2594,7 @@ def reports():
 @login_required
 def skus_sem_foto():
     """Lista SKUs da Carteira que não têm imagem cadastrada NA MESMA COLEÇÃO"""
+    rpa_info(f"[NAV] SKUs Sem Foto - Usuário: {current_user.username}")
     page = request.args.get('page', 1, type=int)
     colecao_filter = request.args.get('colecao', type=int)
     per_page = 50
@@ -2626,6 +2661,7 @@ def skus_sem_foto():
 @app.route('/skus-sem-foto/exportar')
 @login_required
 def exportar_skus_sem_foto():
+    rpa_info(f"[EXPORT] Exportando SKUs sem foto - Usuário: {current_user.username}")
     """Exporta CSV com SKUs que não têm foto NA MESMA COLEÇÃO"""
     output = io.StringIO()
     writer = csv.writer(output)
@@ -2667,6 +2703,7 @@ def exportar_skus_sem_foto():
 @app.route('/reports/export/<report_type>')
 @login_required
 def export_report(report_type):
+    rpa_info(f"[EXPORT] Exportando relatório: {report_type} - Usuário: {current_user.username}")
     output = io.StringIO()
     writer = csv.writer(output)
     
@@ -2812,6 +2849,7 @@ def produtos():
 @app.route('/produtos/new', methods=['GET', 'POST'])
 @login_required
 def new_produto():
+    rpa_info(f"[NAV] Novo Produto - Usuário: {current_user.username}")
     if request.method == 'POST':
         sku = request.form.get('sku', '').strip()
         descricao = request.form.get('descricao', '').strip()
@@ -2851,6 +2889,7 @@ def new_produto():
 @app.route('/produtos/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_produto(id):
+    rpa_info(f"[NAV] Editar Produto ID:{id} - Usuário: {current_user.username}")
     produto = Produto.query.get_or_404(id)
     
     if request.method == 'POST':
@@ -2924,6 +2963,7 @@ def edit_produto(id):
 @app.route('/produtos/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_produto(id):
+    rpa_info(f"[CRUD] Deletando produto ID:{id}")
     produto = Produto.query.get_or_404(id)
     produto.ativo = False  # Soft delete
     db.session.commit()
@@ -2933,6 +2973,7 @@ def delete_produto(id):
 @app.route('/produtos/delete-all', methods=['POST'])
 @login_required
 def delete_all_produtos():
+    rpa_info("[CRUD] Iniciando deleção de TODOS os produtos")
     """Deleta todos os produtos (soft delete)"""
     count = Produto.query.filter_by(ativo=True).count()
     Produto.query.filter_by(ativo=True).update({'ativo': False})
@@ -3920,6 +3961,7 @@ def listar_abas_excel():
 @app.route('/carteira/cruzar')
 @login_required
 def cruzar_carteira():
+    rpa_info(f"[NAV] Cruzamento Carteira - Usuário: {current_user.username}")
     """Executa cruzamento entre carteira e produtos/imagens"""
     count = atualizar_status_carteira()
     flash(f'Cruzamento concluído! {count} itens atualizados.')
@@ -3956,6 +3998,7 @@ def atualizar_status_carteira():
 @app.route('/carteira/export')
 @login_required
 def export_carteira():
+    rpa_info(f"[EXPORT] Exportando carteira - Usuário: {current_user.username}")
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['SKU', 'Descrição', 'Cor', 'Categoria', 'Quantidade', 'Status Foto', 'Data Importação', 'Lote'])
@@ -3984,6 +4027,7 @@ def export_carteira():
 @app.route('/auditoria')
 @login_required
 def auditoria():
+    rpa_info(f"[NAV] Auditoria - Usuário: {current_user.username}")
     # SKUs com foto vs sem foto
     produtos_com_foto = Produto.query.filter_by(tem_foto=True, ativo=True).count()
     produtos_sem_foto = Produto.query.filter_by(tem_foto=False, ativo=True).count()
@@ -4031,18 +4075,21 @@ def auditoria():
 @app.route('/auditoria/historico-sku')
 @login_required
 def historico_sku():
+    rpa_info(f"[NAV] Histórico SKU - Usuário: {current_user.username}")
     historico = HistoricoSKU.query.order_by(HistoricoSKU.data_alteracao.desc()).all()
     return render_template('auditoria/historico_sku.html', historico=historico)
 
 @app.route('/auditoria/skus-pendentes')
 @login_required
 def skus_pendentes():
+    rpa_info(f"[NAV] SKUs Pendentes - Usuário: {current_user.username}")
     produtos = Produto.query.filter_by(tem_foto=False, ativo=True).order_by(Produto.sku).all()
     return render_template('auditoria/skus_pendentes.html', produtos=produtos)
 
 @app.route('/auditoria/export/<tipo>')
 @login_required
 def export_auditoria(tipo):
+    rpa_info(f"[EXPORT] Exportando auditoria: {tipo} - Usuário: {current_user.username}")
     output = io.StringIO()
     writer = csv.writer(output)
     
@@ -4185,6 +4232,7 @@ def batch_process_all():
 @login_required
 def batch_new():
     """Criar novo lote de upload"""
+    rpa_info(f"[NAV] Novo Batch - Usuário: {current_user.username}")
     if request.method == 'POST':
         files = request.files.getlist('files')
         zip_file = request.files.get('zip_file')
@@ -4193,6 +4241,7 @@ def batch_new():
         batch_name = request.form.get('batch_name', f"Lote {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         
         log_start(M.BATCH, f"Criando novo batch: {batch_name}", arquivos=len(files) if files else 0, zip=bool(zip_file))
+        rpa_info(f"[BATCH] Criando batch: {batch_name} - {len(files) if files else 0} arquivos")
         
         temp_dir = tempfile.mkdtemp(prefix='batch_upload_')
         temp_file_paths = []
@@ -4419,6 +4468,7 @@ def batch_delete(batch_id):
 def batch_detail(batch_id):
     """Detalhes de um lote de upload"""
     batch = BatchUpload.query.get_or_404(batch_id)
+    rpa_info(f"[NAV] Detalhe Batch #{batch_id} - Usuário: {current_user.username}")
     
     page = request.args.get('page', 1, type=int)
     status_filter = request.args.get('status', '')
@@ -4481,6 +4531,7 @@ def batch_streaming_upload():
     import hashlib
     
     log_start(M.UPLOAD, "Streaming upload iniciado")
+    rpa_info("[UPLOAD] Streaming upload iniciado")
     
     CHUNK_SIZE = 20 * 1024 * 1024  # 20MB chunks
     TEMP_UPLOAD_DIR = '/tmp/batch_uploads'
@@ -4631,6 +4682,7 @@ def batch_start_processing(batch_id):
 @app.route('/batch/<int:batch_id>/resume', methods=['POST'])
 @login_required
 def batch_resume(batch_id):
+    rpa_info(f"[BATCH] Retomando processamento do batch #{batch_id}")
     """Retoma processamento de um lote após interrupção (crash recovery)"""
     batch = BatchUpload.query.get_or_404(batch_id)
     
@@ -4680,6 +4732,7 @@ def batch_resume(batch_id):
 @app.route('/batch/<int:batch_id>/retry-failed', methods=['POST'])
 @login_required
 def batch_retry_failed(batch_id):
+    rpa_info(f"[BATCH] Reprocessando itens falhos do batch #{batch_id}")
     """Reprocessar itens com falha"""
     batch = BatchUpload.query.get_or_404(batch_id)
     

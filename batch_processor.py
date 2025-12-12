@@ -22,6 +22,13 @@ from oaz_logger import (
     batch_log, M
 )
 
+try:
+    from rpa_monitor_client import rpa_info, rpa_warn, rpa_error as rpa_err
+except ImportError:
+    def rpa_info(msg): pass
+    def rpa_warn(msg): pass
+    def rpa_err(msg, **kwargs): pass
+
 MAX_WORKERS = 5
 MAX_RETRIES = 3
 RETRY_DELAY = 2
@@ -29,15 +36,18 @@ RETRY_DELAY = 2
 progress_lock = Lock()
 
 def log_batch(message, level="INFO"):
-    """Logger centralizado para batch processing - usando sistema OAZ"""
+    """Logger centralizado para batch processing - usando sistema OAZ + RPA Monitor"""
     if level == "ERROR":
         error(M.BATCH, 'PROCESS', message)
+        rpa_err(f"[BATCH] {message}", regiao="batch")
     elif level == "WARN":
         warn(M.BATCH, 'PROCESS', message)
+        rpa_warn(f"[BATCH] {message}")
     elif level == "DEBUG":
         debug(M.BATCH, 'PROCESS', message)
     else:
         info(M.BATCH, 'PROCESS', message)
+        rpa_info(f"[BATCH] {message}")
 
 def generate_thumbnail_bytes(image_data, max_width=300, quality=75):
     """Gera thumbnail a partir de dados de imagem

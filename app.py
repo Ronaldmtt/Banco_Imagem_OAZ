@@ -1181,14 +1181,18 @@ def frontend_log():
         
         if level == 'ERROR':
             error(M.SYSTEM, action, f"[JS] {message}", **extras)
+            rpa_error(f"[JS] {action}: {message}", regiao="frontend")
         elif level == 'WARN':
             warn(M.SYSTEM, action, f"[JS] {message}", **extras)
+            rpa_warn(f"[JS] {action}: {message}")
         elif level == 'SUCCESS':
             success(M.SYSTEM, action, f"[JS] {message}", **extras)
+            rpa_info(f"[JS] {action}: {message}")
         elif level == 'DEBUG':
             debug(M.SYSTEM, action, f"[JS] {message}", **extras)
         else:
             info(M.SYSTEM, action, f"[JS] {message}", **extras)
+            rpa_info(f"[JS] {action}: {message}")
         
         return jsonify({'status': 'ok'})
     except Exception as e:
@@ -1724,6 +1728,7 @@ def upload():
 @login_required
 def collections():
     nav_log.page_enter("Coleções", user=current_user.username)
+    rpa_info(f"[NAV] Coleções - Usuário: {current_user.username}")
     search = request.args.get('search', '')
     season = request.args.get('season', '')
     year = request.args.get('year', '')
@@ -1746,6 +1751,7 @@ def collection_detail(id):
     """Página de detalhes da coleção com filtros de subcoleção"""
     collection = Collection.query.get_or_404(id)
     nav_log.page_enter(f"Coleção: {collection.name}", user=current_user.username)
+    rpa_info(f"[NAV] Coleção: {collection.name} - Usuário: {current_user.username}")
     
     # Buscar subcoleções desta coleção
     subcolecoes = Subcolecao.query.filter_by(colecao_id=id).order_by(Subcolecao.nome).all()
@@ -2421,6 +2427,7 @@ def edit_image(id):
 @login_required
 def brands():
     nav_log.page_enter("Marcas", user=current_user.username)
+    rpa_info(f"[NAV] Marcas - Usuário: {current_user.username}")
     brands = Brand.query.order_by(Brand.name).all()
     return render_template('brands/list.html', brands=brands)
 
@@ -2428,6 +2435,7 @@ def brands():
 @login_required
 def new_brand():
     nav_log.page_enter("Nova Marca", user=current_user.username)
+    rpa_info(f"[NAV] Nova Marca - Usuário: {current_user.username}")
     if request.method == 'POST':
         name = request.form.get('name')
         description = request.form.get('description')
@@ -2444,6 +2452,7 @@ def new_brand():
         db.session.add(brand)
         db.session.commit()
         crud_log.created("Marca", brand.id, name)
+        rpa_info(f"[CRUD] Marca criada: {name} (ID: {brand.id})")
         
         flash('Marca criada com sucesso!')
         return redirect(url_for('brands'))
@@ -2454,6 +2463,7 @@ def new_brand():
 @login_required
 def analytics():
     nav_log.page_enter("Analytics", user=current_user.username)
+    rpa_info(f"[NAV] Analytics - Usuário: {current_user.username}")
     total_images = Image.query.count()
     pending_images = Image.query.filter_by(status='Pendente').count()
     approved_images = Image.query.filter_by(status='Aprovado').count()
@@ -2754,6 +2764,7 @@ def export_report(report_type):
 @login_required
 def produtos():
     nav_log.page_enter("Produtos", user=current_user.username)
+    rpa_info(f"[NAV] Produtos - Usuário: {current_user.username}")
     search = request.args.get('search', '')
     marca_id = request.args.get('marca_id', '')
     colecao_id = request.args.get('colecao_id', '')
@@ -3096,10 +3107,12 @@ def deletar_lote_carteira(lote_id):
         
         db.session.commit()
         log_end(M.CARTEIRA, f"Lote {lote_id} excluído: {count} itens removidos")
+        rpa_info(f"[CARTEIRA] Lote {lote_id} excluído: {count} itens removidos")
         flash(f'Lote "{lote_id}" deletado com sucesso! {count} itens removidos.', 'success')
     except Exception as e:
         db.session.rollback()
         log_error(M.CARTEIRA, f"Exclusão de lote {lote_id}", str(e))
+        rpa_error(f"[CARTEIRA] Erro ao excluir lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
         flash(f'Erro ao deletar lote: {str(e)}', 'error')
     
     return redirect(url_for('carteira'))
@@ -3109,15 +3122,18 @@ def deletar_lote_carteira(lote_id):
 def limpar_toda_carteira():
     """Limpa toda a carteira de compras"""
     log_start(M.CARTEIRA, "Limpeza completa da carteira")
+    rpa_info("[CARTEIRA] Iniciando limpeza completa da carteira")
     try:
         count = CarteiraCompras.query.count()
         CarteiraCompras.query.delete()
         db.session.commit()
         log_end(M.CARTEIRA, f"Carteira limpa: {count} itens removidos")
+        rpa_info(f"[CARTEIRA] Limpeza completa: {count} itens removidos")
         flash(f'Carteira limpa com sucesso! {count} itens removidos.', 'success')
     except Exception as e:
         db.session.rollback()
         log_error(M.CARTEIRA, "Limpeza da carteira", str(e))
+        rpa_error(f"[CARTEIRA] Erro na limpeza: {str(e)}", exc=e, regiao="carteira")
         flash(f'Erro ao limpar carteira: {str(e)}', 'error')
     
     return redirect(url_for('carteira'))
@@ -3506,6 +3522,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     import pandas as pd
     
     log_start(M.CARTEIRA, f"Processando aba: {aba_origem}")
+    rpa_info(f"[CARTEIRA] Processando aba: {aba_origem} ({len(df)} linhas)")
     total_linhas = len(df)
     
     if contadores is None:
@@ -3705,8 +3722,10 @@ def reconciliar_imagens_com_carteira():
 def reconciliar_carteira():
     """Endpoint para reconciliar imagens com a Carteira."""
     carteira_log.reconciliation_started()
+    rpa_info("[CARTEIRA] Iniciando reconciliação de imagens")
     reconciliadas = reconciliar_imagens_com_carteira()
     carteira_log.reconciliation_completed(reconciliadas)
+    rpa_info(f"[CARTEIRA] Reconciliação concluída: {reconciliadas} imagens atualizadas")
     
     if reconciliadas > 0:
         flash(f'{reconciliadas} imagem(ns) reconciliada(s) com a Carteira!')
@@ -4128,7 +4147,7 @@ def batch_process_all():
         return jsonify({'error': 'Nenhum batch especificado'}), 400
     
     log_start(M.BATCH, f"Processando todos os batches: {len(batch_ids)} lotes")
-    rpa_info(f"[BATCH] Iniciando processamento de {len(batch_ids)} batches")
+    rpa_info(f"[BATCH] Iniciando processamento de {len(batch_ids)} lotes em sequência")
     
     batches_to_process = []
     for batch_id in batch_ids:
@@ -4154,6 +4173,7 @@ def batch_process_all():
         thread.start()
     
     log_end(M.BATCH, "Processamento de múltiplos batches")
+    rpa_info("[BATCH] Processamento de múltiplos lotes concluído")
     
     return jsonify({
         'success': True,
@@ -4577,6 +4597,7 @@ def batch_start_processing(batch_id):
         return {'error': 'Nenhum item pendente para processar'}, 400
     
     batch_log.batch_started(batch_id, len(pending_items))
+    rpa_info(f"[BATCH] Processamento do batch #{batch_id}: {len(pending_items)} itens pendentes")
     
     batch.status = 'Processando'
     batch.started_at = datetime.utcnow()
@@ -4709,8 +4730,10 @@ def batch_retry_failed(batch_id):
 def analyze_pending_ai():
     """Página para analisar imagens pendentes de análise IA"""
     nav_log.page_enter("Análise IA Pendente", user=current_user.username)
+    rpa_info(f"[NAV] Análise IA Pendente - Usuário: {current_user.username}")
     pending_images = Image.query.filter_by(status='Pendente Análise IA').order_by(Image.upload_date.desc()).all()
     debug(M.CATALOG, 'DATA', f"Imagens pendentes de IA carregadas", total=len(pending_images))
+    rpa_info(f"[CATALOG] {len(pending_images)} imagens pendentes de IA")
     
     if request.method == 'POST':
         image_ids = request.form.getlist('image_ids')

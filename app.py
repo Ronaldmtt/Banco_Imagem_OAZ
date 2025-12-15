@@ -1198,6 +1198,45 @@ def frontend_log():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+@app.route('/api/analyze-single', methods=['POST'])
+@login_required
+def api_analyze_single():
+    """Endpoint para análise individual de imagem via AJAX (usado no catálogo em lote)"""
+    try:
+        data = request.get_json()
+        image_id = data.get('image_id')
+        selected_fields = data.get('fields', ['descricao', 'tags', 'cor', 'tipo', 'material'])
+        
+        if not image_id:
+            return jsonify({'success': False, 'error': 'ID da imagem não fornecido'}), 400
+        
+        image = Image.query.get(image_id)
+        if not image:
+            return jsonify({'success': False, 'error': 'Imagem não encontrada'}), 404
+        
+        rpa_info(f"[AI-BATCH] Analisando imagem ID:{image_id} | Campos: {selected_fields}")
+        
+        success, error_msg = analyze_single_image(image, selected_fields)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'SKU {image.sku_base or image.sku or "sem SKU"} analisado',
+                'image_id': image_id
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': error_msg or 'Erro desconhecido na análise',
+                'image_id': image_id
+            })
+    
+    except Exception as e:
+        rpa_error(f"[AI-BATCH] Erro ao analisar imagem: {e}", exc=e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # Routes
 @app.route('/')
 def index():

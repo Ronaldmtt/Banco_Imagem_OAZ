@@ -79,7 +79,7 @@
     <div style="flex: 1;">
         <div class="image-grid">
             {% for group in sku_groups %}
-            <div class="image-card sku-card" data-sku="{{ group.sku_base }}">
+            <div class="image-card sku-card" data-sku="{{ group.sku_base }}" data-image-ids="{{ group.images|map(attribute='id')|list|join(',') }}">
                 <div class="carousel-container">
                     <div class="carousel-track" data-index="0">
                         {% for img in group.images %}
@@ -99,10 +99,10 @@
                     </div>
                     
                     {% if group.images|length > 1 %}
-                    <button class="carousel-nav carousel-prev" onclick="carouselNav(this, -1)" aria-label="Anterior">
+                    <button class="carousel-nav carousel-prev" onclick="carouselNav(this, -1); event.stopPropagation();" aria-label="Anterior">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <button class="carousel-nav carousel-next" onclick="carouselNav(this, 1)" aria-label="Próximo">
+                    <button class="carousel-nav carousel-next" onclick="carouselNav(this, 1); event.stopPropagation();" aria-label="Próximo">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                     
@@ -117,9 +117,15 @@
                     </div>
                     {% endif %}
                     
-                    <div style="position: absolute; top: 8px; left: 8px;">
-                        <input type="checkbox" style="transform: scale(1.2);">
+                    <div class="card-select-checkbox" style="position: absolute; top: 8px; left: 8px; z-index: 15;">
+                        <input type="checkbox" class="sku-checkbox" data-sku="{{ group.sku_base }}" 
+                               style="width: 20px; height: 20px; cursor: pointer; accent-color: #a371f7;"
+                               onclick="event.stopPropagation(); toggleSelection(this);">
                     </div>
+                    
+                    <button class="card-ai-btn" onclick="event.stopPropagation(); selectAndAnalyze(this);" title="Gerar Descrição com IA">
+                        <i class="fas fa-magic"></i>
+                    </button>
                 </div>
                 
                 <div class="image-info">
@@ -134,6 +140,9 @@
                         {% endif %}
                         {% if group.has_rejected %}
                         <span class="status-indicator status-rejected" title="Rejeitado"></span>
+                        {% endif %}
+                        {% if group.needs_ai %}
+                        <span class="status-indicator status-needs-ai" title="Sem descrição IA"></span>
                         {% endif %}
                         <span style="font-size: 0.75rem; color: var(--text-secondary);">{{ group.images|length }} foto{% if group.images|length > 1 %}s{% endif %}</span>
                     </div>
@@ -153,7 +162,7 @@
         </div>
         
         {% if total_pages > 1 %}
-        <div class="pagination" style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 2rem;">
+        <div class="pagination" style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 2rem; margin-bottom: 80px;">
             {% if page > 1 %}
             <a href="{{ url_for('catalog', page=page-1, q=search_query, collection_id=request.args.get('collection_id'), brand_id=request.args.get('brand_id'), status=request.args.getlist('status')) }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color);">
                 <i class="fas fa-chevron-left"></i> Anterior
@@ -171,6 +180,109 @@
             {% endif %}
         </div>
         {% endif %}
+    </div>
+</div>
+
+<div id="selectionBar" class="selection-bar" style="display: none;">
+    <div class="selection-bar-content">
+        <span class="selection-count">
+            <i class="fas fa-check-circle"></i>
+            <span id="selectedCount">0</span> SKU(s) selecionado(s)
+        </span>
+        <div class="selection-actions">
+            <button class="btn selection-btn-ai" onclick="openBatchAnalyzeModal()">
+                <i class="fas fa-magic"></i> Gerar Descrição IA
+            </button>
+            <button class="btn selection-btn-clear" onclick="clearSelection()">
+                <i class="fas fa-times"></i> Limpar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="batchAnalyzeModal" class="batch-modal" style="display: none;">
+    <div class="batch-modal-content">
+        <div class="batch-modal-header">
+            <h3>
+                <i class="fas fa-magic" style="color: #a371f7;"></i> Análise de IA em Lote
+            </h3>
+            <button onclick="closeBatchAnalyzeModal()" class="batch-modal-close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div id="modalConfigSection">
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 16px;">
+                <span id="modalSkuCount">0</span> SKU(s) selecionado(s) serão analisados.
+            </p>
+            
+            <div class="batch-field-options">
+                <label class="batch-field-option batch-field-all">
+                    <input type="checkbox" id="batchAllFields" onchange="toggleBatchAllFields(this.checked)">
+                    <span><i class="fas fa-check-double"></i> Todos os campos</span>
+                </label>
+                
+                <div class="batch-field-separator"></div>
+                
+                <label class="batch-field-option">
+                    <input type="checkbox" name="batchFields" value="descricao" class="batch-field-checkbox" checked>
+                    <span>Descrição/Observações</span>
+                </label>
+                <label class="batch-field-option">
+                    <input type="checkbox" name="batchFields" value="tags" class="batch-field-checkbox">
+                    <span>Tags</span>
+                </label>
+                <label class="batch-field-option">
+                    <input type="checkbox" name="batchFields" value="cor" class="batch-field-checkbox">
+                    <span>Cor</span>
+                </label>
+                <label class="batch-field-option">
+                    <input type="checkbox" name="batchFields" value="tipo" class="batch-field-checkbox">
+                    <span>Tipo de Peça</span>
+                </label>
+                <label class="batch-field-option">
+                    <input type="checkbox" name="batchFields" value="material" class="batch-field-checkbox">
+                    <span>Material</span>
+                </label>
+            </div>
+            
+            <div class="batch-modal-actions">
+                <button type="button" onclick="closeBatchAnalyzeModal()" class="btn" style="flex: 1; background: var(--bg-tertiary); color: var(--text-primary);">
+                    Cancelar
+                </button>
+                <button type="button" id="startBatchAnalysis" onclick="startBatchAnalysis()" class="btn" style="flex: 1; background: #a371f7; color: white;">
+                    <i class="fas fa-magic"></i> Iniciar Análise
+                </button>
+            </div>
+        </div>
+        
+        <div id="modalProgressSection" style="display: none;">
+            <div class="batch-progress-container">
+                <div class="batch-progress-header">
+                    <span id="progressText">Processando...</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div class="batch-progress-bar">
+                    <div id="progressFill" class="batch-progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="batch-progress-details">
+                    <span id="progressDetails">0 de 0 imagens</span>
+                </div>
+            </div>
+            
+            <div id="progressLog" class="batch-progress-log"></div>
+            
+            <div id="progressComplete" class="batch-progress-complete" style="display: none;">
+                <i class="fas fa-check-circle"></i>
+                <span id="completeMessage">Análise concluída!</span>
+            </div>
+            
+            <div class="batch-modal-actions" id="progressActions" style="display: none;">
+                <button type="button" onclick="closeBatchAnalyzeModal(); location.reload();" class="btn" style="width: 100%; background: #a371f7; color: white;">
+                    <i class="fas fa-check"></i> Concluído
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -299,13 +411,482 @@
     background: #f85149;
 }
 
+.status-indicator.status-needs-ai {
+    background: #a371f7;
+}
+
 .status-pendente-análise-ia {
     background: #9333ea !important;
     color: white;
 }
+
+.card-ai-btn {
+    position: absolute;
+    bottom: 32px;
+    left: 8px;
+    background: rgba(163, 113, 247, 0.9);
+    border: none;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s, transform 0.2s;
+    z-index: 15;
+    font-size: 0.8rem;
+}
+
+.carousel-container:hover .card-ai-btn {
+    opacity: 1;
+}
+
+.card-ai-btn:hover {
+    background: #a371f7;
+    transform: scale(1.1);
+}
+
+.sku-card.selected {
+    outline: 3px solid #a371f7;
+    outline-offset: -3px;
+}
+
+.sku-card.selected .carousel-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(163, 113, 247, 0.1);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.selection-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, rgba(30, 30, 40, 0.98) 0%, rgba(40, 30, 50, 0.98) 100%);
+    border-top: 1px solid rgba(163, 113, 247, 0.3);
+    padding: 16px 24px;
+    z-index: 1000;
+    animation: slideUp 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+.selection-bar-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.selection-count {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #a371f7;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.selection-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.selection-btn-ai {
+    background: linear-gradient(135deg, #a371f7 0%, #8b5cf6 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-weight: 500;
+}
+
+.selection-btn-ai:hover {
+    background: linear-gradient(135deg, #b794f6 0%, #a371f7 100%);
+}
+
+.selection-btn-clear {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.batch-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+}
+
+.batch-modal-content {
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 450px;
+    width: 90%;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.batch-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.batch-modal-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.batch-modal-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 4px;
+}
+
+.batch-modal-close:hover {
+    color: var(--text-primary);
+}
+
+.batch-field-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.batch-field-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.batch-field-option:hover {
+    background: rgba(163, 113, 247, 0.1);
+}
+
+.batch-field-option input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #a371f7;
+}
+
+.batch-field-all {
+    background: rgba(163, 113, 247, 0.15);
+    border: 1px solid rgba(163, 113, 247, 0.3);
+}
+
+.batch-field-all span {
+    font-weight: 500;
+}
+
+.batch-field-separator {
+    border-top: 1px solid var(--border-color);
+    margin: 8px 0;
+}
+
+.batch-modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.batch-progress-container {
+    margin-bottom: 20px;
+}
+
+.batch-progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+}
+
+.batch-progress-bar {
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.batch-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #a371f7 0%, #8b5cf6 100%);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.batch-progress-details {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.batch-progress-log {
+    max-height: 150px;
+    overflow-y: auto;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    margin-bottom: 16px;
+}
+
+.batch-progress-log .log-success {
+    color: #3fb950;
+}
+
+.batch-progress-log .log-error {
+    color: #f85149;
+}
+
+.batch-progress-log .log-info {
+    color: var(--text-secondary);
+}
+
+.batch-progress-complete {
+    text-align: center;
+    padding: 20px;
+    color: #3fb950;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.batch-progress-complete i {
+    font-size: 1.5rem;
+}
 </style>
 
 <script>
+let selectedSkus = new Set();
+
+function toggleSelection(checkbox) {
+    const card = checkbox.closest('.sku-card');
+    const sku = card.dataset.sku;
+    
+    if (checkbox.checked) {
+        selectedSkus.add(sku);
+        card.classList.add('selected');
+    } else {
+        selectedSkus.delete(sku);
+        card.classList.remove('selected');
+    }
+    
+    updateSelectionBar();
+}
+
+function selectAndAnalyze(btn) {
+    const card = btn.closest('.sku-card');
+    const sku = card.dataset.sku;
+    const checkbox = card.querySelector('.sku-checkbox');
+    
+    if (!checkbox.checked) {
+        checkbox.checked = true;
+        selectedSkus.add(sku);
+        card.classList.add('selected');
+        updateSelectionBar();
+    }
+    
+    openBatchAnalyzeModal();
+}
+
+function updateSelectionBar() {
+    const bar = document.getElementById('selectionBar');
+    const count = document.getElementById('selectedCount');
+    
+    if (selectedSkus.size > 0) {
+        bar.style.display = 'block';
+        count.textContent = selectedSkus.size;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function clearSelection() {
+    selectedSkus.clear();
+    document.querySelectorAll('.sku-checkbox').forEach(cb => {
+        cb.checked = false;
+    });
+    document.querySelectorAll('.sku-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    updateSelectionBar();
+}
+
+function openBatchAnalyzeModal() {
+    if (selectedSkus.size === 0) {
+        alert('Selecione pelo menos um SKU para analisar.');
+        return;
+    }
+    
+    document.getElementById('modalSkuCount').textContent = selectedSkus.size;
+    document.getElementById('modalConfigSection').style.display = 'block';
+    document.getElementById('modalProgressSection').style.display = 'none';
+    document.getElementById('batchAnalyzeModal').style.display = 'flex';
+}
+
+function closeBatchAnalyzeModal() {
+    document.getElementById('batchAnalyzeModal').style.display = 'none';
+}
+
+function toggleBatchAllFields(checked) {
+    document.querySelectorAll('.batch-field-checkbox').forEach(cb => {
+        cb.checked = checked;
+    });
+}
+
+function getSelectedImageIds() {
+    const imageIds = [];
+    selectedSkus.forEach(sku => {
+        const card = document.querySelector(`.sku-card[data-sku="${sku}"]`);
+        if (card && card.dataset.imageIds) {
+            const ids = card.dataset.imageIds.split(',').filter(id => id);
+            imageIds.push(...ids);
+        }
+    });
+    return imageIds;
+}
+
+function getSelectedFields() {
+    const allFields = document.getElementById('batchAllFields').checked;
+    if (allFields) {
+        return ['descricao', 'tags', 'cor', 'tipo', 'material'];
+    }
+    
+    const fields = [];
+    document.querySelectorAll('.batch-field-checkbox:checked').forEach(cb => {
+        fields.push(cb.value);
+    });
+    return fields;
+}
+
+async function startBatchAnalysis() {
+    const imageIds = getSelectedImageIds();
+    const fields = getSelectedFields();
+    
+    if (imageIds.length === 0) {
+        alert('Nenhuma imagem encontrada nos SKUs selecionados.');
+        return;
+    }
+    
+    if (fields.length === 0) {
+        alert('Selecione pelo menos um campo para preencher.');
+        return;
+    }
+    
+    document.getElementById('modalConfigSection').style.display = 'none';
+    document.getElementById('modalProgressSection').style.display = 'block';
+    document.getElementById('progressActions').style.display = 'none';
+    document.getElementById('progressComplete').style.display = 'none';
+    
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressDetails = document.getElementById('progressDetails');
+    const progressLog = document.getElementById('progressLog');
+    
+    progressLog.innerHTML = '';
+    progressFill.style.width = '0%';
+    progressText.textContent = 'Iniciando análise...';
+    progressDetails.textContent = `0 de ${imageIds.length} imagens`;
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (let i = 0; i < imageIds.length; i++) {
+        const imageId = imageIds[i];
+        const percent = Math.round(((i + 1) / imageIds.length) * 100);
+        
+        progressText.textContent = `Analisando imagem ${i + 1} de ${imageIds.length}...`;
+        progressPercent.textContent = `${percent}%`;
+        progressDetails.textContent = `${i + 1} de ${imageIds.length} imagens`;
+        progressFill.style.width = `${percent}%`;
+        
+        try {
+            const response = await fetch('/api/analyze-single', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    image_id: parseInt(imageId),
+                    fields: fields
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                successCount++;
+                addLogEntry(progressLog, `✓ Imagem ${imageId}: ${result.message || 'Analisada com sucesso'}`, 'success');
+            } else {
+                errorCount++;
+                addLogEntry(progressLog, `✗ Imagem ${imageId}: ${result.error || 'Erro desconhecido'}`, 'error');
+            }
+        } catch (err) {
+            errorCount++;
+            addLogEntry(progressLog, `✗ Imagem ${imageId}: Erro de conexão`, 'error');
+        }
+        
+        progressLog.scrollTop = progressLog.scrollHeight;
+    }
+    
+    progressText.textContent = 'Análise concluída!';
+    progressPercent.textContent = '100%';
+    progressFill.style.width = '100%';
+    
+    document.getElementById('progressComplete').style.display = 'flex';
+    document.getElementById('completeMessage').textContent = 
+        `${successCount} sucesso, ${errorCount} erro(s)`;
+    document.getElementById('progressActions').style.display = 'flex';
+}
+
+function addLogEntry(container, message, type) {
+    const entry = document.createElement('div');
+    entry.className = `log-${type}`;
+    entry.textContent = message;
+    container.appendChild(entry);
+}
+
 function carouselNav(btn, direction) {
     const container = btn.closest('.carousel-container');
     const track = container.querySelector('.carousel-track');

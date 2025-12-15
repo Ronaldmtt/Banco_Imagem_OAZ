@@ -4567,6 +4567,9 @@ def batch_streaming_upload():
     Endpoint de recepção com upload DIRETO para Object Storage (bucket).
     Garante que a imagem é persistida IMEDIATAMENTE, antes de qualquer processamento.
     Se o processamento falhar depois, a imagem já está segura no bucket.
+    
+    DETECÇÃO DE DUPLICATAS: Usa hash SHA256 para identificar imagens já upadas.
+    SKUs iguais com hashes diferentes são imagens diferentes (ângulos) e serão upadas.
     """
     import hashlib
     
@@ -4595,8 +4598,17 @@ def batch_streaming_upload():
         if not batch:
             return {'error': 'Batch não encontrado'}, 404
     
+    existing_hashes = set(
+        row[0] for row in db.session.query(BatchItem.file_hash)
+        .filter(BatchItem.file_hash.isnot(None))
+        .filter(BatchItem.processing_status != 'orphaned')
+        .all()
+    )
+    debug(M.UPLOAD, 'HASH_CACHE', f"Carregados {len(existing_hashes)} hashes existentes para verificação de duplicatas")
+    
     received_files = []
     upload_errors = []
+    skipped_files = []
     
     for key in request.files:
         file = request.files[key]
@@ -4614,6 +4626,23 @@ def batch_streaming_upload():
             try:
                 file_bytes = file.read()
                 
+                hasher = hashlib.sha256()
+                hasher.update(file_bytes)
+                file_hash = hasher.hexdigest()
+                
+                if file_hash in existing_hashes:
+                    skipped_files.append({
+                        'sku': sku,
+                        'filename': original_filename,
+                        'reason': 'duplicado',
+                        'hash': file_hash[:16]
+                    })
+                    debug(M.UPLOAD, 'SKIP_DUPLICATE', f"Pulando {original_filename} - já existe (hash: {file_hash[:16]})")
+                    del file_bytes
+                    continue
+                
+                existing_hashes.add(file_hash)
+                
                 upload_result = object_storage.upload_bytes_immediate(
                     file_bytes=file_bytes,
                     original_filename=original_filename,
@@ -4626,7 +4655,7 @@ def batch_streaming_upload():
                     sku=sku,
                     filename_original=original_filename,
                     file_size=upload_result['file_size'],
-                    file_hash=upload_result['file_hash'],
+                    file_hash=file_hash,
                     storage_path=upload_result['storage_path'],
                     received_path=upload_result['object_name'],
                     reception_status='uploaded',
@@ -4642,7 +4671,7 @@ def batch_streaming_upload():
                     'sku': sku,
                     'filename': original_filename,
                     'size': upload_result['file_size'],
-                    'hash': upload_result['file_hash'][:16],
+                    'hash': file_hash[:16],
                     'storage_path': upload_result['storage_path']
                 })
                 
@@ -4661,11 +4690,13 @@ def batch_streaming_upload():
     batch.total_arquivos = BatchItem.query.filter_by(batch_id=batch_id).count()
     db.session.commit()
     
-    log_end(M.UPLOAD, f"Upload direto concluído: {len(received_files)} salvos no bucket, {len(upload_errors)} erros")
+    log_end(M.UPLOAD, f"Upload concluído: {len(received_files)} novos, {len(skipped_files)} duplicados pulados, {len(upload_errors)} erros")
     
     return {
         'batch_id': batch_id,
         'received_count': len(received_files),
+        'skipped_count': len(skipped_files),
+        'skipped_files': skipped_files,
         'total_no_lote': batch.total_arquivos,
         'files': received_files,
         'errors': upload_errors,

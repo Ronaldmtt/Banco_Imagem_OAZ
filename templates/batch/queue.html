@@ -547,7 +547,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const files = Array.from(batchData.files);
         const totalFiles = files.length;
-        const BATCH_SIZE = 3; // Reduzido para evitar sobrecarga
+        const BATCH_SIZE = 5; // Upload de 5 imagens por vez
         let uploaded = 0;
         let failed = 0;
         

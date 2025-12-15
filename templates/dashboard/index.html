@@ -7,35 +7,35 @@
 </div>
 
 <div class="dashboard-stats">
-    <div class="stat-card">
+    <div class="stat-card" data-tutorial-title="Total de Imagens" data-tutorial-desc="Quantidade total de imagens no banco, independente do status. Mostra também quantos SKUs únicos existem.">
         <div class="stat-title">Total de Imagens</div>
         <div class="stat-value">{{ total_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
             {{ total_skus }} SKUs únicos
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-tutorial-title="Imagens Com Match" data-tutorial-desc="Imagens que fizeram match automático com SKUs da Carteira de Compras. Estão pendentes de revisão para aprovação ou rejeição.">
         <div class="stat-title">Com Match (Pendentes)</div>
         <div class="stat-value" style="color: #d29922;">{{ pending_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
             {{ pending_skus }} SKUs aguardando revisão
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-tutorial-title="Imagens Sem Match" data-tutorial-desc="Imagens que não encontraram SKU correspondente na Carteira. Precisam de análise por Inteligência Artificial para identificação.">
         <div class="stat-title">Sem Match (Análise IA)</div>
         <div class="stat-value" style="color: #9333ea;">{{ pending_ia_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
             {{ pending_ia_skus }} SKUs sem dados
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-tutorial-title="Imagens Aprovadas" data-tutorial-desc="Imagens que passaram pela revisão e foram aprovadas. Estão prontas para uso em catálogos, e-commerce e materiais.">
         <div class="stat-title">Aprovadas</div>
         <div class="stat-value" style="color: #3fb950;">{{ approved_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
             prontas para uso
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-tutorial-title="Imagens Rejeitadas" data-tutorial-desc="Imagens que foram rejeitadas na revisão (qualidade inadequada, foto incorreta, etc). Precisam de nova captura.">
         <div class="stat-title">Rejeitadas</div>
         <div class="stat-value" style="color: #f85149;">{{ rejected_images }}</div>
         <div style="font-size: 0.85rem; color: var(--text-secondary);">

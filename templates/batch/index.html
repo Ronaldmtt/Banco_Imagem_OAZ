@@ -6,10 +6,14 @@
 <div class="page-header">
     <h1>Upload em Lote</h1>
     <div class="header-actions">
-        <a href="{{ url_for('batch_queue') }}" class="btn btn-success">
+        <a href="{{ url_for('batch_queue') }}" class="btn btn-success"
+            data-tutorial-title="Fila de Múltiplos Batches"
+            data-tutorial-desc="Crie e gerencie múltiplos lotes de upload de uma vez. Ideal para organizar uploads por coleção ou sessão de fotos.">
             <i class="fas fa-layer-group"></i> Fila de Múltiplos Batches
         </a>
-        <a href="{{ url_for('batch_new') }}" class="btn btn-primary">
+        <a href="{{ url_for('batch_new') }}" class="btn btn-primary"
+            data-tutorial-title="Criar Novo Lote"
+            data-tutorial-desc="Inicia um novo lote de upload. Selecione coleção, marca e arraste as imagens para fazer upload em massa.">
             <i class="fas fa-plus"></i> Novo Lote
         </a>
     </div>

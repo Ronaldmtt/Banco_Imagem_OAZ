@@ -7,11 +7,15 @@
         <p style="color: var(--text-secondary);">Mostrando {{ sku_groups|length }} de {{ total_skus }} SKUs únicos (página {{ page }} de {{ total_pages }})</p>
     </div>
     <div style="display: flex; gap: 1rem;">
-        <a href="{{ url_for('upload') }}" class="btn btn-primary">
+        <a href="{{ url_for('upload') }}" class="btn btn-primary"
+            data-tutorial-title="Enviar Nova Imagem"
+            data-tutorial-desc="Abre a tela de upload para enviar uma nova imagem individual ao banco.">
             <i class="fas fa-cloud-upload-alt"></i> Enviar Nova
         </a>
         <button class="btn"
-            style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+            style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);"
+            data-tutorial-title="Exportar para CSV"
+            data-tutorial-desc="Exporta os dados filtrados do catálogo em formato CSV para uso em planilhas e outros sistemas.">
             <i class="fas fa-file-export"></i> Exportar para CSV
         </button>
     </div>
@@ -20,17 +24,23 @@
 <div style="display: flex; gap: 2rem;">
     <!-- Filters Sidebar -->
     <div style="width: 250px; flex-shrink: 0;">
-        <form action="{{ url_for('catalog') }}" method="GET" style="margin-bottom: 1.5rem;">
+        <form action="{{ url_for('catalog') }}" method="GET" style="margin-bottom: 1.5rem;"
+            data-tutorial-title="Filtros de Busca"
+            data-tutorial-desc="Use os filtros para encontrar imagens específicas. Combine busca por texto com coleção, marca e status.">
             <h3 style="font-size: 1rem; margin-bottom: 1rem;">Filtros</h3>
 
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Buscar</label>
-                <input type="text" name="q" class="form-control" placeholder="SKU, descrição, tags..." value="{{ search_query or '' }}">
+                <input type="text" name="q" class="form-control" placeholder="SKU, descrição, tags..." value="{{ search_query or '' }}"
+                    data-tutorial-title="Campo de Busca"
+                    data-tutorial-desc="Digite SKU, descrição, tags ou qualquer texto para buscar nas imagens. A busca é feita em todos os campos.">
             </div>
 
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Coleção</label>
-                <select name="collection_id" class="form-control">
+                <select name="collection_id" class="form-control"
+                    data-tutorial-title="Filtro por Coleção"
+                    data-tutorial-desc="Selecione uma coleção específica para ver apenas as imagens dessa temporada ou linha de produtos.">
                     <option value="all">Todas as Coleções</option>
                     {% for collection in collections %}
                     <option value="{{ collection.id }}" {% if request.args.get('collection_id')==collection.id|string %}selected{% endif %}>
@@ -42,7 +52,9 @@
 
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Marca</label>
-                <select name="brand_id" class="form-control">
+                <select name="brand_id" class="form-control"
+                    data-tutorial-title="Filtro por Marca"
+                    data-tutorial-desc="Selecione uma marca específica para ver apenas os produtos desse fabricante ou fornecedor.">
                     <option value="all">Todas as Marcas</option>
                     {% for brand in brands %}
                     <option value="{{ brand.id }}" {% if request.args.get('brand_id')==brand.id|string %}selected{% endif %}>

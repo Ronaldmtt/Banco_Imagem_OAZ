@@ -148,6 +148,45 @@ class ObjectStorageService:
             'file_hash': file_hash
         }
     
+    def upload_bytes_immediate(self, file_bytes, original_filename, sku=None, batch_id=None):
+        """
+        Upload IMEDIATO de bytes para o bucket - usado na recepção do upload.
+        Garante que a imagem é persistida no bucket ANTES de qualquer processamento.
+        
+        Args:
+            file_bytes: bytes da imagem
+            original_filename: nome original do arquivo
+            sku: código SKU para organizar no bucket
+            batch_id: ID do batch para organização
+            
+        Returns:
+            dict com object_name, storage_path, file_size, file_hash
+        """
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        unique_id = uuid.uuid4().hex[:8]
+        ext = os.path.splitext(original_filename)[1].lower()
+        
+        if batch_id and sku:
+            object_name = f"{self.get_object_prefix()}/batch_{batch_id}/{sku}_{timestamp}_{unique_id}{ext}"
+        elif sku:
+            object_name = f"{self.get_object_prefix()}/{sku}_{timestamp}_{unique_id}{ext}"
+        else:
+            object_name = f"{self.get_object_prefix()}/{timestamp}_{unique_id}{ext}"
+        
+        hasher = hashlib.sha256()
+        hasher.update(file_bytes)
+        file_hash = hasher.hexdigest()
+        file_size = len(file_bytes)
+        
+        self.client.upload_from_bytes(object_name, file_bytes)
+        
+        return {
+            'object_name': object_name,
+            'storage_path': f"/storage/{object_name}",
+            'file_size': file_size,
+            'file_hash': file_hash
+        }
+    
     def download_file(self, object_name):
         """
         Download a file from object storage

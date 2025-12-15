@@ -188,6 +188,336 @@ class BatchProcessor:
         else:
             log_batch(f"Cleanup ignorado (skip_cleanup=True)")
     
+    def process_batch_from_bucket(self, batch_id, files_data):
+        """
+        Processa um lote de imagens que já estão no bucket (Object Storage).
+        Suporta tanto imagens do bucket quanto arquivos locais legados.
+        
+        Args:
+            batch_id: ID do BatchUpload
+            files_data: Lista de dicts com:
+                - {item_id, sku, storage_path, object_name, filename, source='bucket'} para bucket
+                - {item_id, sku, temp_path, filename, source='local'} para legado
+        """
+        log_batch(f"========== INICIANDO PROCESSAMENTO LOTE #{batch_id} (BUCKET) ==========")
+        log_batch(f"Total de arquivos para processar: {len(files_data)}")
+        bucket_count = sum(1 for f in files_data if f.get('source') == 'bucket')
+        local_count = sum(1 for f in files_data if f.get('source') == 'local')
+        log_batch(f"Origem: {bucket_count} do bucket, {local_count} locais")
+        log_batch(f"Workers paralelos: {self.max_workers}")
+        
+        with self.app.app_context():
+            from app import BatchUpload
+            batch = self.db.session.get(BatchUpload, batch_id)
+            if not batch:
+                log_batch(f"ERRO: Lote #{batch_id} não encontrado no banco!", "ERROR")
+                return
+            
+            batch.status = 'Processando'
+            batch.started_at = datetime.utcnow()
+            self.db.session.commit()
+            log_batch(f"Status do lote atualizado para 'Processando'")
+        
+        processed_count = 0
+        success_count = 0
+        error_count = 0
+        start_time = time.time()
+        
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = {}
+            
+            log_batch(f"Submetendo {len(files_data)} tarefas ao executor...")
+            for file_info in files_data:
+                if file_info.get('source') == 'bucket':
+                    future = executor.submit(
+                        self._process_single_item_from_bucket,
+                        batch_id,
+                        file_info['item_id'],
+                        file_info['sku'],
+                        file_info['storage_path'],
+                        file_info['object_name'],
+                        file_info['filename']
+                    )
+                else:
+                    future = executor.submit(
+                        self._process_single_item_isolated,
+                        batch_id,
+                        file_info['item_id'],
+                        file_info['sku'],
+                        file_info['temp_path'],
+                        file_info['filename']
+                    )
+                futures[future] = file_info['item_id']
+            
+            log_batch(f"Todas as tarefas submetidas. Aguardando conclusão...")
+            
+            for future in as_completed(futures):
+                item_id = futures[future]
+                try:
+                    result = future.result()
+                    processed_count += 1
+                    if result['success']:
+                        success_count += 1
+                    else:
+                        error_count += 1
+                    self._update_batch_progress_atomic(batch_id, result['success'])
+                    
+                    if processed_count % 10 == 0 or processed_count == len(files_data):
+                        elapsed = time.time() - start_time
+                        rate = processed_count / elapsed if elapsed > 0 else 0
+                        remaining = len(files_data) - processed_count
+                        eta = remaining / rate if rate > 0 else 0
+                        log_batch(f"Progresso: {processed_count}/{len(files_data)} ({success_count} OK, {error_count} erros) - {rate:.1f} img/s - ETA: {eta:.0f}s")
+                        
+                except Exception as e:
+                    error_count += 1
+                    processed_count += 1
+                    log_batch(f"EXCEÇÃO processando item {item_id}: {e}", "ERROR")
+                    self._update_batch_progress_atomic(batch_id, False)
+        
+        elapsed_total = time.time() - start_time
+        log_batch(f"========== PROCESSAMENTO CONCLUÍDO ==========")
+        log_batch(f"Lote #{batch_id}: {processed_count} processados em {elapsed_total:.1f}s")
+        log_batch(f"Sucesso: {success_count} | Erros: {error_count}")
+        if elapsed_total > 0:
+            log_batch(f"Taxa média: {processed_count/elapsed_total:.1f} imagens/segundo")
+        
+        with self.app.app_context():
+            batch = self.db.session.get(BatchUpload, batch_id)
+            if batch:
+                batch.status = 'Concluído'
+                batch.finished_at = datetime.utcnow()
+                self.db.session.commit()
+                log_batch(f"Status do lote atualizado para 'Concluído'")
+    
+    def _process_single_item_from_bucket(self, batch_id, item_id, sku, storage_path, object_name, original_filename):
+        """Processa um único item baixando a imagem do bucket"""
+        from app import BatchUpload, BatchItem, Image, ImageItem, CarteiraCompras, ImageThumbnail
+        
+        log_batch(f"[{sku}] Iniciando processamento (bucket)...")
+        
+        with self.app.app_context():
+            self.db.session.remove()
+            
+            item = self.db.session.get(BatchItem, item_id)
+            if not item:
+                log_batch(f"[{sku}] Item #{item_id} não encontrado!", "ERROR")
+                return {'success': False, 'error': 'Item not found'}
+            
+            item.status = 'Processando'
+            item.processing_status = 'processing'
+            item.tentativas += 1
+            self.db.session.commit()
+            log_batch(f"[{sku}] Tentativa #{item.tentativas}")
+            
+            try:
+                log_batch(f"[{sku}] Baixando imagem do bucket: {object_name}...")
+                image_data = self.object_storage.download_file(object_name)
+                
+                if not image_data:
+                    log_batch(f"[{sku}] Imagem não encontrada no bucket: {object_name}", "ERROR")
+                    raise FileNotFoundError(f"Image not found in bucket: {object_name}")
+                
+                file_size_mb = len(image_data) / (1024 * 1024)
+                log_batch(f"[{sku}] Arquivo: {original_filename} ({file_size_mb:.2f}MB)")
+                
+                batch = self.db.session.get(BatchUpload, batch_id)
+                batch_colecao_id = batch.colecao_id if batch else None
+                
+                log_batch(f"[{sku}] Buscando na Carteira de Compras (coleção: {batch_colecao_id})...")
+                carteira_data = self._match_carteira_compras_in_session(sku, colecao_id=batch_colecao_id)
+                
+                if carteira_data and carteira_data.get('found'):
+                    log_batch(f"[{sku}] ✓ MATCH encontrado na Carteira! Desc: {carteira_data.get('descricao', '')[:50]}...")
+                else:
+                    log_batch(f"[{sku}] ✗ Sem match na Carteira - será marcado para análise IA")
+                
+                import uuid
+                unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"
+                
+                if carteira_data and carteira_data.get('found'):
+                    nome_peca = carteira_data.get('descricao', '')
+                    cor = carteira_data.get('cor', '')
+                    categoria = carteira_data.get('categoria', '')
+                    subcategoria = carteira_data.get('subcategoria', '')
+                    material = carteira_data.get('material', '')
+                    tipo_peca = carteira_data.get('tipo_peca', '')
+                    posicao_peca = carteira_data.get('posicao_peca', '')
+                    
+                    tags_list = []
+                    if categoria:
+                        tags_list.append(categoria)
+                    if subcategoria:
+                        tags_list.append(subcategoria)
+                    if cor:
+                        tags_list.append(cor)
+                    if carteira_data.get('colecao_nome'):
+                        tags_list.append(carteira_data['colecao_nome'])
+                    if material and material not in tags_list:
+                        tags_list.append(material)
+                    if tipo_peca and tipo_peca not in tags_list:
+                        tags_list.append(tipo_peca)
+                    
+                    image_status = 'Pendente'
+                    
+                    collection_id = carteira_data.get('colecao_id') if carteira_data.get('colecao_id') else (batch.colecao_id if batch else None)
+                    subcolecao_id = carteira_data.get('subcolecao_id') if carteira_data.get('subcolecao_id') else (batch.subcolecao_id if batch and hasattr(batch, 'subcolecao_id') else None)
+                    brand_id = carteira_data.get('marca_id') if carteira_data.get('marca_id') else (batch.marca_id if batch else None)
+                    estilista = carteira_data.get('estilista', '')
+                    origem = carteira_data.get('origem', '')
+                    referencia_estilo = carteira_data.get('referencia_estilo', '')
+                    
+                    carteira = self.db.session.get(CarteiraCompras, carteira_data['carteira_id'])
+                    if carteira:
+                        carteira.status_foto = 'Com Foto'
+                        self.db.session.add(carteira)
+                    
+                    from app import Produto
+                    produto = self.db.session.query(Produto).filter_by(sku=carteira_data.get('sku_base', sku)).first()
+                    if not produto:
+                        produto = self.db.session.query(Produto).filter_by(sku=sku).first()
+                    if produto:
+                        produto.tem_foto = True
+                        self.db.session.add(produto)
+                        log_batch(f"[{sku}] ✓ Produto atualizado: tem_foto=True")
+                    
+                    match_source = 'carteira'
+                else:
+                    nome_peca = ''
+                    cor = ''
+                    categoria = ''
+                    material = ''
+                    tipo_peca = ''
+                    posicao_peca = ''
+                    tags_list = []
+                    image_status = 'Pendente Análise IA'
+                    collection_id = batch.colecao_id if batch else None
+                    subcolecao_id = batch.subcolecao_id if batch and hasattr(batch, 'subcolecao_id') else None
+                    brand_id = batch.marca_id if batch else None
+                    estilista = ''
+                    origem = ''
+                    referencia_estilo = ''
+                    match_source = 'sem_match'
+                
+                sku_base = carteira_data.get('sku_base', sku) if carteira_data else sku
+                sequencia = carteira_data.get('sequencia') if carteira_data else None
+                
+                ext = os.path.splitext(original_filename)[1] or '.jpg'
+                new_image = Image(
+                    filename=f"{sku}{ext}",
+                    original_name=original_filename,
+                    storage_path=storage_path,
+                    sku=sku,
+                    sku_base=sku_base,
+                    sequencia=sequencia,
+                    nome_peca=nome_peca,
+                    description=None,
+                    tags=json.dumps(tags_list),
+                    ai_item_type=tipo_peca if tipo_peca else (categoria if carteira_data else None),
+                    ai_color=cor if carteira_data else None,
+                    ai_material=material if material else None,
+                    ai_pattern=posicao_peca if posicao_peca else None,
+                    ai_style=None,
+                    uploader_id=batch.usuario_id if batch else None,
+                    collection_id=collection_id,
+                    subcolecao_id=subcolecao_id,
+                    brand_id=brand_id,
+                    unique_code=unique_code,
+                    status=image_status,
+                    estilista=estilista if estilista else None,
+                    origem=origem if origem else None,
+                    referencia_estilo=referencia_estilo if referencia_estilo else None
+                )
+                self.db.session.add(new_image)
+                self.db.session.flush()
+                
+                if carteira_data and carteira_data.get('found'):
+                    position_ref = 'Peça Única'
+                    if posicao_peca:
+                        if 'TOP' in posicao_peca.upper():
+                            position_ref = 'Peça Superior'
+                        elif 'BOTTOM' in posicao_peca.upper():
+                            position_ref = 'Peça Inferior'
+                        elif 'INTEIRO' in posicao_peca.upper():
+                            position_ref = 'Peça Única'
+                    
+                    new_item_obj = ImageItem(
+                        image_id=new_image.id,
+                        item_order=1,
+                        position_ref=position_ref,
+                        description=nome_peca,
+                        tags=json.dumps(tags_list),
+                        ai_item_type=tipo_peca if tipo_peca else categoria,
+                        ai_color=cor,
+                        ai_material=material if material else None,
+                        ai_pattern=None,
+                        ai_style=None
+                    )
+                    self.db.session.add(new_item_obj)
+                
+                item = self.db.session.get(BatchItem, item_id)
+                item.status = 'Sucesso'
+                item.processing_status = 'completed'
+                item.image_id = new_image.id
+                item.ai_description = nome_peca
+                item.ai_tags = json.dumps(tags_list)
+                item.ai_attributes = json.dumps({
+                    'match_source': match_source,
+                    'categoria': categoria,
+                    'cor': cor,
+                    'carteira_id': carteira_data.get('carteira_id') if carteira_data else None,
+                    'subcolecao_id': subcolecao_id,
+                    'estilista': estilista if estilista else None,
+                    'origem': origem if origem else None,
+                    'referencia_estilo': referencia_estilo if referencia_estilo else None
+                })
+                item.processed_at = datetime.utcnow()
+                item.erro_mensagem = None
+                
+                log_batch(f"[{sku}] Gerando thumbnail...")
+                try:
+                    thumbnail_bytes, thumb_width, thumb_height, thumb_size = generate_thumbnail_bytes(image_data)
+                    
+                    if thumbnail_bytes:
+                        thumbnail = ImageThumbnail(
+                            image_id=new_image.id,
+                            thumbnail_data=thumbnail_bytes,
+                            width=thumb_width,
+                            height=thumb_height,
+                            file_size=thumb_size,
+                            mime_type='image/jpeg'
+                        )
+                        self.db.session.add(thumbnail)
+                        log_batch(f"[{sku}] ✓ Thumbnail salvo: {thumb_size/1024:.1f}KB")
+                    else:
+                        log_batch(f"[{sku}] ⚠ Thumbnail não gerado", "WARN")
+                except Exception as thumb_err:
+                    log_batch(f"[{sku}] ⚠ Erro ao gerar thumbnail: {thumb_err}", "WARN")
+                
+                self.db.session.commit()
+                
+                del image_data
+                
+                log_batch(f"[{sku}] ✓ SUCESSO - Imagem #{new_image.id} criada (match: {match_source})")
+                return {'success': True, 'image_id': new_image.id, 'match_source': match_source}
+                
+            except Exception as e:
+                error_msg = str(e)
+                log_batch(f"[{sku}] ✗ ERRO: {error_msg}", "ERROR")
+                traceback.print_exc()
+                
+                self.db.session.rollback()
+                
+                item = self.db.session.get(BatchItem, item_id)
+                if item:
+                    item.status = 'Erro'
+                    item.processing_status = 'failed'
+                    item.erro_mensagem = error_msg[:500]
+                    item.processed_at = datetime.utcnow()
+                    self.db.session.commit()
+                
+                return {'success': False, 'error': error_msg}
+    
     def _match_carteira_compras_in_session(self, sku_completo, colecao_id=None):
         """
         Busca dados da CarteiraCompras pelo SKU usando a sessão atual.

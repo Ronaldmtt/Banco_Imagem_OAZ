@@ -23,11 +23,13 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
 -   **AI Fallback**: Images without an automatic match are marked for future AI analysis, with contextualized analysis leveraging similar products.
 -   **Field Separation**: Clear separation between Carteira data (nome_peca, categoria, subcategoria, tipo_peca, origem) and AI-generated data (description, tags, cor, material). Carteira fields are never overwritten by AI analysis.
 -   **Reconciliation System**: Button to re-match images with Carteira when new products are imported. Updates Carteira-derived fields while preserving AI-generated observations.
--   **Resilient Upload System**: Two-phase crash-proof upload architecture:
-    - Phase 1 (Reception): Files received via streaming to disk with SHA256 hash
-    - Phase 2 (Processing): Batches of 20 images processed in parallel with persistent state
-    - Watchdog thread detects stuck items (> 5 min) and resets for retry
-    - Resume capability after browser close or server restart via /batch/{id}/resume endpoint
+-   **Resilient Upload System**: Upload direto para Object Storage com reprocessamento:
+    - **Upload Imediato ao Bucket**: Arquivos vão DIRETO para o Object Storage durante recepção (sem arquivos temporários locais)
+    - **Persistência Garantida**: `storage_path` é salvo imediatamente após upload ao bucket
+    - **Processamento Desacoplado**: Match com Carteira, thumbnails e análise IA usam imagem já salva no bucket
+    - **Reprocessamento**: Endpoint `/batch/{id}/reprocess` permite reprocessar itens que falharam (imagem já está no bucket)
+    - **Recuperação de Falhas**: Se o processamento falhar, não perde a imagem - basta reprocessar
+    - Suporte legado para arquivos locais durante transição
 -   **Multi-Batch Queue System**: Upload multiple collections at once with centralized processing:
     - Create multiple batches in a single interface (/batch/queue)
     - Each batch can have different collection and brand assignments

@@ -4564,17 +4564,14 @@ def batch_status(batch_id):
 @login_required
 def batch_streaming_upload():
     """
-    Endpoint de recepção com streaming real para arquivos grandes (até 3GB)
-    Salva arquivos em disco usando chunks de 20MB sem carregar na memória
+    Endpoint de recepção com upload DIRETO para Object Storage (bucket).
+    Garante que a imagem é persistida IMEDIATAMENTE, antes de qualquer processamento.
+    Se o processamento falhar depois, a imagem já está segura no bucket.
     """
     import hashlib
     
-    log_start(M.UPLOAD, "Streaming upload iniciado")
-    rpa_info("[UPLOAD] Streaming upload iniciado")
-    
-    CHUNK_SIZE = 20 * 1024 * 1024  # 20MB chunks
-    TEMP_UPLOAD_DIR = '/tmp/batch_uploads'
-    os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+    log_start(M.UPLOAD, "Streaming upload iniciado - UPLOAD DIRETO AO BUCKET")
+    rpa_info("[UPLOAD] Streaming upload iniciado - DIRETO AO BUCKET")
     
     batch_id = request.form.get('batch_id')
     collection_id = request.form.get('collection_id')
@@ -4598,10 +4595,8 @@ def batch_streaming_upload():
         if not batch:
             return {'error': 'Batch não encontrado'}, 404
     
-    batch_temp_dir = os.path.join(TEMP_UPLOAD_DIR, f'batch_{batch_id}')
-    os.makedirs(batch_temp_dir, exist_ok=True)
-    
     received_files = []
+    upload_errors = []
     
     for key in request.files:
         file = request.files[key]
@@ -4616,62 +4611,71 @@ def batch_streaming_upload():
             if not sku:
                 continue
             
-            temp_filename = f"{sku}_{datetime.now().strftime('%H%M%S%f')}{ext}"
-            temp_path = os.path.join(batch_temp_dir, temp_filename)
-            
-            hasher = hashlib.sha256()
-            file_size = 0
-            
-            with open(temp_path, 'wb') as f:
-                while True:
-                    chunk = file.stream.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    hasher.update(chunk)
-                    file_size += len(chunk)
-            
-            file_hash = hasher.hexdigest()
-            
-            item = BatchItem(
-                batch_id=batch_id,
-                sku=sku,
-                filename_original=original_filename,
-                file_size=file_size,
-                file_hash=file_hash,
-                received_path=temp_path,
-                reception_status='received',
-                received_at=datetime.utcnow(),
-                processing_status='pending',
-                status='Pendente'
-            )
-            db.session.add(item)
-            db.session.flush()
-            
-            received_files.append({
-                'item_id': item.id,
-                'sku': sku,
-                'filename': original_filename,
-                'size': file_size,
-                'hash': file_hash[:16]
-            })
+            try:
+                file_bytes = file.read()
+                
+                upload_result = object_storage.upload_bytes_immediate(
+                    file_bytes=file_bytes,
+                    original_filename=original_filename,
+                    sku=sku,
+                    batch_id=batch_id
+                )
+                
+                item = BatchItem(
+                    batch_id=batch_id,
+                    sku=sku,
+                    filename_original=original_filename,
+                    file_size=upload_result['file_size'],
+                    file_hash=upload_result['file_hash'],
+                    storage_path=upload_result['storage_path'],
+                    received_path=upload_result['object_name'],
+                    reception_status='uploaded',
+                    received_at=datetime.utcnow(),
+                    processing_status='pending',
+                    status='Pendente'
+                )
+                db.session.add(item)
+                db.session.flush()
+                
+                received_files.append({
+                    'item_id': item.id,
+                    'sku': sku,
+                    'filename': original_filename,
+                    'size': upload_result['file_size'],
+                    'hash': upload_result['file_hash'][:16],
+                    'storage_path': upload_result['storage_path']
+                })
+                
+                del file_bytes
+                
+            except Exception as e:
+                error_msg = str(e)
+                upload_errors.append({
+                    'sku': sku,
+                    'filename': original_filename,
+                    'error': error_msg
+                })
+                error(M.UPLOAD, 'BUCKET_UPLOAD', f"Erro ao enviar {sku} para bucket: {error_msg}")
+                rpa_err(f"[UPLOAD] Erro bucket: {sku} - {error_msg}", regiao="upload")
     
     batch.total_arquivos = BatchItem.query.filter_by(batch_id=batch_id).count()
     db.session.commit()
     
-    log_end(M.UPLOAD, f"Streaming upload concluído: {len(received_files)} arquivos recebidos")
+    log_end(M.UPLOAD, f"Upload direto concluído: {len(received_files)} salvos no bucket, {len(upload_errors)} erros")
     
     return {
         'batch_id': batch_id,
         'received_count': len(received_files),
         'total_no_lote': batch.total_arquivos,
-        'files': received_files
+        'files': received_files,
+        'errors': upload_errors,
+        'bucket_upload': True
     }
 
 @app.route('/batch/<int:batch_id>/start-processing', methods=['POST'])
 @login_required
 def batch_start_processing(batch_id):
-    """Inicia o processamento de um lote após recepção completa"""
+    """Inicia o processamento de um lote - suporta imagens no bucket OU arquivos locais"""
     batch = BatchUpload.query.get_or_404(batch_id)
     
     if batch.status not in ['Recebendo', 'Pendente', 'Erro']:
@@ -4679,8 +4683,12 @@ def batch_start_processing(batch_id):
     
     pending_items = BatchItem.query.filter_by(
         batch_id=batch_id,
-        reception_status='received',
         processing_status='pending'
+    ).filter(
+        db.or_(
+            BatchItem.reception_status == 'uploaded',
+            BatchItem.reception_status == 'received'
+        )
     ).all()
     
     if not pending_items:
@@ -4695,18 +4703,29 @@ def batch_start_processing(batch_id):
     
     files_data = []
     for item in pending_items:
-        if item.received_path and os.path.exists(item.received_path):
+        if item.storage_path:
+            object_name = item.storage_path.replace('/storage/', '') if item.storage_path.startswith('/storage/') else item.storage_path
+            files_data.append({
+                'item_id': item.id,
+                'sku': item.sku,
+                'storage_path': item.storage_path,
+                'object_name': object_name,
+                'filename': item.filename_original,
+                'source': 'bucket'
+            })
+        elif item.received_path and os.path.exists(item.received_path):
             files_data.append({
                 'item_id': item.id,
                 'sku': item.sku,
                 'temp_path': item.received_path,
-                'filename': item.filename_original
+                'filename': item.filename_original,
+                'source': 'local'
             })
     
     if files_data:
         processor = get_batch_processor()
         thread = threading.Thread(
-            target=processor.process_batch,
+            target=processor.process_batch_from_bucket,
             args=(batch_id, files_data)
         )
         thread.daemon = True
@@ -4715,37 +4734,52 @@ def batch_start_processing(batch_id):
     return {
         'batch_id': batch_id,
         'status': 'Processando',
-        'items_to_process': len(files_data)
+        'items_to_process': len(files_data),
+        'from_bucket': sum(1 for f in files_data if f.get('source') == 'bucket'),
+        'from_local': sum(1 for f in files_data if f.get('source') == 'local')
     }
 
 @app.route('/batch/<int:batch_id>/resume', methods=['POST'])
 @login_required
 def batch_resume(batch_id):
+    """Retoma processamento - suporta bucket OU arquivos locais"""
     rpa_info(f"[BATCH] Retomando processamento do batch #{batch_id}")
-    """Retoma processamento de um lote após interrupção (crash recovery)"""
     batch = BatchUpload.query.get_or_404(batch_id)
     
     pending_items = BatchItem.query.filter(
         BatchItem.batch_id == batch_id,
-        BatchItem.processing_status.in_(['pending', 'retry']),
-        BatchItem.received_path.isnot(None)
+        BatchItem.processing_status.in_(['pending', 'retry'])
     ).all()
     
     if not pending_items:
         return {'error': 'Nenhum item pendente para retomar', 'status': batch.status}, 400
     
     files_data = []
+    orphaned_count = 0
     for item in pending_items:
-        if item.received_path and os.path.exists(item.received_path):
+        if item.storage_path:
+            object_name = item.storage_path.replace('/storage/', '') if item.storage_path.startswith('/storage/') else item.storage_path
+            files_data.append({
+                'item_id': item.id,
+                'sku': item.sku,
+                'storage_path': item.storage_path,
+                'object_name': object_name,
+                'filename': item.filename_original,
+                'source': 'bucket'
+            })
+        elif item.received_path and os.path.exists(item.received_path):
             files_data.append({
                 'item_id': item.id,
                 'sku': item.sku,
                 'temp_path': item.received_path,
-                'filename': item.filename_original
+                'filename': item.filename_original,
+                'source': 'local'
             })
         else:
-            item.processing_status = 'failed'
-            item.last_error = 'Arquivo temporário não encontrado'
+            item.processing_status = 'orphaned'
+            item.status = 'Erro'
+            item.erro_mensagem = 'Arquivo não encontrado (nem bucket nem local)'
+            orphaned_count += 1
     
     if files_data:
         batch.status = 'Processando'
@@ -4753,7 +4787,7 @@ def batch_resume(batch_id):
         
         processor = get_batch_processor()
         thread = threading.Thread(
-            target=processor.process_batch,
+            target=processor.process_batch_from_bucket,
             args=(batch_id, files_data)
         )
         thread.daemon = True
@@ -4762,11 +4796,65 @@ def batch_resume(batch_id):
         return {
             'batch_id': batch_id,
             'status': 'Retomando',
-            'items_to_process': len(files_data)
+            'items_to_process': len(files_data),
+            'from_bucket': sum(1 for f in files_data if f.get('source') == 'bucket'),
+            'from_local': sum(1 for f in files_data if f.get('source') == 'local'),
+            'orphaned': orphaned_count
         }
     else:
         db.session.commit()
-        return {'error': 'Nenhum arquivo encontrado para retomar', 'status': batch.status}, 400
+        return {'error': 'Nenhum arquivo encontrado para retomar', 'orphaned': orphaned_count, 'status': batch.status}, 400
+
+@app.route('/batch/<int:batch_id>/reprocess', methods=['POST'])
+@login_required
+def batch_reprocess(batch_id):
+    """Reprocessa itens que já estão no bucket mas falharam no processamento"""
+    rpa_info(f"[BATCH] Reprocessando itens do batch #{batch_id} a partir do bucket")
+    batch = BatchUpload.query.get_or_404(batch_id)
+    
+    failed_items = BatchItem.query.filter(
+        BatchItem.batch_id == batch_id,
+        BatchItem.storage_path.isnot(None),
+        BatchItem.processing_status.in_(['failed', 'orphaned', 'pending'])
+    ).all()
+    
+    if not failed_items:
+        return {'error': 'Nenhum item com storage_path para reprocessar'}, 400
+    
+    files_data = []
+    for item in failed_items:
+        item.processing_status = 'pending'
+        item.status = 'Pendente'
+        item.tentativas = 0
+        item.erro_mensagem = None
+        
+        object_name = item.storage_path.replace('/storage/', '') if item.storage_path.startswith('/storage/') else item.storage_path
+        files_data.append({
+            'item_id': item.id,
+            'sku': item.sku,
+            'storage_path': item.storage_path,
+            'object_name': object_name,
+            'filename': item.filename_original,
+            'source': 'bucket'
+        })
+    
+    batch.status = 'Processando'
+    batch.started_at = datetime.utcnow()
+    db.session.commit()
+    
+    processor = get_batch_processor()
+    thread = threading.Thread(
+        target=processor.process_batch_from_bucket,
+        args=(batch_id, files_data)
+    )
+    thread.daemon = True
+    thread.start()
+    
+    return {
+        'batch_id': batch_id,
+        'status': 'Reprocessando',
+        'items_to_process': len(files_data)
+    }
 
 @app.route('/batch/<int:batch_id>/retry-failed', methods=['POST'])
 @login_required

@@ -60,6 +60,14 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
 -   **SKUs Sem Foto Report**: Dashboard card showing photography coverage by collection, with progress bars and detailed page listing pending SKUs with CSV export. Reports correctly consider collection scope - a SKU is only marked as "with photo" if there's an image in the SAME collection.
 -   **Collection-Scoped Matching**: Batch processing now filters SKU matches by the collection selected in the batch dropdown, preventing cross-collection matches.
 -   **Multi-Piece Detection**: AI can detect and analyze up to four individual pieces within a single image, each with its own metadata.
+-   **Batch AI Analysis from Catalog**: Select multiple SKUs in the catalog view and generate AI descriptions for all at once:
+    - Checkboxes on each thumbnail card for multi-selection
+    - Floating action bar appears when items are selected
+    - Quick AI button on each thumbnail for single-click analysis
+    - Modal with field selection (description, tags, color, type, material)
+    - Real-time progress bar with per-image status log
+    - Sequential processing with error resilience (partial success handling)
+    - Endpoint `/api/analyze-single` for individual image analysis via AJAX
 
 ### System Design Choices
 The application is designed for scalability and performance, particularly for handling large volumes of images and data. It leverages a PostgreSQL database with optimized indexes for efficient querying of millions of records. The use of Replit Object Storage ensures persistent, scalable cloud storage for images, accessible via a dedicated `/storage/<path>` route. The batch processing system employs `ThreadPoolExecutor` for parallel execution, and the application is configured for Autoscale deployment on Replit.

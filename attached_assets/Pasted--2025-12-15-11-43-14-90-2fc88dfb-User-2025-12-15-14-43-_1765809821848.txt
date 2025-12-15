@@ -1,0 +1,159 @@
+
+2025-12-15 11:43:14.90
+2fc88dfb
+User
+[2025-12-15 14:43:13.903] [INFO ] [BATCH ] [PROCESS ] [04.23.02.601.012_4] Tentativa #1
+2025-12-15 11:43:14.90
+2fc88dfb
+User
+File "/home/runner/workspace/batch_processor.py", line 292, in _process_single_item_isolated
+2025-12-15 11:43:14.90
+2fc88dfb
+User
+FileNotFoundError: Temp file not found: images/20251215135405_fc2a00b5.jpg
+2025-12-15 11:43:14.90
+2fc88dfb
+User
+Traceback (most recent call last):
+2025-12-15 11:43:14.90
+2fc88dfb
+User
+raise FileNotFoundError(f"Temp file not found: {temp_path}")
+2025-12-15 11:43:14.90
+2fc88dfb
+User
+[2025-12-15 14:43:14.704] [ERROR ] [BATCH ] [PROCESS ] [04.23.02.601.012_4] Arquivo temporário não encontrado: images/20251215135405_fc2a00b5.jpg
+2025-12-15 11:43:15.20
+2fc88dfb
+User
+Traceback (most recent call last):
+2025-12-15 11:43:15.80
+2fc88dfb
+User
+> PING fd e2 ae c2 [binary, 4 bytes]
+2025-12-15 11:43:16.60
+2fc88dfb
+User
+[2025-12-15 14:43:16.603] [INFO ] [BATCH ] [PROCESS ] [04.23.02.601.012_3] Iniciando processamento...
+2025-12-15 11:43:17.31
+2fc88dfb
+User
+raise FileNotFoundError(f"Temp file not found: {temp_path}")
+2025-12-15 11:43:17.31
+2fc88dfb
+User
+File "/home/runner/workspace/batch_processor.py", line 292, in _process_single_item_isolated
+2025-12-15 11:43:17.31
+2fc88dfb
+User
+FileNotFoundError: Temp file not found: images/20251215135403_a917a8a7.jpg
+2025-12-15 11:43:17.90
+2fc88dfb
+User
+% sent keepalive ping
+2025-12-15 11:43:18.50
+2fc88dfb
+User
+< PING ac 14 57 8d [binary, 4 bytes]
+2025-12-15 11:43:18.63
+2fc88dfb
+User
+[2025-12-15 14:43:18.636] [INFO ] [BATCH ] [PROCESS ] [04.23.02.602.052_2] Iniciando processamento...
+2025-12-15 11:43:19.06
+2fc88dfb
+User
+[2025-12-15 14:43:19.069] [ERROR ] [BATCH ] [PROCESS ] [04.23.02.601.012_2] ✗ ERRO: Temp file not found: images/20251215135406_39bcec28.jpg
+2025-12-15 11:43:19.06
+2fc88dfb
+User
+[2025-12-15 14:43:19.069] [INFO ] [BATCH ] [PROCESS ] [04.23.02.601.012_2] Tentativa #1
+2025-12-15 11:43:19.06
+2fc88dfb
+User
+[2025-12-15 14:43:19.069] [ERROR ] [BATCH ] [PROCESS ] [04.23.02.601.012_2] Arquivo temporário não encontrado: images/20251215135406_39bcec28.jpg
+2025-12-15 11:43:19.20
+2fc88dfb
+User
+File "/home/runner/workspace/batch_processor.py", line 292, in _process_single_item_isolated
+2025-12-15 11:43:19.20
+2fc88dfb
+User
+Traceback (most recent call last):
+2025-12-15 11:43:19.20
+2fc88dfb
+User
+raise FileNotFoundError(f"Temp file not found: {temp_path}")
+2025-12-15 11:43:19.20
+2fc88dfb
+User
+FileNotFoundError: Temp file not found: images/20251215135406_39bcec28.jpg
+2025-12-15 11:43:19.70
+2fc88dfb
+User
+> PONG ac 14 57 8d [binary, 4 bytes]
+2025-12-15 11:43:20.20
+2fc88dfb
+User
+> TEXT 'V1|01|APP-BANCO-IMAGEM-OAZ|2025-12-15T14:43:19Z|Sudeste|INFO|alive||\n' [69 bytes]
+2025-12-15 11:43:21.80
+2fc88dfb
+User
+[2025-12-15 14:43:21.203] [INFO ] [BATCH ] [PROCESS ] [04.23.02.601.012_3] Tentativa #1
+2025-12-15 11:43:21.80
+2fc88dfb
+User
+[2025-12-15 14:43:20.503] [INFO ] [BATCH ] [PROCESS ] [04.23.02.602.052_3] Iniciando processamento...
+2025-12-15 11:43:21.80
+2fc88dfb
+User
+> TEXT 'V1|01|APP-BANCO-IMAGEM-OAZ|2025-12-15T14:43:15Z|Sudeste|INFO|alive||\n' [69 bytes]
+2025-12-15 11:43:21.80
+2fc88dfb
+User
+< PONG fd e2 ae c2 [binary, 4 bytes]
+2025-12-15 11:43:21.80
+2fc88dfb
+User
+% received keepalive pong
+2025-12-15 11:43:23.40
+2fc88dfb
+User
+[2025-12-15 14:43:21.402] [ERROR ] [BATCH ] [PROCESS ] [04.23.02.601.012_3] Arquivo temporário não encontrado: images/20251215135407_f8abe2c9.jpg
+2025-12-15 11:43:23.60
+2fc88dfb
+User
+[2025-12-15 14:43:23.203] [ERROR ] [BATCH ] [PROCESS ] [04.23.02.601.012_3] ✗ ERRO: Temp file not found: images/20251215135407_f8abe2c9.jpg
+2025-12-15 11:43:23.60
+2fc88dfb
+User
+[2025-12-15 14:43:22.103] [INFO ] [BATCH ] [PROCESS ] [04.23.02.602.052_1] Iniciando processamento...
+2025-12-15 11:43:23.60
+2fc88dfb
+User
+[2025-12-15 14:43:22.203] [INFO ] [BATCH ] [PROCESS ] [04.23.02.604.021_1] Iniciando processamento...
+
+2025-12-15 11:43:25.10
+2fc88dfb
+User
+> TEXT 'V1|01|APP-BANCO-IMAGEM-OAZ|2025-12-15T14:43:24Z|Sudeste|INFO|alive||\n' [69 bytes]
+2025-12-15 11:43:25.50
+2fc88dfb
+User
+> TEXT 'V1|01|APP-BANCO-IMAGEM-OAZ|2025-12-15T14:43:21Z|Sudeste|INFO|alive||\n' [69 bytes]
+2025-12-15 11:43:26.10
+2fc88dfb
+User
+> PONG bb 30 90 c3 [binary, 4 bytes]
+2025-12-15 11:43:26.10
+2fc88dfb
+User
+% sent keepalive ping
+2025-12-15 11:43:26.10
+2fc88dfb
+User
+> PING c7 7b 42 5e [binary, 4 bytes]
+2025-12-15 11:43:26.10
+2fc88dfb
+User
+< PING bb 30 90 c3 [binary, 4 bytes]
+

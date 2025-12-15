@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/tutorial.js') }}" defer></script>
 </head>
 
 <body>
@@ -26,68 +27,94 @@
 
             <nav class="nav-menu">
                 <a href="{{ url_for('dashboard') }}"
-                    class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}"
+                    data-tutorial-title="Painel Principal"
+                    data-tutorial-desc="Visão geral do sistema com métricas, estatísticas de imagens, uploads recentes e atalhos rápidos.">
                     <i class="fas fa-th-large"></i>
                     <span>Painel</span>
                 </a>
                 <a href="{{ url_for('catalog') }}"
-                    class="nav-item {% if request.endpoint == 'catalog' %}active{% endif %}">
+                    class="nav-item {% if request.endpoint == 'catalog' %}active{% endif %}"
+                    data-tutorial-title="Biblioteca de Imagens"
+                    data-tutorial-desc="Visualize, pesquise e gerencie todas as imagens do banco. Aplique filtros por coleção, marca, status e execute análise IA em lote.">
                     <i class="far fa-images"></i>
                     <span>Biblioteca de Imagens</span>
                 </a>
                 <a href="{{ url_for('batch_list') }}"
-                    class="nav-item {% if request.endpoint in ['batch_list', 'batch_new', 'batch_detail'] %}active{% endif %}">
+                    class="nav-item {% if request.endpoint in ['batch_list', 'batch_new', 'batch_detail'] %}active{% endif %}"
+                    data-tutorial-title="Upload em Lote"
+                    data-tutorial-desc="Faça upload de múltiplas imagens de uma vez. Suporta drag-and-drop, detecção de duplicatas e match automático com SKUs da Carteira.">
                     <i class="fas fa-cloud-upload-alt"></i>
                     <span>Upload em Lote</span>
                 </a>
                 <a href="{{ url_for('analyze_pending_ai') }}"
-                    class="nav-item {% if request.endpoint == 'analyze_pending_ai' %}active{% endif %}">
+                    class="nav-item {% if request.endpoint == 'analyze_pending_ai' %}active{% endif %}"
+                    data-tutorial-title="Análise por IA"
+                    data-tutorial-desc="Processe imagens pendentes com inteligência artificial para gerar descrições, identificar cores, materiais e características.">
                     <i class="fas fa-robot"></i>
                     <span>Análise IA</span>
                 </a>
                 <a href="{{ url_for('produtos') }}"
-                    class="nav-item {% if request.endpoint in ['produtos', 'new_produto', 'edit_produto'] %}active{% endif %}">
+                    class="nav-item {% if request.endpoint in ['produtos', 'new_produto', 'edit_produto'] %}active{% endif %}"
+                    data-tutorial-title="Gestão de Produtos"
+                    data-tutorial-desc="Cadastre e gerencie produtos do catálogo. Vincule imagens, defina atributos e mantenha o histórico de SKUs.">
                     <i class="fas fa-box"></i>
                     <span>Produtos</span>
                 </a>
                 <a href="{{ url_for('carteira') }}"
-                    class="nav-item {% if request.endpoint in ['carteira', 'importar_carteira'] %}active{% endif %}">
+                    class="nav-item {% if request.endpoint in ['carteira', 'importar_carteira'] %}active{% endif %}"
+                    data-tutorial-title="Carteira de Compras"
+                    data-tutorial-desc="Importe planilhas de pedidos de compra. Os SKUs importados são usados para match automático com imagens durante o upload.">
                     <i class="fas fa-shopping-cart"></i>
                     <span>Carteira de Compras</span>
                 </a>
                 <a href="{{ url_for('collections') }}"
-                    class="nav-item {% if request.endpoint in ['collections', 'collection_detail', 'new_collection', 'edit_collection'] %}active{% endif %}">
+                    class="nav-item {% if request.endpoint in ['collections', 'collection_detail', 'new_collection', 'edit_collection'] %}active{% endif %}"
+                    data-tutorial-title="Coleções"
+                    data-tutorial-desc="Organize suas imagens por coleção (ex: Verão 2025, Inverno 2024). Cada coleção agrupa imagens e produtos relacionados.">
                     <i class="far fa-folder"></i>
                     <span>Coleções</span>
                 </a>
                 <a href="{{ url_for('brands') }}"
-                    class="nav-item {% if request.endpoint == 'brands' %}active{% endif %}">
+                    class="nav-item {% if request.endpoint == 'brands' %}active{% endif %}"
+                    data-tutorial-title="Marcas"
+                    data-tutorial-desc="Gerencie as marcas do seu catálogo. Associe produtos e imagens a marcas específicas para melhor organização.">
                     <i class="fas fa-tag"></i>
                     <span>Marcas</span>
                 </a>
                 <a href="{{ url_for('auditoria') }}"
-                    class="nav-item {% if request.endpoint in ['auditoria', 'historico_sku', 'skus_pendentes'] %}active{% endif %}">
+                    class="nav-item {% if request.endpoint in ['auditoria', 'historico_sku', 'skus_pendentes'] %}active{% endif %}"
+                    data-tutorial-title="Auditoria"
+                    data-tutorial-desc="Acompanhe alterações em SKUs, identifique pendências e verifique o histórico de modificações no sistema.">
                     <i class="fas fa-clipboard-check"></i>
                     <span>Auditoria</span>
                 </a>
                 <a href="{{ url_for('reports') }}"
-                    class="nav-item {% if request.endpoint == 'reports' %}active{% endif %}">
+                    class="nav-item {% if request.endpoint == 'reports' %}active{% endif %}"
+                    data-tutorial-title="Relatórios"
+                    data-tutorial-desc="Gere relatórios de cobertura fotográfica, SKUs sem foto, métricas por coleção e exporte dados em CSV.">
                     <i class="fas fa-file-alt"></i>
                     <span>Relatórios</span>
                 </a>
                 <a href="{{ url_for('integrations') }}"
-                    class="nav-item {% if request.endpoint == 'integrations' %}active{% endif %}">
+                    class="nav-item {% if request.endpoint == 'integrations' %}active{% endif %}"
+                    data-tutorial-title="Integrações"
+                    data-tutorial-desc="Configure integrações com sistemas externos, APIs e serviços de terceiros.">
                     <i class="fas fa-network-wired"></i>
                     <span>Integrações</span>
                 </a>
             </nav>
 
             <div class="bottom-menu">
-                <a href="#" class="nav-item">
+                <a href="#" class="nav-item tutorial-excluded" onclick="tutorialManager.toggle(); return false;"
+                    data-tutorial-title="Ativar Tutorial"
+                    data-tutorial-desc="Ativa o modo tutorial interativo para aprender sobre cada funcionalidade do sistema.">
                     <i class="far fa-question-circle"></i>
                     <span>Ajuda</span>
                 </a>
-                <a href="{{ url_for('logout') }}" class="nav-item">
+                <a href="{{ url_for('logout') }}" class="nav-item"
+                    data-tutorial-title="Sair do Sistema"
+                    data-tutorial-desc="Encerra sua sessão atual e volta para a tela de login.">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Sair</span>
                 </a>
@@ -104,8 +131,13 @@
                 </div>
 
                 <div class="header-actions">
-                    <button class="icon-btn"><i class="far fa-bell"></i></button>
-                    <a href="{{ url_for('settings') }}" class="icon-btn"><i class="fas fa-cog"></i></a>
+                    <button id="tutorialToggle" class="tutorial-excluded" onclick="tutorialManager.toggle()"
+                        data-tutorial-title="Modo Tutorial"
+                        data-tutorial-desc="Liga/desliga o modo tutorial. Quando ativo, clicar em qualquer elemento mostra sua descrição ao invés de executar a ação.">
+                        <i class="far fa-question-circle"></i> Tutorial
+                    </button>
+                    <button class="icon-btn" data-tutorial-title="Notificações" data-tutorial-desc="Exibe alertas e notificações do sistema."><i class="far fa-bell"></i></button>
+                    <a href="{{ url_for('settings') }}" class="icon-btn" data-tutorial-title="Configurações" data-tutorial-desc="Acessa as configurações do sistema."><i class="fas fa-cog"></i></a>
                     <div class="user-profile">
                         <!-- Placeholder for user avatar -->
                         <div

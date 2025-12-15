@@ -393,3 +393,204 @@ a {
     color: var(--text-secondary);
     margin-bottom: 1rem;
 }
+
+/* ========================================
+   TUTORIAL SYSTEM STYLES
+   ======================================== */
+
+/* Tutorial Modal - Dark Theme */
+.tutorial-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+    animation: tutorialFadeIn 0.2s ease;
+}
+
+@keyframes tutorialFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.tutorial-modal-content {
+    background: linear-gradient(145deg, var(--bg-secondary), var(--bg-tertiary));
+    padding: 0;
+    border-radius: 16px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
+    animation: tutorialSlideIn 0.3s ease;
+    overflow: hidden;
+}
+
+@keyframes tutorialSlideIn {
+    from { 
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.tutorial-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tutorial-modal-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.tutorial-modal-header h4 {
+    flex: 1;
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.tutorial-modal-close {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.tutorial-modal-close:hover {
+    background: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+}
+
+.tutorial-modal-content > p {
+    padding: 24px;
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+}
+
+.tutorial-modal-footer {
+    padding: 16px 24px;
+    background: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid var(--border-color);
+}
+
+.tutorial-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.tutorial-hint i {
+    color: #d29922;
+}
+
+/* Tutorial Toggle Button */
+#tutorialToggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+#tutorialToggle:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+}
+
+#tutorialToggle.active {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+#tutorialToggle.active:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+/* Tutorial Notification Toast */
+.tutorial-notification {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    padding: 14px 28px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 10001;
+    box-shadow: 0 10px 40px rgba(99, 102, 241, 0.5);
+    animation: notificationSlideUp 0.4s ease;
+}
+
+@keyframes notificationSlideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.tutorial-notification.fade-out {
+    animation: notificationSlideDown 0.3s ease forwards;
+}
+
+@keyframes notificationSlideDown {
+    from {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+}
+
+.tutorial-notification i {
+    font-size: 1.1rem;
+}

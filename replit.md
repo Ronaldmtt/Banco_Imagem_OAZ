@@ -70,6 +70,20 @@ The application features a premium dark-mode UI with glassmorphism effects, desi
     - Real-time progress bar with per-image status log
     - Sequential processing with error resilience (partial success handling)
     - Endpoint `/api/analyze-single` for individual image analysis via AJAX
+-   **Duplicate Detection**: Upload uses SHA256 hash to detect and skip duplicate images:
+    - Hash calculated before upload to Object Storage
+    - Existing hashes queried in batch from database
+    - Duplicate files are skipped with feedback to user
+    - Multiple images of same SKU (different angles) are allowed since hash differs
+-   **Interactive Tutorial System**: Sistema de tutorial dinâmico com toggle on/off:
+    - Classe TutorialManager encapsulada (`static/js/tutorial.js`)
+    - Intercepta TODOS os cliques quando ativado, exibindo descrições contextuais
+    - Modal com tema dark mode integrado ao design do sistema
+    - Toggle via botão no header ou link "Ajuda" no sidebar
+    - Auto-geração de descrições baseada em contexto (ícones, hrefs, tipos de input)
+    - Atributos `data-tutorial-title` e `data-tutorial-desc` para descrições personalizadas
+    - Estado persistido em localStorage
+    - Notificação toast ao ativar/desativar
 
 ### System Design Choices
 The application is designed for scalability and performance, particularly for handling large volumes of images and data. It leverages a PostgreSQL database with optimized indexes for efficient querying of millions of records. The use of Replit Object Storage ensures persistent, scalable cloud storage for images, accessible via a dedicated `/storage/<path>` route. The batch processing system employs `ThreadPoolExecutor` for parallel execution, and the application is configured for Autoscale deployment on Replit.

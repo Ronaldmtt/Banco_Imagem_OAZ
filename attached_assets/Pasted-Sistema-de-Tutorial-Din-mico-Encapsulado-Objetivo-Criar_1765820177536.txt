@@ -1,0 +1,246 @@
+Sistema de Tutorial Dinâmico Encapsulado
+Objetivo
+Criar um sistema de tutorial interativo que intercepta TODAS as interações do usuário (cliques, digitação, submissões) quando ativado, exibindo descrições contextuais em vez de executar as ações. Funciona com conteúdo estático e dinâmico (AJAX, polling, SPA).
+
+Arquitetura
+1. TutorialManager (Classe JavaScript)
+Adicione no template base ou layout principal:
+
+class TutorialManager {
+    constructor() {
+        this.isActive = localStorage.getItem('tutorialMode') === 'true';
+        this.modal = null;
+        this.init();
+    }
+    
+    init() {
+        this.createModal();
+        this.setupEventListeners();
+        this.updateToggleButton();
+    }
+    
+    createModal() {
+        const modalHTML = `
+        <div id="tutorialModal" class="tutorial-modal" style="display:none;">
+            <div class="tutorial-modal-content">
+                <span class="tutorial-modal-close">&times;</span>
+                <h4 id="tutorialModalTitle"></h4>
+                <p id="tutorialModalDesc"></p>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        this.modal = document.getElementById('tutorialModal');
+        this.modal.querySelector('.tutorial-modal-close').onclick = () => this.hideModal();
+    }
+    
+    setupEventListeners() {
+        // DELEGAÇÃO GLOBAL - captura tudo, inclusive conteúdo dinâmico
+        document.addEventListener('click', (e) => this.handleInteraction(e), true);
+        document.addEventListener('submit', (e) => this.handleInteraction(e), true);
+        document.addEventListener('change', (e) => this.handleInteraction(e), true);
+        document.addEventListener('focus', (e) => this.handleFocus(e), true);
+    }
+    
+    handleInteraction(e) {
+        if (!this.isActive) return;
+        
+        const target = e.target.closest('button, a, input, select, textarea, [onclick], label, form');
+        if (!target) return;
+        
+        // Excluir elementos do próprio tutorial
+        if (target.closest('#tutorialModal, #tutorialToggle, .tutorial-excluded')) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        const info = this.getElementInfo(target);
+        this.showModal(info.title, info.desc);
+    }
+    
+    handleFocus(e) {
+        if (!this.isActive) return;
+        const target = e.target;
+        if (target.matches('input, select, textarea, [contenteditable]')) {
+            if (!target.closest('#tutorialModal, .tutorial-excluded')) {
+                e.preventDefault();
+                target.blur();
+            }
+        }
+    }
+    
+    getElementInfo(el) {
+        // 1. Atributos explícitos têm prioridade
+        let title = el.getAttribute('data-tutorial-title');
+        let desc = el.getAttribute('data-tutorial-desc');
+        
+        if (title && desc) return { title, desc };
+        
+        // 2. Auto-geração baseada no contexto
+        title = title || this.generateTitle(el);
+        desc = desc || this.generateDescription(el);
+        
+        return { title, desc };
+    }
+    
+    generateTitle(el) {
+        // Texto do elemento
+        const text = el.textContent?.trim()?.substring(0, 50);
+        if (text && text.length > 2) return text;
+        
+        // Título do tooltip
+        const tooltip = el.getAttribute('title') || el.getAttribute('data-bs-original-title');
+        if (tooltip) return tooltip;
+        
+        // Ícone Font Awesome
+        const icon = el.querySelector('i[class*="fa-"]');
+        if (icon) {
+            const iconClass = [...icon.classList].find(c => c.startsWith('fa-') && c !== 'fa-fw');
+            if (iconClass) return this.iconToTitle(iconClass);
+        }
+        
+        // Tipo do input
+        if (el.tagName === 'INPUT') return `Campo ${el.type || 'texto'}`;
+        if (el.tagName === 'SELECT') return 'Seleção';
+        if (el.tagName === 'BUTTON') return 'Botão';
+        
+        return 'Elemento interativo';
+    }
+    
+    generateDescription(el) {
+        // Placeholder
+        if (el.placeholder) return `Digite: ${el.placeholder}`;
+        
+        // Aria-label
+        if (el.getAttribute('aria-label')) return el.getAttribute('aria-label');
+        
+        // Label associado
+        const label = document.querySelector(`label[for="${el.id}"]`);
+        if (label) return `Campo: ${label.textContent.trim()}`;
+        
+        // Link - analisar href
+        if (el.tagName === 'A' && el.href) {
+            if (el.href.includes('/edit')) return 'Abre formulário de edição';
+            if (el.href.includes('/delete')) return 'Remove este item';
+            if (el.href.includes('/view') || el.href.includes('/show')) return 'Visualiza detalhes';
+            return 'Navega para outra página';
+        }
+        
+        // Botão submit
+        if (el.type === 'submit') return 'Envia o formulário';
+        
+        return 'Clique para interagir com este elemento';
+    }
+    
+    iconToTitle(iconClass) {
+        const map = {
+            'fa-eye': 'Visualizar',
+            'fa-edit': 'Editar',
+            'fa-trash': 'Excluir',
+            'fa-plus': 'Adicionar',
+            'fa-save': 'Salvar',
+            'fa-download': 'Download',
+            'fa-upload': 'Upload',
+            'fa-search': 'Pesquisar',
+            'fa-filter': 'Filtrar',
+            'fa-refresh': 'Atualizar',
+            'fa-redo': 'Reprocessar',
+            'fa-file-pdf': 'Documento PDF',
+            'fa-camera': 'Captura de tela'
+        };
+        return map[iconClass] || iconClass.replace('fa-', '').replace(/-/g, ' ');
+    }
+    
+    toggle() {
+        this.isActive = !this.isActive;
+        localStorage.setItem('tutorialMode', this.isActive);
+        this.updateToggleButton();
+        
+        if (this.isActive) {
+            document.querySelectorAll('input, textarea, select').forEach(el => el.blur());
+        }
+    }
+    
+    updateToggleButton() {
+        const btn = document.getElementById('tutorialToggle');
+        if (btn) {
+            btn.classList.toggle('active', this.isActive);
+            btn.innerHTML = this.isActive 
+                ? '<i class="fas fa-question-circle"></i> Tutorial ATIVO'
+                : '<i class="fas fa-question-circle"></i> Tutorial';
+        }
+    }
+    
+    showModal(title, desc) {
+        document.getElementById('tutorialModalTitle').textContent = title;
+        document.getElementById('tutorialModalDesc').textContent = desc;
+        this.modal.style.display = 'flex';
+    }
+    
+    hideModal() {
+        this.modal.style.display = 'none';
+    }
+}
+// Inicializar
+document.addEventListener('DOMContentLoaded', () => {
+    window.tutorialManager = new TutorialManager();
+});
+
+2. CSS do Modal
+.tutorial-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+.tutorial-modal-content {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    max-width: 450px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.tutorial-modal-close {
+    float: right;
+    font-size: 24px;
+    cursor: pointer;
+}
+#tutorialToggle.active {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+}
+
+3. Botão Toggle (no header/navbar)
+<button id="tutorialToggle" class="btn tutorial-excluded" onclick="tutorialManager.toggle()">
+    <i class="fas fa-question-circle"></i> Tutorial
+</button>
+
+4. Elementos com Descrições Específicas
+Para descrições personalizadas, adicione atributos:
+
+<button data-tutorial-title="Salvar Alterações" 
+        data-tutorial-desc="Salva todas as modificações feitas no formulário.">
+    <i class="fas fa-save"></i> Salvar
+</button>
+
+5. Conteúdo Dinâmico (JavaScript)
+Quando gerar HTML via JavaScript, inclua os atributos:
+
+buttonsHTML += `
+    <a href="/item/${id}/edit" 
+       data-tutorial-title="Editar Item"
+       data-tutorial-desc="Abre o formulário de edição deste item.">
+        <i class="fas fa-edit"></i>
+    </a>
+`;
+
+Características
+Encapsulado: Uma única classe JavaScript
+Portável: Funciona em qualquer framework (Flask, Django, Node, PHP, etc.)
+Dinâmico: Event delegation no document captura elementos criados após carregamento
+Persistente: Estado salvo em localStorage
+Auto-descritivo: Gera descrições automaticamente quando não especificadas
+Exclusões: Use classe .tutorial-excluded para elementos que não devem ser interceptados

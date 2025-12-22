@@ -270,6 +270,35 @@
     background: rgba(255,193,7,0.2);
     color: #ffc107;
 }
+.queue-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.btn-process {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s ease;
+}
+.btn-process:hover {
+    background: linear-gradient(135deg, #218838, #1eb389);
+    transform: scale(1.05);
+}
+.btn-process:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.btn-process.processing {
+    background: linear-gradient(135deg, #ffc107, #ff9800);
+}
 .overall-progress {
     margin-top: 20px;
 }
@@ -316,6 +345,47 @@ document.addEventListener('DOMContentLoaded', function() {
     
     let batchIndex = 1;
     let uploadedBatchIds = [];
+    
+    // Função global para processar batch individual
+    window.processSingleBatch = async function(index) {
+        const btn = document.getElementById(`process-btn-${index}`);
+        const batchId = btn.dataset.batchId;
+        
+        if (!batchId) {
+            alert('Erro: ID do batch não encontrado');
+            return;
+        }
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+        btn.classList.add('processing');
+        
+        document.getElementById(`status-${index}`).textContent = 'Processando...';
+        document.getElementById(`status-${index}`).className = 'queue-item-status status-processing';
+        
+        try {
+            const response = await fetch(`/batch/${batchId}/start-processing`, {
+                method: 'POST'
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                btn.innerHTML = '<i class="fas fa-check"></i> Iniciado';
+                btn.style.background = 'linear-gradient(135deg, #28a745, #28a745)';
+                document.getElementById(`status-${index}`).textContent = 'Em Processamento';
+            } else {
+                btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erro';
+                btn.disabled = false;
+                alert('Erro: ' + (data.error || 'Falha ao iniciar processamento'));
+            }
+        } catch (err) {
+            btn.innerHTML = '<i class="fas fa-redo"></i> Tentar Novamente';
+            btn.disabled = false;
+            btn.classList.remove('processing');
+            alert('Erro: ' + err.message);
+        }
+    };
     
     // Sistema de Logging para Frontend (envia para console do servidor)
     const OAZLog = {
@@ -618,7 +688,12 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="queue-item-progress" id="queue-item-${i}">
                 <div class="queue-item-header">
                     <span class="queue-item-name">${b.name}</span>
-                    <span class="queue-item-status status-waiting" id="status-${i}">Aguardando</span>
+                    <div class="queue-item-actions">
+                        <button class="btn btn-sm btn-process" id="process-btn-${i}" style="display: none;" onclick="processSingleBatch(${i})">
+                            <i class="fas fa-play"></i> Processar
+                        </button>
+                        <span class="queue-item-status status-waiting" id="status-${i}">Aguardando</span>
+                    </div>
                 </div>
                 <div class="progress-bar-container" style="height: 12px;">
                     <div class="progress-bar" id="progress-${i}" style="width: 0%"></div>
@@ -655,6 +730,10 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(`status-${i}`).textContent = 'Upload Concluído';
             document.getElementById(`status-${i}`).className = 'queue-item-status status-uploaded';
             document.getElementById(`progress-${i}`).style.width = '100%';
+            
+            // Mostrar botão de processar individual
+            document.getElementById(`process-btn-${i}`).style.display = 'inline-flex';
+            document.getElementById(`process-btn-${i}`).dataset.batchId = result.batchId;
         }
         
         const totalQueueTime = (Date.now() - queueStartTime) / 1000;

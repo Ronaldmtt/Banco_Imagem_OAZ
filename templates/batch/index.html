@@ -60,10 +60,19 @@
                     <td class="text-danger">{{ batch.falhas }}</td>
                     <td>{{ batch.created_at.strftime('%d/%m/%Y %H:%M') if batch.created_at else '-' }}</td>
                     <td class="actions-cell">
-                        <a href="{{ url_for('batch_detail', batch_id=batch.id) }}" class="btn btn-sm btn-secondary">
-                            <i class="fas fa-eye"></i> Ver
+                        <a href="{{ url_for('batch_detail', batch_id=batch.id) }}" class="btn btn-sm btn-secondary" title="Ver detalhes">
+                            <i class="fas fa-eye"></i>
                         </a>
-                        <button class="btn btn-sm btn-danger" onclick="deleteBatch({{ batch.id }}, '{{ batch.nome or 'Lote ' ~ batch.id }}')">
+                        {% if batch.status in ['Recebendo', 'Pendente'] and batch.total_arquivos > 0 %}
+                        <button class="btn btn-sm btn-success" onclick="startProcessing({{ batch.id }})" title="Iniciar processamento">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        {% elif batch.falhas > 0 %}
+                        <button class="btn btn-sm btn-warning" onclick="reprocessBatch({{ batch.id }})" title="Reprocessar falhas">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        {% endif %}
+                        <button class="btn btn-sm btn-danger" onclick="deleteBatch({{ batch.id }}, '{{ batch.nome or 'Lote ' ~ batch.id }}')" title="Excluir lote">
                             <i class="fas fa-trash"></i>
                         </button>
                     </td>
@@ -152,6 +161,22 @@
 .btn-danger:hover {
     background: rgba(220, 53, 69, 0.4);
 }
+.btn-warning {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+}
+.btn-warning:hover {
+    background: rgba(255, 193, 7, 0.4);
+}
+.btn-sm.btn-success {
+    background: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+.btn-sm.btn-success:hover {
+    background: rgba(40, 167, 69, 0.4);
+}
 .status-recebendo {
     background: rgba(23, 162, 184, 0.2);
     color: #17a2b8;
@@ -178,6 +203,52 @@ async function deleteBatch(batchId, batchName) {
         }
     } catch (error) {
         alert('Erro ao excluir lote: ' + error.message);
+    }
+}
+
+async function startProcessing(batchId) {
+    if (!confirm('Iniciar processamento deste lote?\n\nAs imagens serão analisadas e vinculadas aos SKUs da Carteira.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/batch/${batchId}/start-processing`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert('Processamento iniciado com sucesso!');
+            window.location.href = `/batch/${batchId}`;
+        } else {
+            alert('Erro ao iniciar processamento: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        alert('Erro ao iniciar processamento: ' + error.message);
+    }
+}
+
+async function reprocessBatch(batchId) {
+    if (!confirm('Reprocessar itens com falha?\n\nNota: Arquivos que foram perdidos (caminho legado) precisam ser re-enviados.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/batch/${batchId}/reprocess`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert(`Reprocessamento iniciado!\n\n${data.message || 'Verifique os detalhes do lote.'}`);
+            window.location.href = `/batch/${batchId}`;
+        } else {
+            alert('Erro ao reprocessar: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        alert('Erro ao reprocessar: ' + error.message);
     }
 }
 </script>

@@ -315,7 +315,7 @@
                 <div style="margin-bottom: 1.5rem;">
                     <label
                         style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem; font-size: 0.9rem;">URL
-                        Direta da Imagem</label>
+                        da Imagem no App</label>
                     <div style="display: flex; gap: 0.5rem;">
                         <input type="text" id="direct-url" readonly
                             value="{{ request.url_root.rstrip('/') }}{{ image.image_url }}"
@@ -326,6 +326,23 @@
                         </button>
                     </div>
                 </div>
+
+                {% if image.sharepoint_web_url %}
+                <div style="margin-bottom: 1.5rem;">
+                    <label
+                        style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem; font-size: 0.9rem;">URL
+                        SharePoint (webUrl)</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="sp-web-url" readonly
+                            value="{{ image.sharepoint_web_url }}"
+                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem;">
+                        <button onclick="copyToClipboard('sp-web-url')" class="btn"
+                            style="background: var(--accent-blue); color: white;">
+                            <i class="fas fa-copy"></i> Copiar
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
 
                 <div style="margin-bottom: 1.5rem;">
                     <label
@@ -347,7 +364,7 @@
                         HTML para Embed</label>
                     <div style="display: flex; gap: 0.5rem;">
                         <textarea id="html-embed" readonly rows="3"
-                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; font-family: monospace; resize: vertical;">&lt;img src="{{ request.url_root.rstrip('/') }}{{ image.image_url }}" alt="{{ image.original_name }}" /&gt;</textarea>
+                            style="flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; font-family: monospace; resize: vertical;">&lt;img src="{% if image.sharepoint_web_url %}{{ image.sharepoint_web_url }}{% else %}{{ request.url_root.rstrip('/') }}{{ image.image_url }}{% endif %}" alt="{{ image.original_name }}" /&gt;</textarea>
                         <button onclick="copyToClipboard('html-embed')" class="btn"
                             style="background: var(--accent-blue); color: white;">
                             <i class="fas fa-copy"></i> Copiar

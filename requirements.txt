@@ -14,3 +14,4 @@ sift-stack-py
 psycopg2-binary
 openai
 Pillow
+msal

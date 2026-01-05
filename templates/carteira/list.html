@@ -10,9 +10,23 @@
         <a href="{{ url_for('importar_carteira') }}" class="btn btn-primary">
             <i class="fas fa-file-import"></i> Importar Excel/CSV
         </a>
-        <a href="{{ url_for('cruzar_carteira') }}" class="btn" style="background: rgba(63, 185, 80, 0.2); border: 1px solid #3fb950; color: #3fb950;">
+        {% set lote_cross = lote_selecionado or (lotes[0].lote_importacao if lotes and lotes|length > 0 else None) %}
+        {% if lote_cross %}
+        <form action="{{ url_for('cross_sharepoint_lote', lote_id=lote_cross) }}" method="POST" style="display: inline;">
+            <button type="submit" class="btn" style="background: rgba(63, 185, 80, 0.2); border: 1px solid #3fb950; color: #3fb950;">
+                <i class="fas fa-sync-alt"></i> Executar Cruzamento
+            </button>
+        </form>
+        {% else %}
+        <button class="btn" style="background: rgba(63, 185, 80, 0.2); border: 1px solid #3fb950; color: #3fb950; opacity: 0.6;" disabled>
             <i class="fas fa-sync-alt"></i> Executar Cruzamento
-        </a>
+        </button>
+        {% endif %}
+        <form action="{{ url_for('sharepoint_reindex') }}" method="POST" style="display: inline;">
+            <button type="submit" class="btn" style="background: rgba(31, 111, 235, 0.15); border: 1px solid var(--accent-blue); color: var(--accent-blue);">
+                <i class="fas fa-sync"></i> Reindexar SharePoint
+            </button>
+        </form>
         <form action="{{ url_for('reconciliar_carteira') }}" method="POST" style="display: inline;">
             <button type="submit" class="btn" style="background: rgba(130, 80, 223, 0.2); border: 1px solid #a371f7; color: #a371f7;"
                 title="Busca match na Carteira para imagens que não tiveram match anteriormente">

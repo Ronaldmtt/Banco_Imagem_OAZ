@@ -1,8 +1,9 @@
 import os
 import io
 import csv
+import mimetypes
 from datetime import datetime
-from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response, jsonify
+from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response, jsonify, stream_with_context
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -13,7 +14,17 @@ from dotenv import load_dotenv
 import json
 import base64
 from PIL import Image as PILImage
+import unicodedata
 
+# SharePoint client (Microsoft Graph)
+from sharepoint_client import (
+    build_sharepoint_client_from_env,
+    get_brand_name_from_path,
+    get_collection_name_from_path,
+    get_collection_and_subfolder_from_path,
+    get_sharepoint_env,
+    parse_sku_variants,
+)
 # Sistema de Logging OAZ (local)
 from oaz_logger import (
     info, debug, warn, error, success,
@@ -105,6 +116,7 @@ class Config:
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'zip'}
     MAX_BATCH_WORKERS = 5  # Número de threads para processamento paralelo
     MAX_CONTENT_LENGTH = 3 * 1024 * 1024 * 1024  # 3GB - suporta uploads grandes
+    STORAGE_BACKEND = os.environ.get('STORAGE_BACKEND', 'bucket').lower()
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -115,6 +127,80 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+_sharepoint_client = None
+_sharepoint_index_cache = {"index": None, "created_at": None}
+_sharepoint_index_ttl_minutes = int(os.environ.get("SHAREPOINT_INDEX_TTL_MINUTES", "30"))
+
+
+def is_sharepoint_backend():
+    return app.config.get('STORAGE_BACKEND', 'bucket') == 'sharepoint'
+
+
+def get_sharepoint_client():
+    global _sharepoint_client
+    if _sharepoint_client is None:
+        _sharepoint_client = build_sharepoint_client_from_env()
+    return _sharepoint_client
+
+
+def build_sharepoint_index(force_refresh=False, ttl_minutes=None):
+    cache = _sharepoint_index_cache
+    ttl_minutes = _sharepoint_index_ttl_minutes if ttl_minutes is None else ttl_minutes
+    cache_exists = cache["index"] is not None and cache["created_at"]
+    if cache["index"] is not None and not force_refresh and cache["created_at"]:
+        age_minutes = (datetime.utcnow() - cache["created_at"]).total_seconds() / 60
+        if age_minutes <= ttl_minutes:
+            print(f"[SP] Usando índice em cache ({int(age_minutes)} min)")
+            return cache["index"]
+        print(f"[SP] Índice expirado ({int(age_minutes)} min), atualizando")
+
+    if force_refresh:
+        print("[SP] Reindexação forçada, gerando índice SharePoint (full)")
+    elif not cache_exists:
+        print("[SP] Índice não encontrado, executando full build_index")
+    client = get_sharepoint_client()
+    index = client.build_index()
+    cache["index"] = index
+    cache["created_at"] = datetime.utcnow()
+    return index
+
+
+def get_sharepoint_root_folder():
+    return get_sharepoint_env()["root_folder"].strip('/')
+
+
+def get_first_level_folder(parent_path):
+    if not parent_path:
+        return None
+    root_folder = get_sharepoint_root_folder()
+    marker = f":/{root_folder}"
+    if marker in parent_path:
+        relative = parent_path.split(marker, 1)[-1].lstrip('/')
+    else:
+        relative = parent_path.split('root:', 1)[-1].lstrip('/')
+    if not relative:
+        return None
+    return relative.split('/', 1)[0]
+
+
+def ensure_upload_enabled():
+    if is_sharepoint_backend():
+        message = 'Upload desativado; fonte é SharePoint.'
+        if request.is_json or request.accept_mimetypes['application/json'] >= request.accept_mimetypes['text/html']:
+            return jsonify({'error': message}), 403
+        flash(message, 'info')
+        return redirect(url_for('catalog'))
+    return None
+
+
+@app.before_request
+def block_bucket_upload_routes():
+    if not is_sharepoint_backend():
+        return None
+    if request.path.startswith('/batch') or request.path.startswith('/upload'):
+        return ensure_upload_enabled()
+    return None
 
 # Error handler for large file uploads
 @app.errorhandler(413)
@@ -175,6 +261,13 @@ class Image(db.Model):
     filename = db.Column(db.String(255), nullable=False)
     original_name = db.Column(db.String(255), nullable=False)
     storage_path = db.Column(db.String(500))  # Path in Object Storage (e.g., /bucket/images/file.jpg)
+    source_type = db.Column(db.String(30), default='sharepoint')
+    sharepoint_drive_id = db.Column(db.String(255))
+    sharepoint_item_id = db.Column(db.String(255))
+    sharepoint_web_url = db.Column(db.Text)
+    sharepoint_parent_path = db.Column(db.Text)
+    sharepoint_file_name = db.Column(db.String(255))
+    sharepoint_last_modified = db.Column(db.String(50))
     description = db.Column(db.Text)
     sku = db.Column(db.String(100))  # SKU completo do arquivo (ex: ABC123_01)
     sku_base = db.Column(db.String(100), index=True)  # SKU base para agrupamento (ex: ABC123)
@@ -221,6 +314,11 @@ class Image(db.Model):
     @property
     def image_url(self):
         """Returns the URL to access the image (Object Storage or local fallback)"""
+        if self.source_type == 'sharepoint' and self.sharepoint_item_id and self.sharepoint_drive_id:
+            try:
+                return url_for('serve_sharepoint_image', image_id=self.id)
+            except RuntimeError:
+                return f"/sp/image/{self.id}"
         if self.storage_path:
             return self.storage_path
         return f"/static/uploads/{self.filename}"
@@ -262,6 +360,31 @@ class ImageThumbnail(db.Model):
     __table_args__ = (
         db.Index('idx_thumbnail_image_id', 'image_id'),
     )
+
+
+def ensure_image_table_columns():
+    """Adiciona colunas de SharePoint no SQLite sem Alembic."""
+    try:
+        result = db.session.execute("PRAGMA table_info(image)").fetchall()
+    except Exception:
+        return
+
+    existing = {row[1] for row in result}
+    columns = [
+        ("source_type", "VARCHAR(30) DEFAULT 'sharepoint'"),
+        ("sharepoint_drive_id", "VARCHAR(255)"),
+        ("sharepoint_item_id", "VARCHAR(255)"),
+        ("sharepoint_web_url", "TEXT"),
+        ("sharepoint_parent_path", "TEXT"),
+        ("sharepoint_file_name", "VARCHAR(255)"),
+        ("sharepoint_last_modified", "VARCHAR(50)"),
+    ]
+
+    for name, ddl in columns:
+        if name in existing:
+            continue
+        db.session.execute(f"ALTER TABLE image ADD COLUMN {name} {ddl}")
+    db.session.commit()
 
 class Produto(db.Model):
     """Modelo de Produto com SKU e atributos técnicos"""
@@ -472,6 +595,10 @@ def get_openai_client():
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
+
+
+def encode_image_bytes(image_bytes):
+    return base64.b64encode(image_bytes).decode('utf-8')
 
 def analyze_image_with_ai(image_path):
     client = get_openai_client()
@@ -925,7 +1052,7 @@ def normalize_to_taxonomy(value, valid_values):
     return value.upper()
 
 
-def analyze_image_with_context(image_path_or_url, sku=None, collection_id=None, brand_id=None, subcolecao_id=None, is_url=False):
+def analyze_image_with_context(image_path_or_url=None, sku=None, collection_id=None, brand_id=None, subcolecao_id=None, is_url=False, image_bytes=None):
     """
     Analisa imagem com contexto das carteiras de compras importadas.
     Busca produtos similares para dar contexto ao GPT.
@@ -1000,7 +1127,13 @@ Produto {i}:
 - Origem: {p.get('origem', 'N/A')}
 """
         
-        if is_url:
+        if image_bytes is not None:
+            base64_image = encode_image_bytes(image_bytes)
+            image_content = {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            }
+        elif is_url:
             image_content = {
                 "type": "image_url",
                 "image_url": {"url": image_path_or_url}
@@ -1338,6 +1471,29 @@ def serve_storage_image(object_path):
         print(f"[ERROR] Failed to serve storage image {object_path}: {e}")
         return "Image not found", 404
 
+
+@app.route('/sp/image/<int:image_id>')
+def serve_sharepoint_image(image_id):
+    """Stream a SharePoint image through the app."""
+    image = Image.query.get_or_404(image_id)
+    if image.source_type != 'sharepoint':
+        return "Image not found", 404
+
+    try:
+        client = get_sharepoint_client()
+        metadata = client.get_metadata(image.sharepoint_drive_id, image.sharepoint_item_id)
+        response = client.download_stream(image.sharepoint_drive_id, image.sharepoint_item_id)
+        mime_type = metadata.get('mime_type') or mimetypes.guess_type(metadata.get('name', '') or '')[0] or 'application/octet-stream'
+
+        return Response(
+            stream_with_context(response.iter_content(chunk_size=8192)),
+            mimetype=mime_type,
+            headers={'Cache-Control': 'public, max-age=600'}
+        )
+    except Exception as e:
+        print(f"[ERROR] Failed to stream SharePoint image {image_id}: {e}")
+        return "Image not found", 404
+
 def generate_thumbnail(image_data, max_width=300, quality=75):
     """Gera thumbnail a partir de dados de imagem
     
@@ -1432,18 +1588,31 @@ def serve_thumbnail(image_id):
             )
         
         image = Image.query.get(image_id)
-        if image and image.storage_path:
-            from object_storage import object_storage
-            file_bytes = object_storage.download_file(image.storage_path)
-            if file_bytes:
-                save_thumbnail_for_image(image_id, file_bytes)
-                thumbnail = ImageThumbnail.query.filter_by(image_id=image_id).first()
-                if thumbnail:
-                    return Response(
-                        thumbnail.thumbnail_data,
-                        mimetype='image/jpeg',
-                        headers={'Cache-Control': 'public, max-age=31536000'}
-                    )
+        if image:
+            if image.source_type == 'sharepoint' and image.sharepoint_drive_id and image.sharepoint_item_id:
+                client = get_sharepoint_client()
+                file_bytes = client.download_bytes(image.sharepoint_drive_id, image.sharepoint_item_id)
+                if file_bytes:
+                    save_thumbnail_for_image(image_id, file_bytes)
+                    thumbnail = ImageThumbnail.query.filter_by(image_id=image_id).first()
+                    if thumbnail:
+                        return Response(
+                            thumbnail.thumbnail_data,
+                            mimetype='image/jpeg',
+                            headers={'Cache-Control': 'public, max-age=31536000'}
+                        )
+            elif image.storage_path:
+                from object_storage import object_storage
+                file_bytes = object_storage.download_file(image.storage_path)
+                if file_bytes:
+                    save_thumbnail_for_image(image_id, file_bytes)
+                    thumbnail = ImageThumbnail.query.filter_by(image_id=image_id).first()
+                    if thumbnail:
+                        return Response(
+                            thumbnail.thumbnail_data,
+                            mimetype='image/jpeg',
+                            headers={'Cache-Control': 'public, max-age=31536000'}
+                        )
         
         return Response(status=404)
         
@@ -1642,13 +1811,17 @@ def catalog():
                           per_page=per_page,
                           collections=collections, 
                           brands=brands, 
-                          search_query=search_query)
+                          search_query=search_query,
+                          storage_backend=app.config.get('STORAGE_BACKEND'))
 
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
     rpa_info(f"[NAV] Upload - Usuário: {current_user.username}")
+    upload_guard = ensure_upload_enabled()
+    if upload_guard:
+        return upload_guard
     if request.method == 'POST':
         if 'image' not in request.files:
             flash('Nenhum arquivo enviado')
@@ -1728,6 +1901,9 @@ def upload():
             )
             db.session.add(new_image)
             db.session.flush()
+
+            if sp_item.get('web_url'):
+                rpa_info(f"[SHAREPOINT] Imagem sincronizada: {sku_full} -> {sp_item.get('web_url')}")
             
             for item_data in ai_items:
                 attrs = item_data.get('attributes', {})
@@ -1746,6 +1922,34 @@ def upload():
                 db.session.add(new_item)
             
             db.session.commit()
+
+            if is_sharepoint_backend():
+                try:
+                    rpa_info(f"[CROSS] Auto-cross iniciado para lote={lote_id}")
+                    sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
+                    rpa_info(
+                        "[CROSS] Auto-cross finalizado "
+                        f"para lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
+                        f"| sem_foto={max(0, total_count - sync_result.get('matched', 0))}"
+                    )
+                except Exception as e:
+                    rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
+
+            if is_sharepoint_backend():
+                try:
+                    rpa_info(f"[SHAREPOINT] Iniciando cruzamento automático do lote {lote_id}")
+                    sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
+                    rpa_info(
+                        "[SHAREPOINT] Cruzamento concluído "
+                        f"(lote {lote_id}): {sync_result.get('matched', 0)} SKUs com foto, "
+                        f"{sync_result.get('created', 0)} imagens criadas"
+                    )
+                except Exception as e:
+                    rpa_error(f"[SHAREPOINT] Erro no cruzamento do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
+
+            if is_sharepoint_backend():
+                sync_result = sync_sharepoint_images_for_import(lote_id)
+                rpa_info(f"[SHAREPOINT] Sync concluído (lote {lote_id}): {sync_result.get('created', 0)} imagens")
             
             item_count = len(ai_items)
             storage_info = " (Object Storage)" if storage_path else ""
@@ -1761,7 +1965,7 @@ def upload():
             return redirect(request.url)
     collections = Collection.query.order_by(Collection.name).all()
     brands = Brand.query.order_by(Brand.name).all()
-    return render_template('images/upload.html', collections=collections, brands=brands)
+    return render_template('images/upload.html', collections=collections, brands=brands, storage_backend=app.config.get('STORAGE_BACKEND'))
 
 
 @app.route('/collections')
@@ -2216,12 +2420,16 @@ def analyze_single_image(image, selected_fields=None):
     temp_file_path = None
     file_path = None
     image_url = None
+    image_bytes = None
     
     try:
-        if image.storage_path:
+        if image.source_type == 'sharepoint' and image.sharepoint_drive_id and image.sharepoint_item_id:
+            client = get_sharepoint_client()
+            image_bytes = client.download_bytes(image.sharepoint_drive_id, image.sharepoint_item_id)
+        elif image.storage_path:
             from object_storage import object_storage
             import tempfile
-            
+
             file_bytes = object_storage.download_file(image.storage_path)
             if file_bytes:
                 ext = os.path.splitext(image.filename)[1] or '.jpg'
@@ -2239,13 +2447,13 @@ def analyze_single_image(image, selected_fields=None):
                 else:
                     image_url = url_for('serve_storage_image', object_path=storage_key, _external=True)
         
-        if not file_path and not image_url:
+        if image_bytes is None and not file_path and not image_url:
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
         
-        if not file_path and not image_url:
+        if image_bytes is None and not file_path and not image_url:
             return False, 'Arquivo não encontrado'
         
-        if file_path and not os.path.exists(file_path) and not image_url:
+        if image_bytes is None and file_path and not os.path.exists(file_path) and not image_url:
             if image.storage_path:
                 domain = os.environ.get('REPLIT_DEV_DOMAIN', '')
                 storage_key = image.storage_path.lstrip('/')
@@ -2259,16 +2467,17 @@ def analyze_single_image(image, selected_fields=None):
         use_url = image_url is not None
         image_source = image_url if use_url else file_path
         
-        if not image_source:
+        if image_bytes is None and not image_source:
             return False, 'Arquivo não encontrado'
         
         ai_result = analyze_image_with_context(
-            image_source, 
+            image_source,
             sku=image.sku,
             collection_id=image.collection_id,
             brand_id=image.brand_id,
             subcolecao_id=image.subcolecao_id,
-            is_url=use_url
+            is_url=use_url,
+            image_bytes=image_bytes
         )
         
         if isinstance(ai_result, str):
@@ -3581,10 +3790,11 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
 def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None, tipo_carteira='Moda', marca_fallback=None):
     """
     Processa linhas do DataFrame e insere/atualiza na CarteiraCompras.
-    Auto-cria Coleções (baseado no nome da ABA), Subcoleções (baseado em ENTRADA), Marcas e Produtos.
+    Auto-cria Subcoleções (baseado em ENTRADA), Marcas e Produtos.
+    Coleções não são criadas automaticamente na importação quando o backend é SharePoint.
     
     IMPORTANTE:
-    - aba_origem = Nome da ABA do Excel = COLEÇÃO (ex: "Verão 24-25", "Inverno 26")
+    - aba_origem = Nome da ABA do Excel (mantido como metadado)
     - coluna ENTRADA = SUBCOLEÇÃO/CAMPANHA (ex: "Lançamento", "DDM", "Natal")
     
     Args:
@@ -3621,10 +3831,13 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     count = 0
     skus_invalidos = 0
     
-    colecao_id = obter_ou_criar_colecao(aba_origem, contadores) if aba_origem and aba_origem != 'CSV' else None
+    if is_sharepoint_backend():
+        colecao_id = None
+    else:
+        colecao_id = obter_ou_criar_colecao(aba_origem, contadores) if aba_origem and aba_origem != 'CSV' else None
     
     marca_fallback_id = None
-    if marca_fallback:
+    if marca_fallback and not is_sharepoint_backend():
         marca_fallback_id = obter_ou_criar_marca(marca_fallback, contadores)
         print(f"[INFO] Marca extraída do nome do arquivo: {marca_fallback}")
     
@@ -3650,7 +3863,10 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
                 subcolecao_id = obter_ou_criar_subcolecao(nome_subcolecao, colecao_id, contadores)
                 cache_subcolecoes[cache_key] = subcolecao_id
         
-        marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else marca_fallback_id
+        if is_sharepoint_backend():
+            marca_id = None
+        else:
+            marca_id = obter_ou_criar_marca(nome_marca, contadores) if nome_marca else marca_fallback_id
         produto_id = obter_ou_criar_produto(sku, row, contadores, marca_id=marca_id, colecao_id=colecao_id, subcolecao_id=subcolecao_id, cache_produtos=cache_produtos)
         
         # IMPORTANTE: Verificar existência por SKU + COLEÇÃO (um mesmo SKU pode existir em múltiplas coleções)
@@ -3729,6 +3945,293 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     
     log_end(M.CARTEIRA, f"Aba {aba_origem}: {count} registros")
     return count, skus_invalidos
+
+
+def get_or_create_collection_from_sharepoint(folder_name, collections_cache=None):
+    if not folder_name:
+        return None
+    normalized_key = folder_name.strip().upper()
+    if collections_cache is not None and normalized_key in collections_cache:
+        collection_id = collections_cache[normalized_key]
+        print(f"[CROSS] Reutilizando coleção '{folder_name}' (id={collection_id})")
+        return collection_id
+
+    existing = Collection.query.filter(
+        db.func.upper(Collection.name) == normalized_key
+    ).first()
+    if existing:
+        if collections_cache is not None:
+            collections_cache[normalized_key] = existing.id
+        print(f"[CROSS] Reutilizando coleção '{existing.name}' (id={existing.id})")
+        return existing.id
+
+    collection = Collection(
+        name=folder_name.strip(),
+        description='Coleção criada automaticamente via SharePoint'
+    )
+    db.session.add(collection)
+    db.session.flush()
+    if collections_cache is not None:
+        collections_cache[normalized_key] = collection.id
+    print(f"[CROSS] Criada coleção '{collection.name}' (id={collection.id}) a partir da pasta SharePoint")
+    return collection.id
+
+
+def get_or_create_brand_from_sharepoint(brand_name, brands_cache=None):
+    if not brand_name:
+        return None
+    normalized_key = brand_name.strip().upper()
+    if brands_cache is not None and normalized_key in brands_cache:
+        brand_id = brands_cache[normalized_key]
+        print(f"[CROSS] Reutilizando marca '{brand_name}' (id={brand_id})")
+        return brand_id
+
+    existing = Brand.query.filter(
+        db.func.upper(Brand.name) == normalized_key
+    ).first()
+    if existing:
+        if brands_cache is not None:
+            brands_cache[normalized_key] = existing.id
+        print(f"[CROSS] Reutilizando marca '{existing.name}' (id={existing.id})")
+        return existing.id
+
+    brand = Brand(
+        name=brand_name.strip(),
+        description='Marca criada automaticamente via SharePoint'
+    )
+    db.session.add(brand)
+    db.session.flush()
+    if brands_cache is not None:
+        brands_cache[normalized_key] = brand.id
+    print(f"[CROSS] Criada marca '{brand.name}' (id={brand.id}) a partir da pasta SharePoint")
+    return brand.id
+
+
+def _record_sharepoint_cross_result(lote_id, result):
+    payload = dict(result)
+    payload["lote_id"] = lote_id
+    payload["timestamp"] = datetime.utcnow().isoformat()
+    key = f"sharepoint_cross:{lote_id}"
+    existing = SystemConfig.query.filter_by(key=key).first()
+    if existing:
+        existing.value = json.dumps(payload)
+    else:
+        db.session.add(SystemConfig(key=key, value=json.dumps(payload)))
+
+
+def run_sharepoint_cross_for_batch(batch_id, force_update=False, auto=False):
+    if not is_sharepoint_backend():
+        return {"created": 0, "updated": 0, "matched": 0, "skus": 0}
+
+    items = CarteiraCompras.query.filter_by(lote_importacao=batch_id).all()
+    if not items:
+        return {"created": 0, "updated": 0, "matched": 0, "skus": 0}
+
+    cross_label = "Auto-cross" if auto else "Cruzamento"
+    print(f"[CROSS] {cross_label} iniciado | lote={batch_id} | auto={auto}")
+    client = get_sharepoint_client()
+    index = build_sharepoint_index()
+    collections_cache = {}
+    brands_cache = {}
+    created = 0
+    updated = 0
+    matched = 0
+
+    def _normalize_text(value):
+        if value is None:
+            return ""
+        text = str(value).strip().lower()
+        text = unicodedata.normalize("NFD", text)
+        return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+
+    def _folder_for_type(tipo):
+        normalized = _normalize_text(tipo)
+        if not normalized:
+            return "", normalized, False
+        if "moda" in normalized or "roupa" in normalized or "vestu" in normalized:
+            return "3. Moda", normalized, True
+        if "home" in normalized or "casa" in normalized or "decor" in normalized:
+            return "2. Home", normalized, True
+        if "acess" in normalized:
+            return "1. Acessórios", normalized, True
+        return "", normalized, False
+
+    def _filename_matches_sku(filename, sku_value):
+        if not filename or not sku_value:
+            return False
+        base = os.path.splitext(filename)[0].strip()
+        return base.upper().startswith(sku_value.upper())
+
+    for carteira_item in items:
+        sku_raw = str(carteira_item.sku or "").strip()
+        if not sku_raw:
+            continue
+        sku_norm = normalizar_sku(sku_raw)
+        sp_items = client.find_by_sku_base(index, sku_norm)
+        if not sp_items:
+            sp_items = client.find_by_sku_base(index, sku_raw)
+        sp_items = sp_items or []
+
+        expected_folder, tipo_normalized, folder_mapped = _folder_for_type(carteira_item.tipo_carteira)
+        filtered_items = []
+        collection_hint = ""
+        brand_hint = ""
+        folder_label = expected_folder or "(sem filtro)"
+
+        if tipo_normalized and not folder_mapped:
+            print(
+                f"[CROSS] WARNING: tipo_carteira sem mapeamento '{carteira_item.tipo_carteira}' "
+                f"para SKU {sku_raw}; sem filtro de subpasta"
+            )
+
+        for sp_item in sp_items:
+            parent_path = sp_item.get("parent_path", "")
+            collection_name, subfolder = get_collection_and_subfolder_from_path(parent_path)
+            if not collection_hint:
+                collection_hint = collection_name
+            if not brand_hint:
+                brand_hint = get_brand_name_from_path(parent_path) or ""
+            if expected_folder and _normalize_text(subfolder) != _normalize_text(expected_folder):
+                continue
+            if not _filename_matches_sku(sp_item.get("name", ""), sku_raw):
+                continue
+            filtered_items.append(sp_item)
+
+        print(
+            f"[CROSS] SKU {sku_raw} → {len(filtered_items)} arquivos no SharePoint "
+            f"| colecao={collection_hint or '-'} | tipo={tipo_normalized or '-'} "
+            f"| pasta={folder_label}"
+        )
+        if not filtered_items:
+            carteira_item.status_foto = 'Sem Foto'
+            continue
+
+        matched += 1
+        carteira_item.status_foto = 'Com Foto'
+
+        collection_id = None
+        brand_id = None
+
+        for sp_item in filtered_items:
+            existing = Image.query.filter_by(sharepoint_item_id=sp_item.get('item_id')).first()
+
+            sku_base, sequencia, sku_full = parse_sku_variants(sp_item.get('name', ''))
+            sku_base = sku_base or carteira_item.sku
+            sku_full = sku_full or carteira_item.sku
+
+            parent_path = sp_item.get('parent_path', '')
+            collection_name = get_collection_name_from_path(parent_path)
+            collection_id = get_or_create_collection_from_sharepoint(
+                collection_name,
+                collections_cache=collections_cache,
+            )
+            brand_name = get_brand_name_from_path(parent_path)
+            brand_id = get_or_create_brand_from_sharepoint(
+                brand_name,
+                brands_cache=brands_cache,
+            )
+            if brand_id:
+                print(f"[CROSS] Marca '{brand_name}' associada ao SKU {carteira_item.sku}")
+
+            if collection_id and not carteira_item.colecao_id:
+                carteira_item.colecao_id = collection_id
+            if brand_id and not carteira_item.marca_id:
+                carteira_item.marca_id = brand_id
+
+            if existing:
+                if sp_item.get('web_url'):
+                    existing.sharepoint_web_url = sp_item.get('web_url')
+                existing.sharepoint_parent_path = parent_path
+                existing.sharepoint_file_name = sp_item.get('name')
+                existing.sharepoint_last_modified = sp_item.get('last_modified')
+                if force_update or not existing.collection_id:
+                    existing.collection_id = collection_id or existing.collection_id
+                if force_update or not existing.brand_id:
+                    existing.brand_id = brand_id or existing.brand_id
+                updated += 1
+                continue
+
+            import uuid
+            unique_code = f"IMG-{uuid.uuid4().hex[:8].upper()}"
+
+            tags_list = []
+            for val in [carteira_item.categoria, carteira_item.subcategoria, carteira_item.cor]:
+                if val:
+                    tags_list.append(val)
+
+            new_image = Image(
+                filename=sp_item.get('name') or sku_full,
+                original_name=sp_item.get('name') or sku_full,
+                storage_path=None,
+                source_type='sharepoint',
+                sharepoint_drive_id=sp_item.get('drive_id'),
+                sharepoint_item_id=sp_item.get('item_id'),
+                sharepoint_web_url=sp_item.get('web_url'),
+                sharepoint_parent_path=parent_path,
+                sharepoint_file_name=sp_item.get('name'),
+                sharepoint_last_modified=sp_item.get('last_modified'),
+                sku=sku_full,
+                sku_base=sku_base,
+                sequencia=sequencia,
+                nome_peca=carteira_item.descricao,
+                categoria=carteira_item.categoria,
+                subcategoria=carteira_item.subcategoria,
+                tipo_peca=carteira_item.tipo_peca,
+                origem=carteira_item.origem,
+                estilista=carteira_item.estilista,
+                referencia_estilo=carteira_item.referencia_estilo,
+                collection_id=collection_id or carteira_item.colecao_id,
+                subcolecao_id=carteira_item.subcolecao_id,
+                brand_id=brand_id or carteira_item.marca_id,
+                unique_code=unique_code,
+                tags=json.dumps(tags_list),
+                status='Pendente'
+            )
+            db.session.add(new_image)
+            db.session.flush()
+
+            try:
+                image_bytes = client.download_bytes(sp_item.get('drive_id'), sp_item.get('item_id'))
+                save_thumbnail_for_image(new_image.id, image_bytes)
+            except Exception as e:
+                print(f"[WARN] SharePoint thumbnail failed for {sku_full}: {e}")
+
+            created += 1
+
+        produto = Produto.query.filter_by(sku=carteira_item.sku).first()
+        if produto:
+            produto.tem_foto = True
+            if collection_id and not produto.colecao_id:
+                produto.colecao_id = collection_id
+            if brand_id and not produto.marca_id:
+                produto.marca_id = brand_id
+
+    db.session.commit()
+    result = {"created": created, "updated": updated, "matched": matched, "skus": len(items)}
+    _record_sharepoint_cross_result(batch_id, result)
+    print(
+        f"[CROSS] {cross_label} finalizado | lote={batch_id} "
+        f"| com_foto={matched} | sem_foto={max(0, len(items) - matched)}"
+    )
+    return result
+
+
+def sync_sharepoint_images_for_import(lote_id):
+    return run_sharepoint_cross_for_batch(lote_id)
+
+
+@app.route('/sharepoint/reindex', methods=['POST'])
+@login_required
+def sharepoint_reindex():
+    if not is_sharepoint_backend():
+        flash('Reindexação SharePoint indisponível para este backend.', 'warning')
+        return redirect(url_for('carteira'))
+
+    index = build_sharepoint_index(force_refresh=True)
+    total_files = sum(len(items) for items in index.values())
+    total_skus = len(index)
+    flash(f"SharePoint reindexado: {total_files} arquivos em {total_skus} SKUs.", 'success')
+    return redirect(url_for('carteira'))
 
 def reconciliar_imagens_com_carteira():
     """Busca match na Carteira para imagens que não tiveram match anteriormente.
@@ -3953,6 +4456,18 @@ def importar_carteira():
             
             carteira_log.import_completed(total_count, len(abas_processadas), lote_id)
             rpa_info(f"[CARTEIRA] Importação concluída: {total_count} itens, {len(abas_processadas)} abas - Lote: {lote_id}")
+
+            if is_sharepoint_backend():
+                try:
+                    rpa_info(f"[CROSS] Auto-cross iniciado | lote={lote_id} | auto=True")
+                    sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
+                    rpa_info(
+                        "[CROSS] Auto-cross finalizado "
+                        f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
+                        f"| sem_foto={max(0, total_count - sync_result.get('matched', 0))}"
+                    )
+                except Exception as e:
+                    rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
             
             # Retornar sucesso para requisição AJAX
             return {'success': True, 'message': f'{total_count} itens importados'}, 200
@@ -4002,9 +4517,48 @@ def listar_abas_excel():
 def cruzar_carteira():
     rpa_info(f"[NAV] Cruzamento Carteira - Usuário: {current_user.username}")
     """Executa cruzamento entre carteira e produtos/imagens"""
+    if is_sharepoint_backend():
+        lote_id = request.args.get('lote')
+        if not lote_id:
+            latest = db.session.query(
+                CarteiraCompras.lote_importacao
+            ).filter(
+                CarteiraCompras.lote_importacao.isnot(None)
+            ).order_by(
+                db.desc(CarteiraCompras.data_importacao)
+            ).first()
+            lote_id = latest[0] if latest else None
+        if lote_id:
+            result = run_sharepoint_cross_for_batch(lote_id, force_update=True, auto=False)
+            flash(
+                "Cruzamento concluído! "
+                f"{result.get('matched', 0)} SKUs com foto, "
+                f"{result.get('created', 0)} imagens criadas."
+            )
+            return redirect(url_for('carteira', lote=lote_id))
+        flash('Nenhum lote disponível para cruzamento.', 'warning')
+        return redirect(url_for('carteira'))
+
     count = atualizar_status_carteira()
     flash(f'Cruzamento concluído! {count} itens atualizados.')
     return redirect(url_for('carteira'))
+
+
+@app.route('/carteira/<lote_id>/cross-sharepoint', methods=['POST'])
+@login_required
+def cross_sharepoint_lote(lote_id):
+    if not is_sharepoint_backend():
+        flash('Cruzamento SharePoint indisponível para este backend.', 'warning')
+        return redirect(url_for('carteira', lote=lote_id))
+
+    rpa_info(f"[CARTEIRA] Executando cruzamento SharePoint para lote {lote_id}")
+    result = run_sharepoint_cross_for_batch(lote_id, force_update=True, auto=False)
+    flash(
+        "Cruzamento concluído! "
+        f"{result.get('matched', 0)} SKUs com foto, "
+        f"{result.get('created', 0)} imagens criadas."
+    )
+    return redirect(url_for('carteira', lote=lote_id))
 
 def atualizar_status_carteira():
     """Atualiza status de fotos na carteira com base em produtos e imagens"""
@@ -5323,6 +5877,7 @@ def diagnose_zip():
 # Initialize DB
 with app.app_context():
     db.create_all()
+    ensure_image_table_columns()
     # Create a test user if not exists
     if not User.query.filter_by(username='admin').first():
         admin = User(username='admin', email='admin@oaz.com')

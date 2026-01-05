@@ -6,6 +6,12 @@
     <p style="color: var(--text-secondary);">Banco de Imagens / Todas as Imagens / Enviar Nova Imagem</p>
 </div>
 
+{% if storage_backend == 'sharepoint' %}
+<div class="stat-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+    <h3 style="margin-bottom: 0.5rem;">Upload desativado</h3>
+    <p style="color: var(--text-secondary); margin: 0;">A fonte definitiva de imagens e o SharePoint. Use a importacao de carteira para sincronizar por SKU.</p>
+</div>
+{% else %}
 <form method="POST" enctype="multipart/form-data"
     style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; height: calc(100vh - 200px);">
 
@@ -120,4 +126,5 @@
         }
     });
 </script>
+{% endif %}
 {% endblock %}

@@ -7,11 +7,17 @@
         <p style="color: var(--text-secondary);">Mostrando {{ sku_groups|length }} de {{ total_skus }} SKUs únicos (página {{ page }} de {{ total_pages }})</p>
     </div>
     <div style="display: flex; gap: 1rem;">
+        {% if storage_backend == 'sharepoint' %}
+        <span class="btn btn-primary" style="opacity: 0.6; cursor: not-allowed;">
+            <i class="fas fa-cloud-upload-alt"></i> Upload desativado
+        </span>
+        {% else %}
         <a href="{{ url_for('upload') }}" class="btn btn-primary"
             data-tutorial-title="Enviar Nova Imagem"
             data-tutorial-desc="Abre a tela de upload para enviar uma nova imagem individual ao banco.">
             <i class="fas fa-cloud-upload-alt"></i> Enviar Nova
         </a>
+        {% endif %}
         <button class="btn"
             style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);"
             data-tutorial-title="Exportar para CSV"

@@ -5,6 +5,7 @@ import mimetypes
 from datetime import datetime
 from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response, jsonify, stream_with_context
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -125,6 +126,7 @@ app.config.from_object(Config)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
@@ -5874,16 +5876,16 @@ def diagnose_zip():
             os.remove(temp_path)
 
 
-# Initialize DB
-with app.app_context():
-    db.create_all()
-    ensure_image_table_columns()
-    # Create a test user if not exists
-    if not User.query.filter_by(username='admin').first():
-        admin = User(username='admin', email='admin@oaz.com')
-        admin.set_password('admin')
-        db.session.add(admin)
-        db.session.commit()
+def create_all():
+    """Manual DB bootstrap for dev/test; prefer Flask-Migrate for schema changes."""
+    with app.app_context():
+        db.create_all()
+        ensure_image_table_columns()
+        if not User.query.filter_by(username='admin').first():
+            admin = User(username='admin', email='admin@oaz.com')
+            admin.set_password('admin')
+            db.session.add(admin)
+            db.session.commit()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -1,6 +1,7 @@
 Flask
 Flask-SQLAlchemy
 Flask-Login
+Flask-Migrate>=4.0.0
 werkzeug
 openai
 python-dotenv

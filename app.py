@@ -3809,7 +3809,8 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
         marca_fallback: Marca extraída do nome do arquivo (usado quando não há coluna MARCA)
     
     Returns:
-        (count, skus_invalidos, erros): Quantidade de itens criados, linhas ignoradas e erros acumulados
+        (created_count, skus_invalidos, erros, valid_rows, updated_count): Itens criados, linhas ignoradas, erros acumulados,
+        linhas válidas processadas e itens já existentes atualizados
     """
     import pandas as pd
     
@@ -3833,8 +3834,10 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     
     cache_subcolecoes = {}
     
-    count = 0
+    created_count = 0
     skus_invalidos = 0
+    valid_rows = 0
+    updated_count = 0
     
     if is_sharepoint_backend():
         colecao_id = None
@@ -3854,6 +3857,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
             continue
         
         sku = sku.rstrip('.00').rstrip('.0').strip()
+        valid_rows += 1
         
         nome_subcolecao = str(row.get('subcolecao_nome', '')).strip() if pd.notna(row.get('subcolecao_nome', '')) else None
         nome_marca = str(row.get('marca_nome', '')).strip() if pd.notna(row.get('marca_nome', '')) else None
@@ -3891,6 +3895,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
             if produto_id:
                 existing.produto_id = produto_id
             existing.colecao_nome = aba_origem
+            updated_count += 1
         else:
             status_foto_original = str(row.get('status_foto_original', '')).upper() if pd.notna(row.get('status_foto_original', '')) else ''
             if 'SIM' in status_foto_original or 'YES' in status_foto_original or 'S' == status_foto_original:
@@ -3943,13 +3948,13 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
                     item.status_foto = 'Com Foto'
             
             db.session.add(item)
-            count += 1
+            created_count += 1
             
             if count % 100 == 0:
-                log_progress(M.CARTEIRA, "Importação", count, total_linhas)
+                log_progress(M.CARTEIRA, "Importação", created_count, total_linhas)
     
-    log_end(M.CARTEIRA, f"Aba {aba_origem}: {count} registros")
-    return count, skus_invalidos, errors
+    log_end(M.CARTEIRA, f"Aba {aba_origem}: {created_count} registros")
+    return created_count, skus_invalidos, errors, valid_rows, updated_count
 
 
 def get_or_create_collection_from_sharepoint(folder_name, collections_cache=None):
@@ -4366,8 +4371,10 @@ def importar_carteira():
             
             marca_do_arquivo = extrair_marca_do_nome_arquivo(file.filename)
             
-            total_count = 0
+            total_created = 0
             total_invalidos = 0
+            total_valid_rows = 0
+            total_updated = 0
             abas_processadas = []
             
             contadores = {
@@ -4394,14 +4401,17 @@ def importar_carteira():
                         status=422
                     )
 
-                count, invalidos, linha_erros = processar_linhas_carteira(
+                created_count, invalidos, linha_erros, valid_rows, updated_count = processar_linhas_carteira(
                     df_normalizado, lote_id, 'CSV', contadores, cache_produtos, tipo_carteira, marca_do_arquivo
                 )
-                total_count = count
+                total_created = created_count
                 total_invalidos = invalidos
+                total_valid_rows = valid_rows
+                total_updated = updated_count
                 errors.extend(linha_erros)
                 abas_processadas.append('CSV')
-                carteira_log.import_progress(count, count, 'CSV')
+                carteira_log.import_progress(created_count, created_count, 'CSV')
+                info(M.CARTEIRA, "Resumo aba", f"sheet=CSV linhas={len(df)} validos={valid_rows} invalidos={invalidos}")
 
                 try:
                     db.session.commit()
@@ -4441,11 +4451,13 @@ def importar_carteira():
                             continue
 
                         try:
-                            count, invalidos, linha_erros = processar_linhas_carteira(
+                            created_count, invalidos, linha_erros, valid_rows, updated_count = processar_linhas_carteira(
                                 df_normalizado, lote_id, sheet_name, contadores, cache_produtos, tipo_carteira, marca_do_arquivo
                             )
-                            total_count += count
+                            total_created += created_count
                             total_invalidos += invalidos
+                            total_valid_rows += valid_rows
+                            total_updated += updated_count
                             errors.extend(linha_erros)
                         except Exception as e:
                             db.session.rollback()
@@ -4455,9 +4467,14 @@ def importar_carteira():
                             log_error(M.CARTEIRA, "Processamento aba", msg)
                             continue
 
-                        if count > 0:
-                            abas_processadas.append(f"{sheet_name} ({count})")
-                            carteira_log.import_progress(total_count, len(xl.sheet_names), sheet_name)
+                        if created_count + updated_count > 0:
+                            abas_processadas.append(f"{sheet_name} ({created_count + updated_count})")
+                            carteira_log.import_progress(total_created, len(xl.sheet_names), sheet_name)
+                        info(
+                            M.CARTEIRA,
+                            "Resumo aba",
+                            f"sheet={sheet_name} linhas={len(df)} validos={valid_rows} invalidos={invalidos} criados={created_count} atualizados={updated_count}"
+                        )
 
                         try:
                             db.session.commit()
@@ -4469,10 +4486,10 @@ def importar_carteira():
                             log_error(M.CARTEIRA, "Commit aba", msg)
                             continue
 
-                    if total_count == 0:
+                    if total_valid_rows == 0:
                         return json_error(
                             'Nenhum item válido encontrado nas abas do Excel. Verifique se existe uma coluna "REFERÊNCIA E COR" ou "SKU" em pelo menos uma aba.',
-                            status=422,
+                            status=400,
                             errors=errors
                         )
                 else:
@@ -4499,14 +4516,21 @@ def importar_carteira():
                         )
 
                     try:
-                        count, invalidos, linha_erros = processar_linhas_carteira(
+                        created_count, invalidos, linha_erros, valid_rows, updated_count = processar_linhas_carteira(
                             df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos, tipo_carteira, marca_do_arquivo
                         )
-                        total_count = count
+                        total_created = created_count
                         total_invalidos = invalidos
+                        total_valid_rows = valid_rows
+                        total_updated = updated_count
                         errors.extend(linha_erros)
                         abas_processadas.append(aba_selecionada)
-                        carteira_log.import_progress(count, count, aba_selecionada)
+                        carteira_log.import_progress(created_count, created_count, aba_selecionada)
+                        info(
+                            M.CARTEIRA,
+                            "Resumo aba",
+                            f"sheet={aba_selecionada} linhas={len(df)} validos={valid_rows} invalidos={invalidos} criados={created_count} atualizados={updated_count}"
+                        )
                     except Exception as e:
                         db.session.rollback()
                         msg = f"Aba '{aba_selecionada}': erro ao processar ({str(e)})"
@@ -4523,9 +4547,9 @@ def importar_carteira():
                         return json_error('Erro ao salvar a importação no banco.', status=500, errors=[str(e)])
             
             if len(abas_processadas) > 1:
-                flash(f'Importação concluída! {total_count} novos itens de {len(abas_processadas)} abas adicionados. Abas: {", ".join(abas_processadas)}. Lote: {lote_id}', 'success')
+                flash(f'Importação concluída! {total_created} novos itens de {len(abas_processadas)} abas adicionados. Abas: {", ".join(abas_processadas)}. Lote: {lote_id}', 'success')
             else:
-                flash(f'Importação concluída! {total_count} novos itens da aba "{abas_processadas[0]}" adicionados. Lote: {lote_id}', 'success')
+                flash(f'Importação concluída! {total_created} novos itens da aba "{abas_processadas[0]}" adicionados. Lote: {lote_id}', 'success')
 
             entidades_criadas = []
             if contadores['colecoes_criadas'] > 0:
@@ -4544,11 +4568,14 @@ def importar_carteira():
                 flash(f'{total_invalidos} linhas ignoradas (SKU vazio ou inválido).', 'warning')
             if errors:
                 flash(f'Importação concluída com {len(errors)} aviso(s). Verifique o arquivo para corrigir possíveis problemas.', 'warning')
+            if total_updated > 0:
+                flash(f'{total_updated} itens já existiam e foram atualizados.', 'info')
 
             atualizar_status_carteira()
             
-            carteira_log.import_completed(total_count, len(abas_processadas), lote_id)
-            rpa_info(f"[CARTEIRA] Importação concluída: {total_count} itens, {len(abas_processadas)} abas - Lote: {lote_id}")
+            total_validos = total_created + total_updated
+            carteira_log.import_completed(total_validos, len(abas_processadas), lote_id)
+            rpa_info(f"[CARTEIRA] Importação concluída: {total_validos} itens, {len(abas_processadas)} abas - Lote: {lote_id}")
 
             if is_sharepoint_backend():
                 try:
@@ -4557,16 +4584,18 @@ def importar_carteira():
                     rpa_info(
                         "[CROSS] Auto-cross finalizado "
                         f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
-                        f"| sem_foto={max(0, total_count - sync_result.get('matched', 0))}"
+                        f"| sem_foto={max(0, total_validos - sync_result.get('matched', 0))}"
                     )
                 except Exception as e:
                     rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
             
             return jsonify({
                 'success': True,
-                'message': f'{total_count} itens importados',
-                'total_linhas': total_count + total_invalidos,
-                'linhas_importadas': total_count,
+                'message': f'{total_validos} itens processados',
+                'total_linhas': total_valid_rows + total_invalidos,
+                'linhas_validas': total_valid_rows,
+                'linhas_importadas': total_validos,
+                'linhas_existentes': total_updated,
                 'erros': errors,
                 'entidades_criadas': entidades_criadas,
                 'abas_processadas': abas_processadas,

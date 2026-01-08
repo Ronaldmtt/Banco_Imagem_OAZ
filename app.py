@@ -3789,7 +3789,7 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
     
     return novo_produto.id
 
-def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None, tipo_carteira='Moda', marca_fallback=None):
+def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_produtos=None, tipo_carteira='Moda', marca_fallback=None, errors=None):
     """
     Processa linhas do DataFrame e insere/atualiza na CarteiraCompras.
     Auto-cria Subcoleções (baseado em ENTRADA), Marcas e Produtos.
@@ -3809,7 +3809,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
         marca_fallback: Marca extraída do nome do arquivo (usado quando não há coluna MARCA)
     
     Returns:
-        (count, skus_invalidos): Quantidade de itens criados e linhas ignoradas
+        (count, skus_invalidos, erros): Quantidade de itens criados, linhas ignoradas e erros acumulados
     """
     import pandas as pd
     
@@ -3827,6 +3827,9 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     
     if cache_produtos is None:
         cache_produtos = {}
+
+    if errors is None:
+        errors = []
     
     cache_subcolecoes = {}
     
@@ -3946,7 +3949,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
                 log_progress(M.CARTEIRA, "Importação", count, total_linhas)
     
     log_end(M.CARTEIRA, f"Aba {aba_origem}: {count} registros")
-    return count, skus_invalidos
+    return count, skus_invalidos, errors
 
 
 def get_or_create_collection_from_sharepoint(folder_name, collections_cache=None):
@@ -4327,20 +4330,28 @@ def importar_carteira():
         nav_log.page_enter("Importar Carteira", user=current_user.username)
         rpa_info(f"[NAV] Importar Carteira - Usuário: {current_user.username}")
     if request.method == 'POST':
+        def json_error(message, status=400, errors=None):
+            payload = {'success': False, 'message': message}
+            if errors:
+                payload['erros'] = errors
+            return jsonify(payload), status
+
+        def add_error(errors, message, max_errors=20):
+            if len(errors) < max_errors:
+                errors.append(message)
+
+        errors = []
         if 'arquivo' not in request.files:
-            flash('Nenhum arquivo enviado', 'error')
             rpa_warn("[CARTEIRA] Importação falhou - nenhum arquivo enviado")
-            return redirect(request.url)
+            return json_error('Nenhum arquivo enviado', status=400)
         
         file = request.files['arquivo']
         if file.filename == '':
-            flash('Nenhum arquivo selecionado', 'error')
-            return redirect(request.url)
+            return json_error('Nenhum arquivo selecionado', status=400)
         
         filename = file.filename.lower()
         if not (filename.endswith('.csv') or filename.endswith('.xlsx') or filename.endswith('.xls')):
-            flash('Apenas arquivos CSV ou Excel (.xlsx, .xls) são permitidos', 'error')
-            return redirect(request.url)
+            return json_error('Apenas arquivos CSV ou Excel (.xlsx, .xls) são permitidos', status=400)
         
         try:
             import uuid
@@ -4373,71 +4384,149 @@ def importar_carteira():
                 except UnicodeDecodeError:
                     file.seek(0)
                     content = file.read().decode('latin-1')
-                
+
                 df = pd.read_csv(io.StringIO(content))
                 df_normalizado, sku_encontrado = normalizar_carteira_dataframe(df)
-                
+
                 if not sku_encontrado:
-                    flash('Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".', 'error')
-                    return redirect(request.url)
-                
-                count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, 'CSV', contadores, cache_produtos, tipo_carteira, marca_do_arquivo)
+                    return json_error(
+                        'Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".',
+                        status=422
+                    )
+
+                count, invalidos, linha_erros = processar_linhas_carteira(
+                    df_normalizado, lote_id, 'CSV', contadores, cache_produtos, tipo_carteira, marca_do_arquivo
+                )
                 total_count = count
                 total_invalidos = invalidos
+                errors.extend(linha_erros)
                 abas_processadas.append('CSV')
                 carteira_log.import_progress(count, count, 'CSV')
-                
+
+                try:
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    rpa_error(f"[CARTEIRA] Erro ao salvar importação CSV: {str(e)}", exc=e, regiao="carteira")
+                    log_error(M.CARTEIRA, "Importação CSV", str(e))
+                    return json_error('Erro ao salvar a importação no banco.', status=500, errors=[str(e)])
             else:
-                xl = pd.ExcelFile(file)
-                
+                try:
+                    xl = pd.ExcelFile(file)
+                except Exception as e:
+                    rpa_error(f"[CARTEIRA] Erro ao abrir Excel: {str(e)}", exc=e, regiao="carteira")
+                    log_error(M.CARTEIRA, "Leitura Excel", str(e))
+                    return json_error('Não foi possível abrir o arquivo Excel.', status=422, errors=[str(e)])
+
                 if importar_todas:
                     for sheet_name in xl.sheet_names:
-                        df = pd.read_excel(xl, sheet_name=sheet_name)
-                        
+                        try:
+                            df = pd.read_excel(xl, sheet_name=sheet_name)
+                        except Exception as e:
+                            msg = f"Aba '{sheet_name}': erro ao ler ({str(e)})"
+                            add_error(errors, msg)
+                            rpa_error(f"[CARTEIRA] {msg}", exc=e, regiao="carteira")
+                            log_error(M.CARTEIRA, "Leitura aba", msg)
+                            continue
+
                         if df.empty or len(df) == 0:
                             continue
-                        
+
                         df_normalizado, sku_encontrado = normalizar_carteira_dataframe(df)
-                        
+
                         if not sku_encontrado:
+                            msg = f"Aba '{sheet_name}' ignorada: coluna SKU não encontrada."
+                            add_error(errors, msg)
+                            rpa_warn(f"[CARTEIRA] {msg}")
                             continue
-                        
-                        count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, sheet_name, contadores, cache_produtos, tipo_carteira, marca_do_arquivo)
-                        total_count += count
-                        total_invalidos += invalidos
+
+                        try:
+                            count, invalidos, linha_erros = processar_linhas_carteira(
+                                df_normalizado, lote_id, sheet_name, contadores, cache_produtos, tipo_carteira, marca_do_arquivo
+                            )
+                            total_count += count
+                            total_invalidos += invalidos
+                            errors.extend(linha_erros)
+                        except Exception as e:
+                            db.session.rollback()
+                            msg = f"Aba '{sheet_name}': erro ao processar ({str(e)})"
+                            add_error(errors, msg)
+                            rpa_error(f"[CARTEIRA] {msg}", exc=e, regiao="carteira")
+                            log_error(M.CARTEIRA, "Processamento aba", msg)
+                            continue
+
                         if count > 0:
                             abas_processadas.append(f"{sheet_name} ({count})")
                             carteira_log.import_progress(total_count, len(xl.sheet_names), sheet_name)
-                    
+
+                        try:
+                            db.session.commit()
+                        except Exception as e:
+                            db.session.rollback()
+                            msg = f"Aba '{sheet_name}': erro ao salvar no banco ({str(e)})"
+                            add_error(errors, msg)
+                            rpa_error(f"[CARTEIRA] {msg}", exc=e, regiao="carteira")
+                            log_error(M.CARTEIRA, "Commit aba", msg)
+                            continue
+
                     if total_count == 0:
-                        flash('Nenhum item válido encontrado nas abas do Excel. Verifique se existe uma coluna "REFERÊNCIA E COR" ou "SKU" em pelo menos uma aba.', 'error')
-                        return redirect(request.url)
+                        return json_error(
+                            'Nenhum item válido encontrado nas abas do Excel. Verifique se existe uma coluna "REFERÊNCIA E COR" ou "SKU" em pelo menos uma aba.',
+                            status=422,
+                            errors=errors
+                        )
                 else:
                     if aba_selecionada and aba_selecionada in xl.sheet_names:
-                        df = pd.read_excel(xl, sheet_name=aba_selecionada)
+                        sheet_name = aba_selecionada
                     else:
-                        df = pd.read_excel(xl, sheet_name=0)
-                        aba_selecionada = xl.sheet_names[0]
-                    
+                        sheet_name = xl.sheet_names[0]
+                        aba_selecionada = sheet_name
+
+                    try:
+                        df = pd.read_excel(xl, sheet_name=sheet_name)
+                    except Exception as e:
+                        msg = f"Aba '{sheet_name}': erro ao ler ({str(e)})"
+                        rpa_error(f"[CARTEIRA] {msg}", exc=e, regiao="carteira")
+                        log_error(M.CARTEIRA, "Leitura aba", msg)
+                        return json_error('Erro ao ler a aba selecionada.', status=422, errors=[msg])
+
                     df_normalizado, sku_encontrado = normalizar_carteira_dataframe(df)
-                    
+
                     if not sku_encontrado:
-                        flash(f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".', 'error')
-                        return redirect(request.url)
-                    
-                    count, invalidos = processar_linhas_carteira(df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos, tipo_carteira, marca_do_arquivo)
-                    total_count = count
-                    total_invalidos = invalidos
-                    abas_processadas.append(aba_selecionada)
-                    carteira_log.import_progress(count, count, aba_selecionada)
-            
-            db.session.commit()
+                        return json_error(
+                            f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".',
+                            status=422
+                        )
+
+                    try:
+                        count, invalidos, linha_erros = processar_linhas_carteira(
+                            df_normalizado, lote_id, aba_selecionada, contadores, cache_produtos, tipo_carteira, marca_do_arquivo
+                        )
+                        total_count = count
+                        total_invalidos = invalidos
+                        errors.extend(linha_erros)
+                        abas_processadas.append(aba_selecionada)
+                        carteira_log.import_progress(count, count, aba_selecionada)
+                    except Exception as e:
+                        db.session.rollback()
+                        msg = f"Aba '{aba_selecionada}': erro ao processar ({str(e)})"
+                        rpa_error(f"[CARTEIRA] {msg}", exc=e, regiao="carteira")
+                        log_error(M.CARTEIRA, "Processamento aba", msg)
+                        return json_error('Erro ao processar a aba selecionada.', status=500, errors=[msg])
+
+                    try:
+                        db.session.commit()
+                    except Exception as e:
+                        db.session.rollback()
+                        rpa_error(f"[CARTEIRA] Erro ao salvar importação: {str(e)}", exc=e, regiao="carteira")
+                        log_error(M.CARTEIRA, "Commit importação", str(e))
+                        return json_error('Erro ao salvar a importação no banco.', status=500, errors=[str(e)])
             
             if len(abas_processadas) > 1:
                 flash(f'Importação concluída! {total_count} novos itens de {len(abas_processadas)} abas adicionados. Abas: {", ".join(abas_processadas)}. Lote: {lote_id}', 'success')
             else:
                 flash(f'Importação concluída! {total_count} novos itens da aba "{abas_processadas[0]}" adicionados. Lote: {lote_id}', 'success')
-            
+
             entidades_criadas = []
             if contadores['colecoes_criadas'] > 0:
                 entidades_criadas.append(f"{contadores['colecoes_criadas']} coleção(ões)")
@@ -4447,13 +4536,15 @@ def importar_carteira():
                 entidades_criadas.append(f"{contadores['marcas_criadas']} marca(s)")
             if contadores['produtos_criados'] > 0:
                 entidades_criadas.append(f"{contadores['produtos_criados']} produto(s)")
-            
+
             if entidades_criadas:
                 flash(f'Criados automaticamente: {", ".join(entidades_criadas)}', 'info')
-            
+
             if total_invalidos > 0:
                 flash(f'{total_invalidos} linhas ignoradas (SKU vazio ou inválido).', 'warning')
-            
+            if errors:
+                flash(f'Importação concluída com {len(errors)} aviso(s). Verifique o arquivo para corrigir possíveis problemas.', 'warning')
+
             atualizar_status_carteira()
             
             carteira_log.import_completed(total_count, len(abas_processadas), lote_id)
@@ -4471,15 +4562,23 @@ def importar_carteira():
                 except Exception as e:
                     rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
             
-            # Retornar sucesso para requisição AJAX
-            return {'success': True, 'message': f'{total_count} itens importados'}, 200
+            return jsonify({
+                'success': True,
+                'message': f'{total_count} itens importados',
+                'total_linhas': total_count + total_invalidos,
+                'linhas_importadas': total_count,
+                'erros': errors,
+                'entidades_criadas': entidades_criadas,
+                'abas_processadas': abas_processadas,
+                'lote_id': lote_id
+            }), 200
             
         except Exception as e:
             db.session.rollback()
             carteira_log.import_error(str(e))
             rpa_error(f"[CARTEIRA] Erro na importação: {str(e)}", exc=e, regiao="carteira")
-            flash(f'Erro ao importar: {str(e)}', 'error')
-            return {'success': False, 'error': str(e)}, 500
+            log_error(M.CARTEIRA, "Importação", str(e))
+            return jsonify({'success': False, 'message': 'Erro inesperado ao importar a carteira.', 'erros': [str(e)]}), 500
     
     return render_template('carteira/importar.html')
 

@@ -290,10 +290,11 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-function showError(message) {
+function showError(message, details = []) {
     const errorDiv = document.getElementById('errorMessage');
     const errorText = document.getElementById('errorText');
-    errorText.textContent = message;
+    const detailText = Array.isArray(details) && details.length > 0 ? ` (${details.join(' | ')})` : '';
+    errorText.textContent = message + detailText;
     errorDiv.style.display = 'block';
     errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -324,12 +325,14 @@ document.getElementById('importForm').addEventListener('submit', async function(
             body: formData
         });
         
+        const data = await response.json().catch(() => null);
         if (response.ok) {
             // Redirecionar para carteira após sucesso
             window.location.href = '{{ url_for("carteira") }}';
         } else {
-            const text = await response.text();
-            showError('Erro ao importar: ' + (text || 'Erro desconhecido'));
+            const message = data && (data.message || data.error) ? (data.message || data.error) : 'Erro desconhecido';
+            const details = data && data.erros ? data.erros : [];
+            showError('Erro ao importar: ' + message, details);
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="fas fa-file-import"></i> Importar Carteira';
         }

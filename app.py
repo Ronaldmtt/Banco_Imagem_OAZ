@@ -204,12 +204,46 @@ def block_bucket_upload_routes():
         return ensure_upload_enabled()
     return None
 
+def _is_carteira_import_request():
+    return request.path == '/carteira/importar' and request.method == 'POST'
+
 # Error handler for large file uploads
 @app.errorhandler(413)
 @app.errorhandler(RequestEntityTooLarge)
 def handle_file_too_large(e):
+    if _is_carteira_import_request():
+        return jsonify({
+            'success': False,
+            'message': 'Arquivo muito grande! O limite máximo é 100MB por arquivo.',
+            'error_code': 'request_entity_too_large',
+            'erros': [str(e)]
+        }), 413
     flash('Arquivo muito grande! O limite máximo é 100MB por arquivo. Para lotes maiores, divida em arquivos ZIP menores.', 'error')
     return redirect(request.referrer or url_for('batch_list'))
+
+@app.errorhandler(500)
+def handle_internal_server_error(e):
+    if _is_carteira_import_request():
+        import traceback
+        import uuid
+        debug_id = str(uuid.uuid4())[:8]
+        original = getattr(e, 'original_exception', None)
+        if original:
+            tb = ''.join(traceback.format_exception(type(original), original, original.__traceback__))
+            error_msg = str(original)
+        else:
+            tb = traceback.format_exc()
+            error_msg = str(e)
+        log_error(M.CARTEIRA, "Importação traceback", tb, debug_id=debug_id)
+        rpa_error(f"[CARTEIRA] Erro na importação (debug_id={debug_id}): {error_msg}", exc=original or e, regiao="carteira")
+        return jsonify({
+            'success': False,
+            'message': f'Erro interno ao importar carteira. ID: {debug_id}',
+            'error_code': 'carteira_internal_error',
+            'debug_id': debug_id,
+            'erros': [error_msg]
+        }), 500
+    return e
 
 # Models
 class User(UserMixin, db.Model):
@@ -3950,7 +3984,7 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
             db.session.add(item)
             created_count += 1
             
-            if count % 100 == 0:
+            if created_count % 100 == 0:
                 log_progress(M.CARTEIRA, "Importação", created_count, total_linhas)
     
     log_end(M.CARTEIRA, f"Aba {aba_origem}: {created_count} registros")

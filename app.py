@@ -4589,6 +4589,12 @@ def importar_carteira():
                 except Exception as e:
                     rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
             
+            info(
+                M.CARTEIRA,
+                "Importação carteira - resumo",
+                f"lote={lote_id} total_validos={total_validos} criados={total_created} atualizados={total_updated} "
+                f"invalidos={total_invalidos} abas={abas_processadas}"
+            )
             return jsonify({
                 'success': True,
                 'message': f'{total_validos} itens processados',
@@ -4603,11 +4609,17 @@ def importar_carteira():
             }), 200
             
         except Exception as e:
+            import traceback
             db.session.rollback()
             carteira_log.import_error(str(e))
+            log_error(M.CARTEIRA, "Importação traceback", traceback.format_exc())
             rpa_error(f"[CARTEIRA] Erro na importação: {str(e)}", exc=e, regiao="carteira")
             log_error(M.CARTEIRA, "Importação", str(e))
-            return jsonify({'success': False, 'message': 'Erro inesperado ao importar a carteira.', 'erros': [str(e)]}), 500
+            return json_error(
+                "Erro interno ao importar carteira. Verifique os logs do servidor.",
+                status=500,
+                errors=[str(e)]
+            )
     
     return render_template('carteira/importar.html')
 

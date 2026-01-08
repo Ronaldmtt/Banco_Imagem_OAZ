@@ -1,5 +1,6 @@
 import os
-import threading
+import traceback
+from threading import Thread
 import io
 import csv
 import mimetypes
@@ -207,6 +208,23 @@ def block_bucket_upload_routes():
 
 def _is_carteira_import_request():
     return request.path == '/carteira/importar' and request.method == 'POST'
+
+# Auto-cross SharePoint em background (evita timeout do Gunicorn)
+def start_sharepoint_cross_async(lote_id):
+    def _runner():
+        with app.app_context():
+            try:
+                rpa_info(f"[CROSS] Auto-cross iniciado | lote={lote_id} | auto=True")
+                sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
+                rpa_info(
+                    "[CROSS] Auto-cross finalizado "
+                    f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
+                    f"| sem_foto={max(0, sync_result.get('skus', 0) - sync_result.get('matched', 0))}"
+                )
+            except Exception as e:
+                rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
+                log_error(M.CARTEIRA, "Auto-cross async", traceback.format_exc())
+    Thread(target=_runner, daemon=True).start()
 
 # Error handler for large file uploads
 @app.errorhandler(413)
@@ -4656,18 +4674,11 @@ def importar_carteira():
             rpa_info(f"[CARTEIRA] Importação concluída: {total_validos} itens, {len(abas_processadas)} abas - Lote: {lote_id}")
 
             if is_sharepoint_backend():
-                def _run_autocross():
-                    try:
-                        rpa_info(f"[CROSS] Auto-cross iniciado | lote={lote_id} | auto=True")
-                        sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
-                        rpa_info(
-                            "[CROSS] Auto-cross finalizado "
-                            f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
-                            f"| sem_foto={max(0, total_validos - sync_result.get('matched', 0))}"
-                        )
-                    except Exception as e:
-                        rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
-                threading.Thread(target=_run_autocross, daemon=True).start()
+                try:
+                    start_sharepoint_cross_async(lote_id)
+                    rpa_info(f"[CROSS] Auto-cross disparado em background | lote={lote_id}")
+                except Exception as e:
+                    rpa_error(f"[CROSS] Erro ao disparar auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
             
             info(
                 M.CARTEIRA,

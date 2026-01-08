@@ -1,4 +1,5 @@
 import os
+import threading
 import io
 import csv
 import mimetypes
@@ -4655,16 +4656,18 @@ def importar_carteira():
             rpa_info(f"[CARTEIRA] Importação concluída: {total_validos} itens, {len(abas_processadas)} abas - Lote: {lote_id}")
 
             if is_sharepoint_backend():
-                try:
-                    rpa_info(f"[CROSS] Auto-cross iniciado | lote={lote_id} | auto=True")
-                    sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
-                    rpa_info(
-                        "[CROSS] Auto-cross finalizado "
-                        f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
-                        f"| sem_foto={max(0, total_validos - sync_result.get('matched', 0))}"
-                    )
-                except Exception as e:
-                    rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
+                def _run_autocross():
+                    try:
+                        rpa_info(f"[CROSS] Auto-cross iniciado | lote={lote_id} | auto=True")
+                        sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
+                        rpa_info(
+                            "[CROSS] Auto-cross finalizado "
+                            f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
+                            f"| sem_foto={max(0, total_validos - sync_result.get('matched', 0))}"
+                        )
+                    except Exception as e:
+                        rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
+                threading.Thread(target=_run_autocross, daemon=True).start()
             
             info(
                 M.CARTEIRA,

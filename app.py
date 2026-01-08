@@ -4335,10 +4335,21 @@ def importar_carteira():
         nav_log.page_enter("Importar Carteira", user=current_user.username)
         rpa_info(f"[NAV] Importar Carteira - Usuário: {current_user.username}")
     if request.method == 'POST':
-        def json_error(message, status=400, errors=None):
-            payload = {'success': False, 'message': message}
+        def json_error(message, status=400, errors=None, error_code="carteira_import_error", debug_id=None):
+            payload = {'success': False, 'message': message, 'error_code': error_code}
+            if debug_id:
+                payload['debug_id'] = debug_id
             if errors:
                 payload['erros'] = errors
+            log_error(
+                M.CARTEIRA,
+                "Importação erro",
+                message,
+                status=status,
+                errors=errors,
+                path=request.path,
+                debug_id=debug_id
+            )
             return jsonify(payload), status
 
         def add_error(errors, message, max_errors=20):
@@ -4348,15 +4359,19 @@ def importar_carteira():
         errors = []
         if 'arquivo' not in request.files:
             rpa_warn("[CARTEIRA] Importação falhou - nenhum arquivo enviado")
-            return json_error('Nenhum arquivo enviado', status=400)
+            return json_error('Nenhum arquivo enviado', status=400, error_code="missing_file")
         
         file = request.files['arquivo']
         if file.filename == '':
-            return json_error('Nenhum arquivo selecionado', status=400)
+            return json_error('Nenhum arquivo selecionado', status=400, error_code="empty_filename")
         
         filename = file.filename.lower()
         if not (filename.endswith('.csv') or filename.endswith('.xlsx') or filename.endswith('.xls')):
-            return json_error('Apenas arquivos CSV ou Excel (.xlsx, .xls) são permitidos', status=400)
+            return json_error(
+                'Apenas arquivos CSV ou Excel (.xlsx, .xls) são permitidos',
+                status=400,
+                error_code="invalid_extension"
+            )
         
         try:
             import uuid
@@ -4398,7 +4413,8 @@ def importar_carteira():
                 if not sku_encontrado:
                     return json_error(
                         'Coluna de SKU não encontrada no arquivo CSV. Verifique se existe uma coluna chamada "SKU", "REFERÊNCIA E COR" ou "CODIGO".',
-                        status=422
+                        status=400,
+                        error_code="missing_sku_column"
                     )
 
                 created_count, invalidos, linha_erros, valid_rows, updated_count = processar_linhas_carteira(
@@ -4419,14 +4435,24 @@ def importar_carteira():
                     db.session.rollback()
                     rpa_error(f"[CARTEIRA] Erro ao salvar importação CSV: {str(e)}", exc=e, regiao="carteira")
                     log_error(M.CARTEIRA, "Importação CSV", str(e))
-                    return json_error('Erro ao salvar a importação no banco.', status=500, errors=[str(e)])
+                    return json_error(
+                        'Erro ao salvar a importação no banco.',
+                        status=500,
+                        errors=[str(e)],
+                        error_code="db_commit_error"
+                    )
             else:
                 try:
                     xl = pd.ExcelFile(file)
                 except Exception as e:
                     rpa_error(f"[CARTEIRA] Erro ao abrir Excel: {str(e)}", exc=e, regiao="carteira")
                     log_error(M.CARTEIRA, "Leitura Excel", str(e))
-                    return json_error('Não foi possível abrir o arquivo Excel.', status=422, errors=[str(e)])
+                    return json_error(
+                        'Não foi possível abrir o arquivo Excel.',
+                        status=400,
+                        errors=[str(e)],
+                        error_code="excel_open_error"
+                    )
 
                 if importar_todas:
                     for sheet_name in xl.sheet_names:
@@ -4490,7 +4516,8 @@ def importar_carteira():
                         return json_error(
                             'Nenhum item válido encontrado nas abas do Excel. Verifique se existe uma coluna "REFERÊNCIA E COR" ou "SKU" em pelo menos uma aba.',
                             status=400,
-                            errors=errors
+                            errors=errors,
+                            error_code="no_valid_rows"
                         )
                 else:
                     if aba_selecionada and aba_selecionada in xl.sheet_names:
@@ -4505,14 +4532,20 @@ def importar_carteira():
                         msg = f"Aba '{sheet_name}': erro ao ler ({str(e)})"
                         rpa_error(f"[CARTEIRA] {msg}", exc=e, regiao="carteira")
                         log_error(M.CARTEIRA, "Leitura aba", msg)
-                        return json_error('Erro ao ler a aba selecionada.', status=422, errors=[msg])
+                        return json_error(
+                            'Erro ao ler a aba selecionada.',
+                            status=400,
+                            errors=[msg],
+                            error_code="sheet_read_error"
+                        )
 
                     df_normalizado, sku_encontrado = normalizar_carteira_dataframe(df)
 
                     if not sku_encontrado:
                         return json_error(
                             f'Coluna de SKU não encontrada na aba "{aba_selecionada}". Verifique se existe uma coluna chamada "REFERÊNCIA E COR", "SKU" ou "CODIGO".',
-                            status=422
+                            status=400,
+                            error_code="missing_sku_column"
                         )
 
                     try:
@@ -4536,7 +4569,12 @@ def importar_carteira():
                         msg = f"Aba '{aba_selecionada}': erro ao processar ({str(e)})"
                         rpa_error(f"[CARTEIRA] {msg}", exc=e, regiao="carteira")
                         log_error(M.CARTEIRA, "Processamento aba", msg)
-                        return json_error('Erro ao processar a aba selecionada.', status=500, errors=[msg])
+                        return json_error(
+                            'Erro ao processar a aba selecionada.',
+                            status=500,
+                            errors=[msg],
+                            error_code="sheet_process_error"
+                        )
 
                     try:
                         db.session.commit()
@@ -4544,7 +4582,12 @@ def importar_carteira():
                         db.session.rollback()
                         rpa_error(f"[CARTEIRA] Erro ao salvar importação: {str(e)}", exc=e, regiao="carteira")
                         log_error(M.CARTEIRA, "Commit importação", str(e))
-                        return json_error('Erro ao salvar a importação no banco.', status=500, errors=[str(e)])
+                        return json_error(
+                            'Erro ao salvar a importação no banco.',
+                            status=500,
+                            errors=[str(e)],
+                            error_code="db_commit_error"
+                        )
             
             if len(abas_processadas) > 1:
                 flash(f'Importação concluída! {total_created} novos itens de {len(abas_processadas)} abas adicionados. Abas: {", ".join(abas_processadas)}. Lote: {lote_id}', 'success')
@@ -4609,16 +4652,19 @@ def importar_carteira():
             }), 200
             
         except Exception as e:
-            import traceback
+            import traceback, uuid
+            debug_id = str(uuid.uuid4())[:8]
             db.session.rollback()
             carteira_log.import_error(str(e))
-            log_error(M.CARTEIRA, "Importação traceback", traceback.format_exc())
-            rpa_error(f"[CARTEIRA] Erro na importação: {str(e)}", exc=e, regiao="carteira")
+            log_error(M.CARTEIRA, "Importação traceback", traceback.format_exc(), debug_id=debug_id)
+            rpa_error(f"[CARTEIRA] Erro na importação (debug_id={debug_id}): {str(e)}", exc=e, regiao="carteira")
             log_error(M.CARTEIRA, "Importação", str(e))
             return json_error(
-                "Erro interno ao importar carteira. Verifique os logs do servidor.",
+                f"Erro interno ao importar carteira. ID: {debug_id}",
                 status=500,
-                errors=[str(e)]
+                errors=[str(e)],
+                debug_id=debug_id,
+                error_code="carteira_internal_error"
             )
     
     return render_template('carteira/importar.html')

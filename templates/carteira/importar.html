@@ -293,7 +293,9 @@ function formatFileSize(bytes) {
 function showError(message, details = []) {
     const errorDiv = document.getElementById('errorMessage');
     const errorText = document.getElementById('errorText');
-    const detailText = Array.isArray(details) && details.length > 0 ? ` (${details.join(' | ')})` : '';
+    const detailText = Array.isArray(details) && details.length > 0
+        ? '\n' + details.join('\n')
+        : '';
     errorText.textContent = message + detailText;
     errorDiv.style.display = 'block';
     errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -325,17 +327,37 @@ document.getElementById('importForm').addEventListener('submit', async function(
             body: formData
         });
         
-        const data = await response.json().catch(() => null);
-        if (response.ok) {
+        const text = await response.text();
+        console.error('Import carteira - status:', response.status, 'body snippet:', text.slice(0, 500));
+        let data = null;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            data = null;
+        }
+        if (response.ok && data && data.success) {
             // Redirecionar para carteira após sucesso
             window.location.href = '{{ url_for("carteira") }}';
-        } else {
-            const message = data && (data.message || data.error) ? (data.message || data.error) : 'Erro desconhecido';
-            const details = data && data.erros ? data.erros : [];
-            showError('Erro ao importar: ' + message, details);
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-file-import"></i> Importar Carteira';
+            return;
         }
+
+        if (!data) {
+            const fallback = `Status ${response.status} - corpo bruto (primeiros 300 chars): ${text.slice(0, 300)}`;
+            showError('Erro ao importar: Erro desconhecido', [fallback]);
+        } else {
+            const message = data.message || data.error || `Status ${response.status}`;
+            const details = [];
+            if (Array.isArray(data.erros) && data.erros.length > 0) {
+                details.push(...data.erros);
+            }
+            if (data.debug_id) {
+                details.push(`Debug ID: ${data.debug_id}`);
+            }
+            showError('Erro ao importar: ' + message, details);
+        }
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-file-import"></i> Importar Carteira';
+        return;
     } catch (error) {
         console.error('Erro:', error);
         showError('Erro de conexão ao importar. Tente novamente.');

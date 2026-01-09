@@ -147,6 +147,42 @@ def get_sharepoint_client():
         _sharepoint_client = build_sharepoint_client_from_env()
     return _sharepoint_client
 
+def sync_collections_from_sharepoint_index(index):
+    if not index:
+        return
+    collections_cache = {}
+    collection_counts = {}
+    collection_names = {}
+    for items in index.values():
+        for sp_item in items:
+            parent_path = sp_item.get("parent_path", "")
+            collection_name = get_collection_name_from_path(parent_path)
+            if not collection_name:
+                continue
+            key = collection_name.strip().upper()
+            collection_counts[key] = collection_counts.get(key, 0) + 1
+            collection_names[key] = collection_name
+            if key in collections_cache:
+                continue
+            sharepoint_path = get_collection_folder_path_from_parent_path(parent_path)
+            get_or_create_collection_from_sharepoint(
+                collection_name,
+                collections_cache=collections_cache,
+                sharepoint_path=sharepoint_path,
+                drive_id=sp_item.get("drive_id"),
+            )
+
+    for key, total in collection_counts.items():
+        name = collection_names.get(key, key)
+        info(
+            M.CARTEIRA,
+            "COLECOES",
+            (
+                "[SP] [COLECOES] Coleção sincronizada a partir do SharePoint | "
+                f'nome="{name}" | imagens={total}'
+            ),
+        )
+
 
 def build_sharepoint_index(force_refresh=False, ttl_minutes=None):
     client = get_sharepoint_client()
@@ -167,11 +203,24 @@ def build_sharepoint_index(force_refresh=False, ttl_minutes=None):
             "SharePoint cache",
             f"[SP] Erro ao salvar índice de SharePoint em cache: {exc}",
         )
+    sync_collections_from_sharepoint_index(index)
     return index
 
 
 def get_sharepoint_root_folder():
     return get_sharepoint_env()["root_folder"].strip('/')
+
+def get_collection_folder_path_from_parent_path(parent_path: str) -> str:
+    if not parent_path:
+        return ""
+    normalized = parent_path.replace("\\", "/")
+    segments = [segment for segment in normalized.split("/") if segment]
+    ecommerce_folder = os.getenv("SHAREPOINT_ECOMMERCE_FOLDER", "E-commerce")
+    ecommerce_lower = ecommerce_folder.lower()
+    for idx, segment in enumerate(segments):
+        if segment.lower() == ecommerce_lower and idx + 1 < len(segments):
+            return "/".join(segments[: idx + 2])
+    return ""
 
 
 def get_first_level_folder(parent_path):
@@ -279,6 +328,9 @@ class Collection(db.Model):
     season = db.Column(db.String(50))  # Estação: Primavera/Verão, Outono/Inverno
     year = db.Column(db.Integer)  # Ano da coleção
     campanha = db.Column(db.String(100))  # Nome da campanha (legado)
+    sharepoint_folder_id = db.Column(db.String(255))
+    sharepoint_folder_path = db.Column(db.Text)
+    sharepoint_drive_id = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     images = db.relationship('Image', backref='collection', lazy=True)
     subcolecoes = db.relationship('Subcolecao', backref='colecao', lazy=True, cascade='all, delete-orphan')
@@ -422,6 +474,26 @@ def ensure_image_table_columns():
         if name in existing:
             continue
         db.session.execute(f"ALTER TABLE image ADD COLUMN {name} {ddl}")
+    db.session.commit()
+
+def ensure_collection_table_columns():
+    """Adiciona colunas de SharePoint na tabela collection sem Alembic."""
+    try:
+        result = db.session.execute("PRAGMA table_info(collection)").fetchall()
+    except Exception:
+        return
+
+    existing = {row[1] for row in result}
+    columns = [
+        ("sharepoint_folder_id", "VARCHAR(255)"),
+        ("sharepoint_folder_path", "TEXT"),
+        ("sharepoint_drive_id", "VARCHAR(255)"),
+    ]
+
+    for name, ddl in columns:
+        if name in existing:
+            continue
+        db.session.execute(f"ALTER TABLE collection ADD COLUMN {name} {ddl}")
     db.session.commit()
 
 class Produto(db.Model):
@@ -2173,6 +2245,91 @@ def get_sharepoint_index_cached():
         )
         return None
 
+def migrate_collections_from_sharepoint_cache(delete_orphans=False, dry_run=False):
+    index = get_sharepoint_index_cached()
+    if not index:
+        info(
+            M.CARTEIRA,
+            "MIGRATION/COLECOES",
+            "[MIGRATION] [COLECOES] Índice SharePoint indisponível; migração abortada.",
+        )
+        return 0
+
+    collection_cache = {}
+    item_map = {}
+    for items in index.values():
+        for sp_item in items:
+            item_id = sp_item.get("item_id")
+            if not item_id:
+                continue
+            parent_path = sp_item.get("parent_path", "")
+            collection_name = get_collection_name_from_path(parent_path)
+            if not collection_name:
+                continue
+            item_map[item_id] = {
+                "collection_name": collection_name,
+                "parent_path": parent_path,
+                "drive_id": sp_item.get("drive_id"),
+            }
+
+    if not item_map:
+        info(
+            M.CARTEIRA,
+            "MIGRATION/COLECOES",
+            "[MIGRATION] [COLECOES] Nenhum item mapeado no índice.",
+        )
+        return 0
+
+    updated = 0
+    images = Image.query.filter(Image.sharepoint_item_id.isnot(None)).all()
+    for image in images:
+        mapping = item_map.get(image.sharepoint_item_id)
+        if not mapping:
+            continue
+        collection_name = mapping["collection_name"]
+        sharepoint_path = get_collection_folder_path_from_parent_path(
+            mapping["parent_path"]
+        )
+        collection_id = get_or_create_collection_from_sharepoint(
+            collection_name,
+            collections_cache=collection_cache,
+            sharepoint_path=sharepoint_path,
+            drive_id=mapping.get("drive_id"),
+        )
+        if collection_id and image.collection_id != collection_id:
+            before = image.collection.name if image.collection else "-"
+            if not dry_run:
+                image.collection_id = collection_id
+            updated += 1
+            info(
+                M.CARTEIRA,
+                "MIGRATION/COLECOES",
+                (
+                    "[MIGRATION] [COLECOES] Imagem id={id} realocada para coleção "
+                    "\"{colecao}\" (antes: \"{antes}\")"
+                ).format(id=image.id, colecao=collection_name, antes=before),
+            )
+
+    if updated and not dry_run:
+        db.session.commit()
+
+    if delete_orphans and not dry_run:
+        orphans = Collection.query.outerjoin(Image).filter(Image.id.is_(None)).all()
+        for collection in orphans:
+            db.session.delete(collection)
+        if orphans:
+            db.session.commit()
+            info(
+                M.CARTEIRA,
+                "MIGRATION/COLECOES",
+                (
+                    "[MIGRATION] [COLECOES] Coleções órfãs removidas: "
+                    f"{len(orphans)}"
+                ),
+            )
+
+    return updated
+
 def buscar_carteira_por_sku(sku_base):
     """Busca na Carteira com normalização de SKU"""
     if not sku_base:
@@ -2244,9 +2401,7 @@ def reprocessar_colecao(id):
             if carteira.referencia_estilo:
                 img.referencia_estilo = carteira.referencia_estilo
             
-            if carteira.colecao_id:
-                img.collection_id = carteira.colecao_id
-            if carteira.subcolecao_id:
+            if carteira.subcolecao_id and not img.subcolecao_id:
                 img.subcolecao_id = carteira.subcolecao_id
             if carteira.marca_id:
                 img.brand_id = carteira.marca_id
@@ -3877,7 +4032,7 @@ def extrair_ano_estacao(nome_colecao):
     return ano, estacao
 
 def obter_ou_criar_colecao(nome_colecao, contadores):
-    """Busca ou cria uma coleção pelo nome. Retorna o ID da coleção."""
+    """Busca coleção existente pelo nome. Retorna o ID da coleção se existir."""
     if not nome_colecao or not nome_colecao.strip():
         return None
     
@@ -3889,14 +4044,26 @@ def obter_ou_criar_colecao(nome_colecao, contadores):
     
     if colecao:
         return colecao.id
-    
+    return None
+
+def obter_ou_criar_colecao_carteira(nome_colecao, contadores):
+    """Cria coleção a partir da Carteira quando o backend não é SharePoint."""
+    if not nome_colecao or not nome_colecao.strip():
+        return None
+
+    nome_normalizado = nome_colecao.strip().upper()
+    colecao = Collection.query.filter(
+        db.func.upper(Collection.name) == nome_normalizado
+    ).first()
+    if colecao:
+        return colecao.id
+
     ano, estacao = extrair_ano_estacao(nome_colecao)
-    
     nova_colecao = Collection(
         name=nome_colecao.strip().title(),
-        description=f'Coleção criada automaticamente via importação de carteira',
+        description='Coleção criada automaticamente via importação de carteira',
         year=ano,
-        season=estacao
+        season=estacao,
     )
     db.session.add(nova_colecao)
     db.session.flush()
@@ -4050,11 +4217,9 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
             produto.ativo = True
             contadores['produtos_criados'] += 1
         
-        # Atualizar marca, coleção e subcoleção se ainda não tiver
+        # Atualizar marca se ainda não tiver
         if marca_id and not produto.marca_id:
             produto.marca_id = marca_id
-        if colecao_id and not produto.colecao_id:
-            produto.colecao_id = colecao_id
         if subcolecao_id and not produto.subcolecao_id:
             produto.subcolecao_id = subcolecao_id
         
@@ -4083,7 +4248,7 @@ def obter_ou_criar_produto(sku, dados_linha, contadores, marca_id=None, colecao_
         cor=cor,
         categoria=categoria,
         marca_id=marca_id,
-        colecao_id=colecao_id,
+        colecao_id=None,
         subcolecao_id=subcolecao_id,
         atributos_tecnicos=json.dumps(atributos_extras) if atributos_extras else None,
         tem_foto=False
@@ -4151,7 +4316,11 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     if is_sharepoint_backend():
         colecao_id = None
     else:
-        colecao_id = obter_ou_criar_colecao(aba_origem, contadores) if aba_origem and aba_origem != 'CSV' else None
+        colecao_id = (
+            obter_ou_criar_colecao_carteira(aba_origem, contadores)
+            if aba_origem and aba_origem != 'CSV'
+            else None
+        )
     
     marca_fallback_id = None
     if marca_fallback and not is_sharepoint_backend():
@@ -4266,7 +4435,13 @@ def processar_linhas_carteira(df, lote_id, aba_origem, contadores=None, cache_pr
     return created_count, skus_invalidos, errors, valid_rows, updated_count
 
 
-def get_or_create_collection_from_sharepoint(folder_name, collections_cache=None):
+def get_or_create_collection_from_sharepoint(
+    folder_name,
+    collections_cache=None,
+    sharepoint_path=None,
+    drive_id=None,
+    folder_id=None,
+):
     if not folder_name:
         return None
     normalized_key = folder_name.strip().upper()
@@ -4279,6 +4454,28 @@ def get_or_create_collection_from_sharepoint(folder_name, collections_cache=None
         db.func.upper(Collection.name) == normalized_key
     ).first()
     if existing:
+        updated = False
+        if (
+            not existing.description
+            or "Carteira" in (existing.description or "")
+            or "SharePoint" in (existing.description or "")
+        ):
+            existing.description = (
+                "Coleção sincronizada automaticamente a partir das pastas de "
+                "E-commerce do SharePoint"
+            )
+            updated = True
+        if folder_id and not existing.sharepoint_folder_id:
+            existing.sharepoint_folder_id = folder_id
+            updated = True
+        if sharepoint_path and not existing.sharepoint_folder_path:
+            existing.sharepoint_folder_path = sharepoint_path
+            updated = True
+        if drive_id and not existing.sharepoint_drive_id:
+            existing.sharepoint_drive_id = drive_id
+            updated = True
+        if updated:
+            db.session.flush()
         if collections_cache is not None:
             collections_cache[normalized_key] = existing.id
         print(f"[CROSS] Reutilizando coleção '{existing.name}' (id={existing.id})")
@@ -4286,13 +4483,19 @@ def get_or_create_collection_from_sharepoint(folder_name, collections_cache=None
 
     collection = Collection(
         name=folder_name.strip(),
-        description='Coleção criada automaticamente via SharePoint'
+        description='Coleção sincronizada automaticamente a partir das pastas de E-commerce do SharePoint',
+        sharepoint_folder_id=folder_id,
+        sharepoint_folder_path=sharepoint_path,
+        sharepoint_drive_id=drive_id,
     )
     db.session.add(collection)
     db.session.flush()
     if collections_cache is not None:
         collections_cache[normalized_key] = collection.id
-    print(f"[CROSS] Criada coleção '{collection.name}' (id={collection.id}) a partir da pasta SharePoint")
+    print(
+        f"[SP] [COLECOES] Coleção sincronizada a partir do SharePoint | "
+        f'nome="{collection.name}" | folder_id={folder_id or "-"} | imagens=0'
+    )
     return collection.id
 
 
@@ -4443,6 +4646,8 @@ def run_sharepoint_cross_for_batch(batch_id, force_update=False, auto=False):
             collection_id = get_or_create_collection_from_sharepoint(
                 collection_name,
                 collections_cache=collections_cache,
+                sharepoint_path=get_collection_folder_path_from_parent_path(parent_path),
+                drive_id=sp_item.get("drive_id"),
             )
             brand_name = get_brand_name_from_path(parent_path)
             brand_id = get_or_create_brand_from_sharepoint(
@@ -4499,7 +4704,7 @@ def run_sharepoint_cross_for_batch(batch_id, force_update=False, auto=False):
                 origem=carteira_item.origem,
                 estilista=carteira_item.estilista,
                 referencia_estilo=carteira_item.referencia_estilo,
-                collection_id=collection_id or carteira_item.colecao_id,
+                collection_id=collection_id,
                 subcolecao_id=carteira_item.subcolecao_id,
                 brand_id=brand_id or carteira_item.marca_id,
                 unique_code=unique_code,
@@ -4599,9 +4804,7 @@ def reconciliar_imagens_com_carteira():
             if carteira.referencia_estilo:
                 img.referencia_estilo = carteira.referencia_estilo
             
-            if carteira.colecao_id:
-                img.collection_id = carteira.colecao_id
-            if carteira.subcolecao_id:
+            if carteira.subcolecao_id and not img.subcolecao_id:
                 img.subcolecao_id = carteira.subcolecao_id
             if carteira.marca_id:
                 img.brand_id = carteira.marca_id
@@ -6571,6 +6774,7 @@ def create_all():
     with app.app_context():
         db.create_all()
         ensure_image_table_columns()
+        ensure_collection_table_columns()
         if not User.query.filter_by(username='admin').first():
             admin = User(username='admin', email='admin@oaz.com')
             admin.set_password('admin')

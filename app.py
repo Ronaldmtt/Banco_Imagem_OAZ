@@ -121,6 +121,8 @@ class Config:
 
 app = Flask(__name__)
 app.config.from_object(Config)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SHAREPOINT_INDEX_CACHE_PATH = os.path.join(BASE_DIR, "sharepoint_index.json")
 
 # Ensure upload directory exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -148,7 +150,24 @@ def get_sharepoint_client():
 
 def build_sharepoint_index(force_refresh=False, ttl_minutes=None):
     client = get_sharepoint_client()
-    return client.get_or_build_index(force_refresh=force_refresh)
+    index = client.get_or_build_index(force_refresh=force_refresh)
+    try:
+        with open(SHAREPOINT_INDEX_CACHE_PATH, "w", encoding="utf-8") as handle:
+            json.dump(index, handle, ensure_ascii=False)
+        info(
+            M.CARTEIRA,
+            "SharePoint cache",
+            (
+                "[SP] Índice de SharePoint salvo em cache ({count} itens) em {path}"
+            ).format(count=len(index), path=SHAREPOINT_INDEX_CACHE_PATH),
+        )
+    except Exception as exc:
+        log_error(
+            M.CARTEIRA,
+            "SharePoint cache",
+            f"[SP] Erro ao salvar índice de SharePoint em cache: {exc}",
+        )
+    return index
 
 
 def get_sharepoint_root_folder():
@@ -2113,16 +2132,18 @@ def filename_matches_sku(filename, sku_value):
 
 def get_sharepoint_index_cached():
     """Carrega índice do SharePoint apenas do cache local (sem HTTP)."""
-    cache_path = os.path.join(os.path.dirname(__file__), "sharepoint_index.json")
-    if not os.path.exists(cache_path):
+    if not os.path.exists(SHAREPOINT_INDEX_CACHE_PATH):
         warn(
             M.CARTEIRA,
             "SharePoint cache",
-            f"[SP] Índice de SharePoint em cache não encontrado em {cache_path}",
+            (
+                "[SharePoint cache] Índice de SharePoint em cache não encontrado em "
+                f"{SHAREPOINT_INDEX_CACHE_PATH}"
+            ),
         )
         return None
     try:
-        with open(cache_path, "r", encoding="utf-8") as handle:
+        with open(SHAREPOINT_INDEX_CACHE_PATH, "r", encoding="utf-8") as handle:
             data = json.load(handle)
         if isinstance(data, dict) and "index" in data and isinstance(data["index"], dict):
             index = data["index"]
@@ -2132,17 +2153,24 @@ def get_sharepoint_index_cached():
             warn(
                 M.CARTEIRA,
                 "SharePoint cache",
-                "[SP] Índice de SharePoint em cache inválido (formato inesperado)",
+                "[SharePoint cache] Índice de SharePoint em cache inválido (formato inesperado)",
             )
             return None
         info(
             M.CARTEIRA,
             "SharePoint cache",
-            f"[SP] Índice de SharePoint carregado do cache ({len(index)} itens)",
+            (
+                "[SharePoint cache] Índice de SharePoint carregado do cache "
+                f"({len(index)} itens)"
+            ),
         )
         return index
     except Exception as exc:
-        log_error(M.CARTEIRA, "SharePoint cache", f"[SP] Erro ao carregar índice: {exc}")
+        log_error(
+            M.CARTEIRA,
+            "SharePoint cache",
+            f"[SharePoint cache] Erro ao carregar índice de SharePoint em cache: {exc}",
+        )
         return None
 
 def buscar_carteira_por_sku(sku_base):
@@ -3625,10 +3653,11 @@ def diagnostico_sku():
             M.CARTEIRA,
             "DIAGNOSTICO_SKU",
             (
-                "sku_digitado={sku} carteira={carteira} imagens={imagens} "
-                "sharepoint={sharepoint}"
+                "sku_digitado={sku} sku_norm={sku_norm} carteira={carteira} "
+                "imagens={imagens} sharepoint={sharepoint}"
             ).format(
                 sku=sku_input,
+                sku_norm=sku_norm,
                 carteira=len(carteira_items),
                 imagens=len(imagens),
                 sharepoint=len(sp_items),

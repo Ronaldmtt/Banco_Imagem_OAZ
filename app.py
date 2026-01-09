@@ -1,6 +1,4 @@
 import os
-import traceback
-from threading import Thread
 import io
 import csv
 import mimetypes
@@ -149,25 +147,8 @@ def get_sharepoint_client():
 
 
 def build_sharepoint_index(force_refresh=False, ttl_minutes=None):
-    cache = _sharepoint_index_cache
-    ttl_minutes = _sharepoint_index_ttl_minutes if ttl_minutes is None else ttl_minutes
-    cache_exists = cache["index"] is not None and cache["created_at"]
-    if cache["index"] is not None and not force_refresh and cache["created_at"]:
-        age_minutes = (datetime.utcnow() - cache["created_at"]).total_seconds() / 60
-        if age_minutes <= ttl_minutes:
-            print(f"[SP] Usando índice em cache ({int(age_minutes)} min)")
-            return cache["index"]
-        print(f"[SP] Índice expirado ({int(age_minutes)} min), atualizando")
-
-    if force_refresh:
-        print("[SP] Reindexação forçada, gerando índice SharePoint (full)")
-    elif not cache_exists:
-        print("[SP] Índice não encontrado, executando full build_index")
     client = get_sharepoint_client()
-    index = client.build_index()
-    cache["index"] = index
-    cache["created_at"] = datetime.utcnow()
-    return index
+    return client.get_or_build_index(force_refresh=force_refresh)
 
 
 def get_sharepoint_root_folder():
@@ -208,23 +189,6 @@ def block_bucket_upload_routes():
 
 def _is_carteira_import_request():
     return request.path == '/carteira/importar' and request.method == 'POST'
-
-# Auto-cross SharePoint em background (evita timeout do Gunicorn)
-def start_sharepoint_cross_async(lote_id):
-    def _runner():
-        with app.app_context():
-            try:
-                rpa_info(f"[CROSS] Auto-cross iniciado | lote={lote_id} | auto=True")
-                sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
-                rpa_info(
-                    "[CROSS] Auto-cross finalizado "
-                    f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
-                    f"| sem_foto={max(0, sync_result.get('skus', 0) - sync_result.get('matched', 0))}"
-                )
-            except Exception as e:
-                rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
-                log_error(M.CARTEIRA, "Auto-cross async", traceback.format_exc())
-    Thread(target=_runner, daemon=True).start()
 
 # Error handler for large file uploads
 @app.errorhandler(413)
@@ -4093,7 +4057,13 @@ def run_sharepoint_cross_for_batch(batch_id, force_update=False, auto=False):
     cross_label = "Auto-cross" if auto else "Cruzamento"
     print(f"[CROSS] {cross_label} iniciado | lote={batch_id} | auto={auto}")
     client = get_sharepoint_client()
-    index = build_sharepoint_index()
+    info(M.CROSS, "SharePoint cross", f"Iniciando cross para lote={batch_id} (auto={auto})")
+    index = client.get_or_build_index(force_refresh=False)
+    info(
+        M.CROSS,
+        "SharePoint cross",
+        f"Índice SharePoint carregado (itens={len(index)}) para lote={batch_id}",
+    )
     collections_cache = {}
     brands_cache = {}
     created = 0
@@ -4275,6 +4245,15 @@ def run_sharepoint_cross_for_batch(batch_id, force_update=False, auto=False):
     print(
         f"[CROSS] {cross_label} finalizado | lote={batch_id} "
         f"| com_foto={matched} | sem_foto={max(0, len(items) - matched)}"
+    )
+    total_pendentes = max(0, len(items) - matched)
+    success(
+        M.CROSS,
+        "SharePoint cross",
+        (
+            f"Cross concluído | lote={batch_id} | imagens_cruzadas={matched} "
+            f"| pendentes={total_pendentes}"
+        ),
     )
     return result
 
@@ -4675,10 +4654,15 @@ def importar_carteira():
 
             if is_sharepoint_backend():
                 try:
-                    start_sharepoint_cross_async(lote_id)
-                    rpa_info(f"[CROSS] Auto-cross disparado em background | lote={lote_id}")
+                    rpa_info(f"[CROSS] Auto-cross iniciado | lote={lote_id} | auto=True")
+                    sync_result = run_sharepoint_cross_for_batch(lote_id, auto=True)
+                    rpa_info(
+                        "[CROSS] Auto-cross finalizado "
+                        f"| lote={lote_id} | com_foto={sync_result.get('matched', 0)} "
+                        f"| sem_foto={max(0, total_validos - sync_result.get('matched', 0))}"
+                    )
                 except Exception as e:
-                    rpa_error(f"[CROSS] Erro ao disparar auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
+                    rpa_error(f"[CROSS] Erro no auto-cross do lote {lote_id}: {str(e)}", exc=e, regiao="carteira")
             
             info(
                 M.CARTEIRA,

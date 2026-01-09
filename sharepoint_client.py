@@ -1,5 +1,7 @@
+import json
 import os
 import re
+import tempfile
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -196,7 +198,58 @@ class SharePointClient:
             url = payload.get("@odata.nextLink")
         return items
 
-    def build_index(
+    def _index_cache_path(self) -> str:
+        cache_path = os.getenv("SHAREPOINT_INDEX_CACHE")
+        if cache_path and cache_path.strip():
+            return cache_path
+        return os.path.join(os.path.dirname(__file__), "sharepoint_index.json")
+
+    def _load_index_from_cache(self) -> Optional[Dict[str, List[dict]]]:
+        path = self._index_cache_path()
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                return json.load(handle)
+        except (OSError, json.JSONDecodeError, ValueError):
+            print("[SP] Falha ao carregar índice do cache, reconstruindo...")
+            return None
+
+    def _save_index_to_cache(self, index: Dict[str, List[dict]]) -> None:
+        path = self._index_cache_path()
+        cache_dir = os.path.dirname(path) or "."
+        os.makedirs(cache_dir, exist_ok=True)
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                delete=False,
+                dir=cache_dir,
+                prefix=".sharepoint_index.",
+                suffix=".tmp",
+            ) as handle:
+                json.dump(index, handle, ensure_ascii=True)
+                temp_path = handle.name
+            os.replace(temp_path, path)
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+        print(f"[SP] Índice salvo em cache: {path} (itens={len(index)})")
+
+    def get_or_build_index(self, force_refresh: bool = False) -> Dict[str, List[dict]]:
+        if not force_refresh:
+            cached = self._load_index_from_cache()
+            if cached is not None:
+                path = self._index_cache_path()
+                print(f"[SP] Índice carregado do cache: {path} (itens={len(cached)})")
+                return cached
+
+        index = self._build_index_full()
+        self._save_index_to_cache(index)
+        return index
+
+    def _build_index_full(
         self,
         root_folder: Optional[str] = None,
         max_items: int | None = None,
@@ -254,8 +307,20 @@ class SharePointClient:
                     return
 
         walk(root_item_id)
-        print(f"[SP] build_index finalizado. Total: {len(index)}")
+        cache_path = self._index_cache_path()
+        print(f"[SP] build_index concluído (full). itens={len(index)} | cache={cache_path}")
         return index
+
+    def build_index(
+        self,
+        root_folder: Optional[str] = None,
+        max_items: int | None = None,
+        force_refresh: bool = False,
+    ) -> Dict[str, List[dict]]:
+        """Mantida por compatibilidade; agora usa cache por padrão."""
+        if root_folder is not None or max_items is not None:
+            return self._build_index_full(root_folder=root_folder, max_items=max_items)
+        return self.get_or_build_index(force_refresh=force_refresh)
 
     def find_by_sku_base(self, index: Dict[str, List[dict]], sku_base: str) -> List[dict]:
         if not sku_base:

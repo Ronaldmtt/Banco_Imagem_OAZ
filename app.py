@@ -4455,15 +4455,38 @@ def reconciliar_carteira():
     """Endpoint para reconciliar imagens com a Carteira."""
     carteira_log.reconciliation_started()
     rpa_info("[CARTEIRA] Iniciando reconciliação de imagens")
-    reconciliadas = reconciliar_imagens_com_carteira()
-    carteira_log.reconciliation_completed(reconciliadas)
-    rpa_info(f"[CARTEIRA] Reconciliação concluída: {reconciliadas} imagens atualizadas")
-    
-    if reconciliadas > 0:
-        flash(f'{reconciliadas} imagem(ns) reconciliada(s) com a Carteira!')
-    else:
-        flash('Nenhuma imagem para reconciliar.')
-    
+    total_carteira = CarteiraCompras.query.count()
+    sem_imagem = CarteiraCompras.query.filter(
+        db.or_(
+            CarteiraCompras.status_foto.is_(None),
+            CarteiraCompras.status_foto != 'Com Foto',
+        )
+    ).count()
+    com_imagem = CarteiraCompras.query.filter_by(status_foto='Com Foto').count()
+    info(
+        M.CARTEIRA,
+        "Reconciliação - diagnóstico inicial",
+        (
+            "total_carteira={total} sem_imagem={sem} com_imagem={com}"
+        ).format(total=total_carteira, sem=sem_imagem, com=com_imagem),
+    )
+
+    imagens_reconciliadas = 0
+    imagens_reconciliadas = reconciliar_imagens_com_carteira()
+    carteira_log.reconciliation_completed(imagens_reconciliadas)
+    rpa_info(
+        f"[CARTEIRA] Reconciliação concluída: {imagens_reconciliadas} imagens atualizadas"
+    )
+
+    log_end(
+        M.CARTEIRA,
+        f"Reconciliação concluída | imagens_reconciliadas={imagens_reconciliadas}",
+    )
+    flash(
+        f"Reconciliação concluída. {imagens_reconciliadas} imagens reconciliadas.",
+        "success",
+    )
+
     return redirect(url_for('carteira'))
 
 

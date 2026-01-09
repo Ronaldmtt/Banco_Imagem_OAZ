@@ -2105,6 +2105,12 @@ def normalizar_sku(sku):
             normalizadas.append(parte)
     return '.'.join(normalizadas)
 
+def filename_matches_sku(filename, sku_value):
+    if not filename or not sku_value:
+        return False
+    base = os.path.splitext(filename)[0].strip()
+    return base.upper().startswith(sku_value.upper())
+
 def buscar_carteira_por_sku(sku_base):
     """Busca na Carteira com normalização de SKU"""
     if not sku_base:
@@ -3400,6 +3406,113 @@ def carteira():
                           lotes=lotes,
                           lote_selecionado=lote)
 
+@app.route('/diagnostico_sku', methods=['GET', 'POST'])
+@login_required
+def diagnostico_sku():
+    if request.method == 'GET':
+        return render_template(
+            'diagnostico_sku.html',
+            sku_consulta="",
+            sku_norm="",
+            carteira_items=[],
+            imagens=[],
+            sp_items=[],
+            tem_resultado=False,
+        )
+
+    sku_raw = (request.form.get('sku') or '').strip()
+    if not sku_raw:
+        flash('Informe um SKU para diagnosticar.', 'warning')
+        return render_template(
+            'diagnostico_sku.html',
+            sku_consulta="",
+            sku_norm="",
+            carteira_items=[],
+            imagens=[],
+            sp_items=[],
+            tem_resultado=False,
+        )
+
+    sku_norm = normalizar_sku(sku_raw)
+    log_start(M.CARTEIRA, "Diagnóstico SKU")
+    info(M.CARTEIRA, "Diagnóstico SKU", f"sku={sku_raw} sku_norm={sku_norm}")
+    rpa_info(f"[CARTEIRA] Diagnóstico SKU iniciado: {sku_raw} -> {sku_norm}")
+
+    try:
+        carteira_filters = [CarteiraCompras.sku == sku_raw]
+        if sku_norm and sku_norm != sku_raw:
+            carteira_filters.append(CarteiraCompras.sku == sku_norm)
+        carteira_filters.append(CarteiraCompras.sku.ilike(f"%{sku_raw}%"))
+        if sku_norm:
+            carteira_filters.append(CarteiraCompras.sku.ilike(f"%{sku_norm}%"))
+
+        carteira_items = (
+            CarteiraCompras.query.filter(db.or_(*carteira_filters)).all()
+        )
+
+        imagens_filters = [
+            Image.sku == sku_raw,
+            Image.sku_base == sku_raw,
+            Image.sku.ilike(f"%{sku_raw}%"),
+            Image.sku_base.ilike(f"%{sku_raw}%"),
+        ]
+        if sku_norm and sku_norm != sku_raw:
+            imagens_filters.extend(
+                [
+                    Image.sku == sku_norm,
+                    Image.sku_base == sku_norm,
+                    Image.sku.ilike(f"%{sku_norm}%"),
+                    Image.sku_base.ilike(f"%{sku_norm}%"),
+                ]
+            )
+        imagens = Image.query.filter(db.or_(*imagens_filters)).all()
+
+        client = get_sharepoint_client()
+        index = build_sharepoint_index()
+        sp_items_raw = client.find_by_sku_base(index, sku_raw) or []
+        sp_items_norm = client.find_by_sku_base(index, sku_norm) or []
+        sp_items_by_id = {}
+        for sp_item in sp_items_raw + sp_items_norm:
+            item_id = sp_item.get("item_id")
+            if not item_id or item_id in sp_items_by_id:
+                continue
+            sp_items_by_id[item_id] = {
+                "name": sp_item.get("name"),
+                "parent_path": sp_item.get("parent_path"),
+                "web_url": sp_item.get("web_url"),
+                "drive_id": sp_item.get("drive_id"),
+                "item_id": item_id,
+                "filename_match": filename_matches_sku(sp_item.get("name", ""), sku_raw),
+            }
+
+        sp_items = list(sp_items_by_id.values())
+
+        log_end(M.CARTEIRA, "Diagnóstico SKU concluído")
+        rpa_info(f"[CARTEIRA] Diagnóstico SKU concluído: {sku_raw}")
+        return render_template(
+            'diagnostico_sku.html',
+            sku_consulta=sku_raw,
+            sku_norm=sku_norm,
+            carteira_items=carteira_items,
+            imagens=imagens,
+            sp_items=sp_items,
+            tem_resultado=True,
+        )
+    except Exception:
+        import traceback
+        log_error(M.CARTEIRA, "Diagnóstico SKU", traceback.format_exc())
+        rpa_error("[CARTEIRA] Erro no diagnóstico de SKU", regiao="carteira")
+        flash("Erro ao executar diagnóstico do SKU. Verifique os logs.", "error")
+        return render_template(
+            'diagnostico_sku.html',
+            sku_consulta=sku_raw,
+            sku_norm=sku_norm,
+            carteira_items=[],
+            imagens=[],
+            sp_items=[],
+            tem_resultado=False,
+        )
+
 @app.route('/carteira/lote/<lote_id>/delete', methods=['POST'])
 @login_required
 def deletar_lote_carteira(lote_id):
@@ -4089,12 +4202,6 @@ def run_sharepoint_cross_for_batch(batch_id, force_update=False, auto=False):
             return "1. Acessórios", normalized, True
         return "", normalized, False
 
-    def _filename_matches_sku(filename, sku_value):
-        if not filename or not sku_value:
-            return False
-        base = os.path.splitext(filename)[0].strip()
-        return base.upper().startswith(sku_value.upper())
-
     for carteira_item in items:
         sku_raw = str(carteira_item.sku or "").strip()
         if not sku_raw:
@@ -4126,7 +4233,7 @@ def run_sharepoint_cross_for_batch(batch_id, force_update=False, auto=False):
                 brand_hint = get_brand_name_from_path(parent_path) or ""
             if expected_folder and _normalize_text(subfolder) != _normalize_text(expected_folder):
                 continue
-            if not _filename_matches_sku(sp_item.get("name", ""), sku_raw):
+            if not filename_matches_sku(sp_item.get("name", ""), sku_raw):
                 continue
             filtered_items.append(sp_item)
 

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1>Diagnostico de SKU (Carteira x Imagens x SharePoint)</h1>
+        <p style="color: var(--text-secondary);">Investigue divergencias e relacionamentos por SKU.</p>
+    </div>
+</div>
+
+<div class="stat-card" style="margin-bottom: 1.5rem;">
+    <form action="{{ url_for('diagnostico_sku') }}" method="POST" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 280px;">
+            <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">SKU</label>
+            <input type="text" name="sku" class="form-control" placeholder="Informe o SKU para diagnostico" value="{{ sku_consulta or '' }}" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="height: 40px;">
+            <i class="fas fa-search"></i> Diagnosticar SKU
+        </button>
+    </form>
+</div>
+
+{% if tem_resultado %}
+<div class="stat-card" style="margin-bottom: 1.5rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">SKU informado</div>
+            <div style="font-weight: 600; font-family: monospace;">{{ sku_consulta }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">SKU normalizado</div>
+            <div style="font-weight: 600; font-family: monospace;">{{ sku_norm }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Itens na Carteira</div>
+            <div style="font-weight: 600;">{{ carteira_items|length }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Imagens no sistema</div>
+            <div style="font-weight: 600;">{{ imagens|length }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Arquivos no SharePoint (indice)</div>
+            <div style="font-weight: 600;">{{ sp_items|length }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="stat-card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
+    <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0;">Carteira de Compras</h3>
+    </div>
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">SKU</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Lote</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Colecao</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Tipo Carteira</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Status Foto</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Marca</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Subcolecao</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in carteira_items %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 0.75rem; font-family: monospace;">{{ item.sku }}</td>
+                <td style="padding: 0.75rem;">{{ item.lote_importacao or '-' }}</td>
+                <td style="padding: 0.75rem;">{{ item.colecao.name if item.colecao else '-' }}</td>
+                <td style="padding: 0.75rem;">{{ item.tipo_carteira or '-' }}</td>
+                <td style="padding: 0.75rem;">{{ item.status_foto or '-' }}</td>
+                <td style="padding: 0.75rem;">{{ item.marca.name if item.marca else '-' }}</td>
+                <td style="padding: 0.75rem;">{{ item.subcolecao.nome if item.subcolecao else '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-secondary);">Nenhum item de carteira encontrado.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="stat-card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
+    <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0;">Imagens no Sistema</h3>
+    </div>
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">ID</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">SKU</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">SKU Base</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Colecao</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Marca</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Status</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Nome da peca</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for image in imagens %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 0.75rem;">{{ image.id }}</td>
+                <td style="padding: 0.75rem; font-family: monospace;">{{ image.sku or '-' }}</td>
+                <td style="padding: 0.75rem; font-family: monospace;">{{ image.sku_base or '-' }}</td>
+                <td style="padding: 0.75rem;">{{ image.collection.name if image.collection else '-' }}</td>
+                <td style="padding: 0.75rem;">{{ image.brand.name if image.brand else '-' }}</td>
+                <td style="padding: 0.75rem;">{{ image.status or '-' }}</td>
+                <td style="padding: 0.75rem;">{{ image.nome_peca or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-secondary);">Nenhuma imagem encontrada.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="stat-card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
+    <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0;">Arquivos no SharePoint (indice)</h3>
+    </div>
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Nome do arquivo</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Caminho</th>
+                <th style="padding: 0.75rem; text-align: left; font-size: 0.85rem; color: var(--text-secondary);">Link</th>
+                <th style="padding: 0.75rem; text-align: center; font-size: 0.85rem; color: var(--text-secondary);">Match exato?</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sp_item in sp_items %}
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 0.75rem; font-family: monospace;">{{ sp_item.name or '-' }}</td>
+                <td style="padding: 0.75rem; color: var(--text-secondary);">{{ sp_item.parent_path or '-' }}</td>
+                <td style="padding: 0.75rem;">
+                    {% if sp_item.web_url %}
+                    <a href="{{ sp_item.web_url }}" target="_blank" style="color: var(--accent-blue); text-decoration: none;">Abrir</a>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td style="padding: 0.75rem; text-align: center;">
+                    {% if sp_item.filename_match %}
+                    <span style="color: #3fb950; font-weight: 600;">Sim</span>
+                    {% else %}
+                    <span style="color: #f85149; font-weight: 600;">Nao</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" style="padding: 1rem; text-align: center; color: var(--text-secondary);">Nenhum arquivo no indice.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

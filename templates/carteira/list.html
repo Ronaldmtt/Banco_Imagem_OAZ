@@ -10,6 +10,9 @@
         <a href="{{ url_for('importar_carteira') }}" class="btn btn-primary">
             <i class="fas fa-file-import"></i> Importar Excel/CSV
         </a>
+        <a href="{{ url_for('diagnostico_sku') }}" class="btn" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+            <i class="fas fa-stethoscope"></i> Diagnostico SKU
+        </a>
         {% set lote_cross = lote_selecionado or (lotes[0].lote_importacao if lotes and lotes|length > 0 else None) %}
         {% if lote_cross %}
         <form action="{{ url_for('cross_sharepoint_lote', lote_id=lote_cross) }}" method="POST" style="display: inline;">

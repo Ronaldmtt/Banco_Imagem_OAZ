@@ -4464,7 +4464,7 @@ def reconciliar_carteira():
     else:
         flash('Nenhuma imagem para reconciliar.')
     
-    return redirect(url_for('listar_carteira'))
+    return redirect(url_for('carteira'))
 
 
 @app.route('/carteira/importar', methods=['GET', 'POST'])

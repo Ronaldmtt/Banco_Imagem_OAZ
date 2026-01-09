@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1>Detalhes do Produto</h1>
+        <p style="color: var(--text-secondary);">SKU: <strong style="font-family: monospace;">{{ produto.sku }}</strong></p>
+    </div>
+    <div>
+        <a href="{{ url_for('produtos') }}" class="btn" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<div class="stat-card" style="margin-bottom: 2rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">SKU</div>
+            <div style="font-weight: 600; font-family: monospace;">{{ produto.sku }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Descricao</div>
+            <div style="font-weight: 600;">{{ produto.descricao }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Categoria</div>
+            <div style="font-weight: 600;">{{ produto.categoria or '-' }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Marca</div>
+            <div style="font-weight: 600;">{{ produto.marca.name if produto.marca else '-' }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Colecao</div>
+            <div style="font-weight: 600;">{{ produto.colecao.name if produto.colecao else '-' }}</div>
+        </div>
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Status Foto</div>
+            <div style="font-weight: 600;">
+                {% if produto.tem_foto %}
+                <span style="color: #3fb950;">Com Foto</span>
+                {% else %}
+                <span style="color: #f85149;">Sem Foto</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stat-card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0;">Imagens Associadas</h3>
+    </div>
+    {% if imagens and imagens|length > 0 %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; padding: 1rem;">
+        {% for image in imagens %}
+        <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;">
+            <div style="background: var(--bg-secondary); display: flex; align-items: center; justify-content: center; height: 160px;">
+                <img src="{{ image.image_url }}" alt="{{ image.filename }}" style="max-width: 100%; max-height: 160px; object-fit: cover;">
+            </div>
+            <div style="padding: 0.75rem;">
+                <div style="font-size: 0.8rem; color: var(--text-secondary);">{{ image.filename }}</div>
+                {% if image.original_name and image.original_name != image.filename %}
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Original: {{ image.original_name }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+        Nenhuma imagem associada a este produto.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

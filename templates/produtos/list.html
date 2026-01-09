@@ -189,6 +189,9 @@ document.getElementById('modalDeletarTodos').addEventListener('click', function(
                 </td>
                 <td style="padding: 1rem; text-align: center;">
                     <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                        <a href="{{ url_for('ver_produto', produto_id=produto.id) }}" class="btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);" title="Visualizar">
+                            <i class="fas fa-eye"></i>
+                        </a>
                         <a href="{{ url_for('edit_produto', id=produto.id) }}" class="btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--accent-blue);" title="Editar">
                             <i class="fas fa-edit"></i>
                         </a>

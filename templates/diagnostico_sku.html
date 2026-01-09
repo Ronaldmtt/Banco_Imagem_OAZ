@@ -21,6 +21,11 @@
 </div>
 
 {% if tem_resultado %}
+    {% if sharepoint_index_status != "indice_ok" %}
+    <div class="stat-card" style="margin-bottom: 1.5rem; border: 1px solid #f85149; background: rgba(248, 81, 73, 0.08);">
+        <strong>Indice SharePoint indisponivel:</strong> cache nao encontrado ou invalido. Os resultados de SharePoint podem estar vazios.
+    </div>
+    {% endif %}
 <div class="stat-card" style="margin-bottom: 1.5rem;">
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
         <div>
@@ -48,7 +53,7 @@
 
 <div class="stat-card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
     <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
-        <h3 style="margin: 0;">Carteira de Compras</h3>
+        <h3 style="margin: 0;">Carteira de Compras ({{ carteira_items|length }})</h3>
     </div>
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
@@ -84,7 +89,7 @@
 
 <div class="stat-card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
     <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
-        <h3 style="margin: 0;">Imagens no Sistema</h3>
+        <h3 style="margin: 0;">Imagens no Sistema ({{ imagens|length }})</h3>
     </div>
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
@@ -120,7 +125,7 @@
 
 <div class="stat-card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
     <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
-        <h3 style="margin: 0;">Arquivos no SharePoint (indice)</h3>
+        <h3 style="margin: 0;">Arquivos no SharePoint (indice) ({{ sp_items|length }})</h3>
     </div>
     <table style="width: 100%; border-collapse: collapse;">
         <thead>

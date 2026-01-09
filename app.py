@@ -3,13 +3,13 @@ import io
 import csv
 import mimetypes
 from datetime import datetime
-from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response, jsonify, stream_with_context
+from flask import Flask, render_template, redirect, url_for, flash, request, Response, make_response, jsonify, stream_with_context, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.exceptions import RequestEntityTooLarge, HTTPException
 from openai import OpenAI
 from dotenv import load_dotenv
 import json
@@ -2111,6 +2111,40 @@ def filename_matches_sku(filename, sku_value):
     base = os.path.splitext(filename)[0].strip()
     return base.upper().startswith(sku_value.upper())
 
+def get_sharepoint_index_cached():
+    """Carrega índice do SharePoint apenas do cache local (sem HTTP)."""
+    cache_path = os.path.join(os.path.dirname(__file__), "sharepoint_index.json")
+    if not os.path.exists(cache_path):
+        warn(
+            M.CARTEIRA,
+            "SharePoint cache",
+            f"[SP] Índice de SharePoint em cache não encontrado em {cache_path}",
+        )
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data, dict) and "index" in data and isinstance(data["index"], dict):
+            index = data["index"]
+        elif isinstance(data, dict):
+            index = data
+        else:
+            warn(
+                M.CARTEIRA,
+                "SharePoint cache",
+                "[SP] Índice de SharePoint em cache inválido (formato inesperado)",
+            )
+            return None
+        info(
+            M.CARTEIRA,
+            "SharePoint cache",
+            f"[SP] Índice de SharePoint carregado do cache ({len(index)} itens)",
+        )
+        return index
+    except Exception as exc:
+        log_error(M.CARTEIRA, "SharePoint cache", f"[SP] Erro ao carregar índice: {exc}")
+        return None
+
 def buscar_carteira_por_sku(sku_base):
     """Busca na Carteira com normalização de SKU"""
     if not sku_base:
@@ -3109,6 +3143,41 @@ def produtos():
     total_produtos = Produto.query.filter_by(ativo=True).count()
     com_foto = Produto.query.filter_by(ativo=True, tem_foto=True).count()
     sem_foto = Produto.query.filter_by(ativo=True, tem_foto=False).count()
+    total_carteira = CarteiraCompras.query.count()
+    produtos_skus = db.session.query(Produto.sku).filter(
+        Produto.ativo.is_(True),
+        Produto.sku.isnot(None),
+        Produto.sku != '',
+    )
+    carteira_skus = db.session.query(CarteiraCompras.sku).filter(
+        CarteiraCompras.sku.isnot(None),
+        CarteiraCompras.sku != '',
+    )
+    produtos_sem_carteira = Produto.query.filter(
+        Produto.ativo.is_(True),
+        Produto.sku.isnot(None),
+        Produto.sku != '',
+        ~Produto.sku.in_(carteira_skus),
+    ).count()
+    carteira_sem_produto = CarteiraCompras.query.filter(
+        CarteiraCompras.sku.isnot(None),
+        CarteiraCompras.sku != '',
+        ~CarteiraCompras.sku.in_(produtos_skus),
+    ).count()
+    info(
+        M.CARTEIRA,
+        "Diagnóstico contadores",
+        (
+            "total_produtos={produtos} total_carteira={carteira} "
+            "carteira_sem_produto={carteira_sem_produto} "
+            "produtos_sem_carteira={produtos_sem_carteira}"
+        ).format(
+            produtos=total_produtos,
+            carteira=total_carteira,
+            carteira_sem_produto=carteira_sem_produto,
+            produtos_sem_carteira=produtos_sem_carteira,
+        ),
+    )
     
     return render_template('produtos/list.html', 
                           produtos=produtos_list, 
@@ -3118,6 +3187,19 @@ def produtos():
                           total_produtos=total_produtos,
                           com_foto=com_foto,
                           sem_foto=sem_foto)
+
+@app.route('/produtos/<int:produto_id>')
+@login_required
+def ver_produto(produto_id):
+    produto = Produto.query.get(produto_id)
+    if not produto:
+        abort(404)
+
+    imagens = Image.query.join(ImagemProduto).filter(
+        ImagemProduto.produto_id == produto.id
+    ).all()
+
+    return render_template('produtos/ver.html', produto=produto, imagens=imagens)
 
 @app.route('/produtos/new', methods=['GET', 'POST'])
 @login_required
@@ -3163,75 +3245,96 @@ def new_produto():
 @login_required
 def edit_produto(id):
     rpa_info(f"[NAV] Editar Produto ID:{id} - Usuário: {current_user.username}")
-    produto = Produto.query.get_or_404(id)
-    
-    if request.method == 'POST':
-        sku_novo = request.form.get('sku', '').strip()
-        sku_antigo = produto.sku
-        motivo = request.form.get('motivo_alteracao', '').strip()
+    try:
+        produto = Produto.query.get_or_404(id)
         
-        # Se SKU mudou, registrar no histórico
-        if sku_novo != sku_antigo:
-            if not motivo:
-                flash('Informe o motivo da alteração do SKU')
-                return redirect(url_for('edit_produto', id=id))
+        if request.method == 'POST':
+            sku_novo = request.form.get('sku', '').strip()
+            sku_antigo = produto.sku
+            motivo = request.form.get('motivo_alteracao', '').strip()
             
-            existing = Produto.query.filter_by(sku=sku_novo).first()
-            if existing and existing.id != produto.id:
-                flash('SKU já existe em outro produto')
-                return redirect(url_for('edit_produto', id=id))
+            # Se SKU mudou, registrar no histórico
+            if sku_novo != sku_antigo:
+                if not motivo:
+                    flash('Informe o motivo da alteração do SKU')
+                    return redirect(url_for('edit_produto', id=id))
+                
+                existing = Produto.query.filter_by(sku=sku_novo).first()
+                if existing and existing.id != produto.id:
+                    flash('SKU já existe em outro produto')
+                    return redirect(url_for('edit_produto', id=id))
+                
+                # Registrar histórico
+                historico = HistoricoSKU(
+                    produto_id=produto.id,
+                    sku_antigo=sku_antigo,
+                    sku_novo=sku_novo,
+                    motivo=motivo,
+                    usuario_id=current_user.id
+                )
+                db.session.add(historico)
+                produto.sku = sku_novo
+                
+                # Atualizar SKU na carteira de compras se existir
+                carteira_item = CarteiraCompras.query.filter_by(sku=sku_antigo).first()
+                if carteira_item:
+                    carteira_item.sku = sku_novo
             
-            # Registrar histórico
-            historico = HistoricoSKU(
-                produto_id=produto.id,
-                sku_antigo=sku_antigo,
-                sku_novo=sku_novo,
-                motivo=motivo,
-                usuario_id=current_user.id
-            )
-            db.session.add(historico)
-            produto.sku = sku_novo
+            produto.descricao = request.form.get('descricao', '').strip()
+            produto.cor = request.form.get('cor', '').strip()
+            produto.categoria = request.form.get('categoria', '').strip()
+            produto.atributos_tecnicos = request.form.get('atributos_tecnicos', '').strip()
             
-            # Atualizar SKU na carteira de compras se existir
-            carteira_item = CarteiraCompras.query.filter_by(sku=sku_antigo).first()
-            if carteira_item:
-                carteira_item.sku = sku_novo
+            marca_id = request.form.get('marca_id')
+            produto.marca_id = int(marca_id) if marca_id else None
+            
+            colecao_id = request.form.get('colecao_id')
+            produto.colecao_id = int(colecao_id) if colecao_id else None
+            
+            db.session.commit()
+            flash('Produto atualizado com sucesso!')
+            return redirect(url_for('produtos'))
         
-        produto.descricao = request.form.get('descricao', '').strip()
-        produto.cor = request.form.get('cor', '').strip()
-        produto.categoria = request.form.get('categoria', '').strip()
-        produto.atributos_tecnicos = request.form.get('atributos_tecnicos', '').strip()
+        marcas = Brand.query.order_by(Brand.name).all()
+        colecoes = Collection.query.order_by(Collection.name).all()
         
-        marca_id = request.form.get('marca_id')
-        produto.marca_id = int(marca_id) if marca_id else None
+        # Imagens associadas ao produto
+        imagens_associadas = Image.query.join(ImagemProduto).filter(
+            ImagemProduto.produto_id == produto.id
+        ).all()
         
-        colecao_id = request.form.get('colecao_id')
-        produto.colecao_id = int(colecao_id) if colecao_id else None
+        # Imagens disponíveis para associar (não associadas ainda)
+        imagens_associadas_ids = [img.id for img in imagens_associadas]
+        imagens_disponiveis = Image.query.filter(
+            ~Image.id.in_(imagens_associadas_ids) if imagens_associadas_ids else True
+        ).order_by(Image.upload_date.desc()).limit(50).all()
         
-        db.session.commit()
-        flash('Produto atualizado com sucesso!')
-        return redirect(url_for('produtos'))
-    
-    marcas = Brand.query.order_by(Brand.name).all()
-    colecoes = Collection.query.order_by(Collection.name).all()
-    
-    # Imagens associadas ao produto
-    imagens_associadas = Image.query.join(ImagemProduto).filter(ImagemProduto.produto_id == produto.id).all()
-    
-    # Imagens disponíveis para associar (não associadas ainda)
-    imagens_associadas_ids = [img.id for img in imagens_associadas]
-    imagens_disponiveis = Image.query.filter(~Image.id.in_(imagens_associadas_ids) if imagens_associadas_ids else True).order_by(Image.upload_date.desc()).limit(50).all()
-    
-    # Histórico de alterações de SKU
-    historico_sku = HistoricoSKU.query.filter_by(produto_id=produto.id).order_by(HistoricoSKU.data_alteracao.desc()).all()
-    
-    return render_template('produtos/edit.html', 
-                          produto=produto, 
-                          marcas=marcas, 
-                          colecoes=colecoes,
-                          imagens_associadas=imagens_associadas,
-                          imagens_disponiveis=imagens_disponiveis,
-                          historico_sku=historico_sku)
+        # Histórico de alterações de SKU
+        historico_sku = HistoricoSKU.query.filter_by(
+            produto_id=produto.id
+        ).order_by(HistoricoSKU.data_alteracao.desc()).all()
+        
+        return render_template('produtos/edit.html', 
+                              produto=produto, 
+                              marcas=marcas, 
+                              colecoes=colecoes,
+                              imagens_associadas=imagens_associadas,
+                              imagens_disponiveis=imagens_disponiveis,
+                              historico_sku=historico_sku)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_error(
+            M.CATALOG,
+            "Produto",
+            f"Erro ao editar produto | id={id} | erro={exc}",
+        )
+        rpa_error(
+            f"[PRODUTO] Erro ao editar produto | id={id} | erro={exc}",
+            exc=exc,
+            regiao="produtos",
+        )
+        raise
 
 @app.route('/produtos/<int:id>/delete', methods=['POST'])
 @login_required
@@ -3382,6 +3485,41 @@ def carteira():
     com_foto = CarteiraCompras.query.filter_by(status_foto='Com Foto').count()
     sem_foto = CarteiraCompras.query.filter_by(status_foto='Sem Foto').count()
     pendente = CarteiraCompras.query.filter_by(status_foto='Pendente').count()
+    total_produtos = Produto.query.filter_by(ativo=True).count()
+    produtos_skus = db.session.query(Produto.sku).filter(
+        Produto.ativo.is_(True),
+        Produto.sku.isnot(None),
+        Produto.sku != '',
+    )
+    carteira_skus = db.session.query(CarteiraCompras.sku).filter(
+        CarteiraCompras.sku.isnot(None),
+        CarteiraCompras.sku != '',
+    )
+    produtos_sem_carteira = Produto.query.filter(
+        Produto.ativo.is_(True),
+        Produto.sku.isnot(None),
+        Produto.sku != '',
+        ~Produto.sku.in_(carteira_skus),
+    ).count()
+    carteira_sem_produto = CarteiraCompras.query.filter(
+        CarteiraCompras.sku.isnot(None),
+        CarteiraCompras.sku != '',
+        ~CarteiraCompras.sku.in_(produtos_skus),
+    ).count()
+    info(
+        M.CARTEIRA,
+        "Diagnóstico contadores",
+        (
+            "total_produtos={produtos} total_carteira={carteira} "
+            "carteira_sem_produto={carteira_sem_produto} "
+            "produtos_sem_carteira={produtos_sem_carteira}"
+        ).format(
+            produtos=total_produtos,
+            carteira=total,
+            carteira_sem_produto=carteira_sem_produto,
+            produtos_sem_carteira=produtos_sem_carteira,
+        ),
+    )
     
     # Listar lotes únicos
     lotes = db.session.query(
@@ -3417,11 +3555,12 @@ def diagnostico_sku():
             carteira_items=[],
             imagens=[],
             sp_items=[],
+            sharepoint_index_status="nao_verificado",
             tem_resultado=False,
         )
 
-    sku_raw = (request.form.get('sku') or '').strip()
-    if not sku_raw:
+    sku_input = (request.form.get('sku') or '').strip()
+    if not sku_input:
         flash('Informe um SKU para diagnosticar.', 'warning')
         return render_template(
             'diagnostico_sku.html',
@@ -3430,72 +3569,82 @@ def diagnostico_sku():
             carteira_items=[],
             imagens=[],
             sp_items=[],
+            sharepoint_index_status="nao_verificado",
             tem_resultado=False,
         )
 
-    sku_norm = normalizar_sku(sku_raw)
+    sku_norm = normalizar_sku(sku_input)
     log_start(M.CARTEIRA, "Diagnóstico SKU")
-    info(M.CARTEIRA, "Diagnóstico SKU", f"sku={sku_raw} sku_norm={sku_norm}")
-    rpa_info(f"[CARTEIRA] Diagnóstico SKU iniciado: {sku_raw} -> {sku_norm}")
+    info(M.CARTEIRA, "Diagnóstico SKU", f"sku={sku_input} sku_norm={sku_norm}")
+    rpa_info(f"[CARTEIRA] Diagnóstico SKU iniciado: {sku_input} -> {sku_norm}")
 
     try:
-        carteira_filters = [CarteiraCompras.sku == sku_raw]
-        if sku_norm and sku_norm != sku_raw:
-            carteira_filters.append(CarteiraCompras.sku == sku_norm)
-        carteira_filters.append(CarteiraCompras.sku.ilike(f"%{sku_raw}%"))
-        if sku_norm:
-            carteira_filters.append(CarteiraCompras.sku.ilike(f"%{sku_norm}%"))
+        carteira_items = CarteiraCompras.query.filter(
+            CarteiraCompras.sku == sku_input
+        ).all()
 
-        carteira_items = (
-            CarteiraCompras.query.filter(db.or_(*carteira_filters)).all()
+        imagens_candidates = Image.query.filter(
+            db.or_(
+                Image.sku == sku_input,
+                Image.sku_base == sku_input,
+                Image.filename.ilike(f"{sku_input}%"),
+                Image.original_name.ilike(f"{sku_input}%"),
+                Image.sharepoint_file_name.ilike(f"{sku_input}%"),
+            )
+        ).all()
+        imagens = []
+        for img in imagens_candidates:
+            filename = img.sharepoint_file_name or img.original_name or img.filename
+            if filename_matches_sku(filename, sku_input):
+                imagens.append(img)
+
+        sharepoint_index_status = "indice_nao_disponivel"
+        sp_items = []
+        index = get_sharepoint_index_cached()
+        if index is not None:
+            sharepoint_index_status = "indice_ok"
+            sp_items_by_id = {}
+            for items in index.values():
+                for sp_item in items:
+                    name = sp_item.get("name", "")
+                    if not filename_matches_sku(name, sku_input):
+                        continue
+                    item_id = sp_item.get("item_id") or name
+                    if item_id in sp_items_by_id:
+                        continue
+                    sp_items_by_id[item_id] = {
+                        "name": sp_item.get("name"),
+                        "parent_path": sp_item.get("parent_path"),
+                        "web_url": sp_item.get("web_url"),
+                        "drive_id": sp_item.get("drive_id"),
+                        "item_id": sp_item.get("item_id"),
+                        "filename_match": True,
+                    }
+            sp_items = list(sp_items_by_id.values())
+        info(
+            M.CARTEIRA,
+            "DIAGNOSTICO_SKU",
+            (
+                "sku_digitado={sku} carteira={carteira} imagens={imagens} "
+                "sharepoint={sharepoint}"
+            ).format(
+                sku=sku_input,
+                carteira=len(carteira_items),
+                imagens=len(imagens),
+                sharepoint=len(sp_items),
+            ),
         )
 
-        imagens_filters = [
-            Image.sku == sku_raw,
-            Image.sku_base == sku_raw,
-            Image.sku.ilike(f"%{sku_raw}%"),
-            Image.sku_base.ilike(f"%{sku_raw}%"),
-        ]
-        if sku_norm and sku_norm != sku_raw:
-            imagens_filters.extend(
-                [
-                    Image.sku == sku_norm,
-                    Image.sku_base == sku_norm,
-                    Image.sku.ilike(f"%{sku_norm}%"),
-                    Image.sku_base.ilike(f"%{sku_norm}%"),
-                ]
-            )
-        imagens = Image.query.filter(db.or_(*imagens_filters)).all()
-
-        client = get_sharepoint_client()
-        index = build_sharepoint_index()
-        sp_items_raw = client.find_by_sku_base(index, sku_raw) or []
-        sp_items_norm = client.find_by_sku_base(index, sku_norm) or []
-        sp_items_by_id = {}
-        for sp_item in sp_items_raw + sp_items_norm:
-            item_id = sp_item.get("item_id")
-            if not item_id or item_id in sp_items_by_id:
-                continue
-            sp_items_by_id[item_id] = {
-                "name": sp_item.get("name"),
-                "parent_path": sp_item.get("parent_path"),
-                "web_url": sp_item.get("web_url"),
-                "drive_id": sp_item.get("drive_id"),
-                "item_id": item_id,
-                "filename_match": filename_matches_sku(sp_item.get("name", ""), sku_raw),
-            }
-
-        sp_items = list(sp_items_by_id.values())
-
         log_end(M.CARTEIRA, "Diagnóstico SKU concluído")
-        rpa_info(f"[CARTEIRA] Diagnóstico SKU concluído: {sku_raw}")
+        rpa_info(f"[CARTEIRA] Diagnóstico SKU concluído: {sku_input}")
         return render_template(
             'diagnostico_sku.html',
-            sku_consulta=sku_raw,
+            sku_consulta=sku_input,
             sku_norm=sku_norm,
             carteira_items=carteira_items,
             imagens=imagens,
             sp_items=sp_items,
+            sharepoint_index_status=sharepoint_index_status,
             tem_resultado=True,
         )
     except Exception:
@@ -3505,11 +3654,12 @@ def diagnostico_sku():
         flash("Erro ao executar diagnóstico do SKU. Verifique os logs.", "error")
         return render_template(
             'diagnostico_sku.html',
-            sku_consulta=sku_raw,
+            sku_consulta=sku_input,
             sku_norm=sku_norm,
             carteira_items=[],
             imagens=[],
             sp_items=[],
+            sharepoint_index_status="indice_erro",
             tem_resultado=False,
         )
 
@@ -4463,29 +4613,192 @@ def reconciliar_carteira():
         )
     ).count()
     com_imagem = CarteiraCompras.query.filter_by(status_foto='Com Foto').count()
+    candidatos = CarteiraCompras.query.filter(
+        db.and_(
+            CarteiraCompras.sku.isnot(None),
+            CarteiraCompras.sku != '',
+        ),
+        db.or_(
+            CarteiraCompras.status_foto.is_(None),
+            CarteiraCompras.status_foto != 'Com Foto',
+        ),
+    ).all()
+    candidatos_sem_foto = len(candidatos)
     info(
         M.CARTEIRA,
         "Reconciliação - diagnóstico inicial",
         (
-            "total_carteira={total} sem_imagem={sem} com_imagem={com}"
-        ).format(total=total_carteira, sem=sem_imagem, com=com_imagem),
+            "total_carteira={total} sem_imagem={sem} com_imagem={com} "
+            "candidatos_sem_foto={candidatos}"
+        ).format(
+            total=total_carteira,
+            sem=sem_imagem,
+            com=com_imagem,
+            candidatos=candidatos_sem_foto,
+        ),
     )
 
     imagens_reconciliadas = 0
-    imagens_reconciliadas = reconciliar_imagens_com_carteira()
+    linhas_atualizadas = 0
+    skus_exemplo = []
+    sku_values = set()
+    for item in candidatos:
+        sku_raw = str(item.sku or "").strip()
+        if not sku_raw:
+            continue
+        sku_values.add(sku_raw.upper())
+        sku_norm = normalizar_sku(sku_raw)
+        if sku_norm:
+            sku_values.add(sku_norm.upper())
+
+    imagens = []
+    if sku_values:
+        imagens = Image.query.filter(
+            db.or_(
+                Image.sku_base.in_(sku_values),
+                Image.sku.in_(sku_values),
+            )
+        ).all()
+
+    imagens_por_sku = {}
+    for img in imagens:
+        for key in (img.sku_base, img.sku):
+            if not key:
+                continue
+            imagens_por_sku.setdefault(key.upper(), []).append(img)
+
+    produto_ids = {item.produto_id for item in candidatos if item.produto_id}
+    produtos_por_id = {}
+    if produto_ids:
+        produtos_por_id = {
+            produto.id: produto
+            for produto in Produto.query.filter(Produto.id.in_(produto_ids)).all()
+        }
+
+    produtos_por_sku = {}
+    if sku_values:
+        produtos_por_sku = {
+            produto.sku.upper(): produto
+            for produto in Produto.query.filter(Produto.sku.in_(sku_values)).all()
+        }
+
+    associacoes_existentes = set()
+    if produto_ids and imagens:
+        imagem_ids = [img.id for img in imagens]
+        associacoes = ImagemProduto.query.filter(
+            ImagemProduto.produto_id.in_(produto_ids),
+            ImagemProduto.imagem_id.in_(imagem_ids),
+        ).all()
+        associacoes_existentes = {
+            (assoc.produto_id, assoc.imagem_id) for assoc in associacoes
+        }
+
+    for item in candidatos:
+        sku_raw = str(item.sku or "").strip()
+        if not sku_raw:
+            continue
+        sku_norm = normalizar_sku(sku_raw)
+        candidates_images = []
+        for key in (sku_raw.upper(), sku_norm.upper() if sku_norm else None):
+            if not key:
+                continue
+            candidates_images.extend(imagens_por_sku.get(key, []))
+
+        if not candidates_images:
+            continue
+
+        matched_images = []
+        seen_images = set()
+        for img in candidates_images:
+            if img.id in seen_images:
+                continue
+            seen_images.add(img.id)
+            filename = img.sharepoint_file_name or img.original_name or img.filename
+            if filename_matches_sku(filename, sku_raw):
+                matched_images.append(img)
+
+        if not matched_images:
+            continue
+
+        produto = None
+        if item.produto_id:
+            produto = produtos_por_id.get(item.produto_id)
+        if not produto:
+            produto = produtos_por_sku.get(sku_raw.upper())
+        if not produto and sku_norm:
+            produto = produtos_por_sku.get(sku_norm.upper())
+        if not produto:
+            continue
+        if not item.produto_id:
+            item.produto_id = produto.id
+
+        item_atualizado = False
+        for img in matched_images:
+            assoc_key = (produto.id, img.id)
+            if assoc_key in associacoes_existentes:
+                continue
+            db.session.add(
+                ImagemProduto(imagem_id=img.id, produto_id=produto.id)
+            )
+            associacoes_existentes.add(assoc_key)
+            imagens_reconciliadas += 1
+            item_atualizado = True
+
+        if item_atualizado:
+            if not produto.tem_foto:
+                produto.tem_foto = True
+            if item.status_foto != 'Com Foto':
+                item.status_foto = 'Com Foto'
+            linhas_atualizadas += 1
+            if len(skus_exemplo) < 10 and sku_raw not in skus_exemplo:
+                skus_exemplo.append(sku_raw)
+
+    if imagens_reconciliadas > 0 or linhas_atualizadas > 0:
+        db.session.commit()
+
     carteira_log.reconciliation_completed(imagens_reconciliadas)
     rpa_info(
-        f"[CARTEIRA] Reconciliação concluída: {imagens_reconciliadas} imagens atualizadas"
+        "[CARTEIRA] Reconciliação concluída: "
+        f"{imagens_reconciliadas} imagens associadas"
+    )
+    info(
+        M.CARTEIRA,
+        "Reconciliação - resumo",
+        (
+            "imagens_reconciliadas={imgs} linhas_atualizadas={linhas} "
+            "skus_exemplo={skus}"
+        ).format(
+            imgs=imagens_reconciliadas,
+            linhas=linhas_atualizadas,
+            skus=", ".join(skus_exemplo) if skus_exemplo else "-",
+        ),
     )
 
     log_end(
         M.CARTEIRA,
-        f"Reconciliação concluída | imagens_reconciliadas={imagens_reconciliadas}",
+        (
+            "Reconciliação concluída | imagens_reconciliadas={imgs} "
+            "linhas_atualizadas={linhas}"
+        ).format(
+            imgs=imagens_reconciliadas,
+            linhas=linhas_atualizadas,
+        ),
     )
-    flash(
-        f"Reconciliação concluída. {imagens_reconciliadas} imagens reconciliadas.",
-        "success",
-    )
+    if imagens_reconciliadas > 0:
+        flash(
+            (
+                "Reconciliação concluída: {count} imagens associadas a produtos."
+            ).format(count=imagens_reconciliadas),
+            "success",
+        )
+    else:
+        flash(
+            (
+                "Reconciliação concluída: nenhuma nova imagem encontrada para os "
+                "SKUs sem foto."
+            ),
+            "info",
+        )
 
     return redirect(url_for('carteira'))
 
